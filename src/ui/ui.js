@@ -473,9 +473,9 @@ export class UI {
     const u = this.settings.units;
     const presets = el('div', { class: 'presets' });
     const pre = [
-      ['Just right', () => this.setClimate({ desert: { lamp: 0.55, mister: 0 }, pond: { lamp: 0.15, filter: 0.5, heater: false }, jungle: { lamp: 0.25, mister: 0.35 } })],
-      ['Heat wave', () => this.setClimate({ desert: { lamp: 1, mister: 0 }, pond: { lamp: 0.8, heater: true, heaterTarget: 31 }, jungle: { lamp: 0.9, mister: 0 } })],
-      ['Cold snap', () => this.setClimate({ desert: { lamp: 0, mister: 0 }, pond: { lamp: 0, heater: true, heaterTarget: 12 }, jungle: { lamp: 0, mister: 0.2 } })],
+      ['Just right', () => this.setClimate({ room: 21, desert: { lamp: 0.55, mister: 0 }, pond: { lamp: 0.15, filter: 0.5, heater: false }, jungle: { lamp: 0.25, mister: 0.35 } })],
+      ['Heat wave', () => this.setClimate({ room: 28, desert: { lamp: 1, mister: 0 }, pond: { lamp: 0.8, heater: true, heaterTarget: 31 }, jungle: { lamp: 0.9, mister: 0 } })],
+      ['Cold snap', () => this.setClimate({ room: 9, desert: { lamp: 0, mister: 0 }, pond: { lamp: 0, heater: true, heaterTarget: 10 }, jungle: { lamp: 0, mister: 0.2 } })],
       ['Rainy day', () => this.setClimate({ desert: { mister: 0.7 }, jungle: { mister: 1 } })],
       ['Dry spell', () => this.setClimate({ desert: { mister: 0 }, jungle: { mister: 0, lamp: 0.7 } })],
     ];
@@ -494,6 +494,14 @@ export class UI {
       } }, l));
     }
     body.append(lights);
+    const roomOut = el('output', {}, fmtTemp(env.roomSet, u));
+    body.append(
+      el('div', { class: 'slider', style: 'grid-template-columns:120px 1fr 52px;margin-bottom:6px' }, el('span', {}, 'Room thermostat'),
+        el('input', { type: 'range', min: 6, max: 30, step: 1, value: env.roomSet, 'aria-label': 'Room thermostat', oninput: (e) => {
+          env.roomSet = +e.target.value;
+          roomOut.textContent = fmtTemp(env.roomSet, u);
+        } }), roomOut)
+    );
     const grid = el('div', { class: 'zones3' });
     const slider = (label, get, set, fmt = (v) => Math.round(v * 100) + '%', min = 0, max = 1, step = 0.05) => {
       const out = el('output', {}, fmt(get()));
@@ -516,7 +524,7 @@ export class UI {
       slider('Mister', () => env.desert.mister, (v) => (env.desert.mister = v)),
     ]);
     const heaterOut = el('output', {}, fmtTemp(env.pond.heaterTarget, u));
-    const heaterRange = el('input', { type: 'range', min: 10, max: 34, step: 1, value: env.pond.heaterTarget, 'aria-label': 'Heater temperature', oninput: (e) => {
+    const heaterRange = el('input', { type: 'range', min: 6, max: 34, step: 1, value: env.pond.heaterTarget, 'aria-label': 'Heater temperature', oninput: (e) => {
       env.pond.heaterTarget = +e.target.value;
       heaterOut.textContent = fmtTemp(env.pond.heaterTarget, u);
     } });
@@ -528,6 +536,18 @@ export class UI {
       slider('Filter', () => env.pond.filter, (v) => (env.pond.filter = v)),
       el('div', { class: 'slider' }, el('label', { style: 'display:flex;gap:4px;align-items:center' }, heaterToggle, 'Heater'), heaterRange, heaterOut),
     ]);
+    grid.lastChild.append(
+      el('div', { class: 'row', style: 'margin-top:4px' },
+        el('button', { class: 'btn small blue', onclick: () => {
+          const n = this.world.cleanPond();
+          this.sound.play('splash', 0.6);
+          this.toast(n ? `Swish! Siphoned out ${n} bits of old food.` : 'Swish! The pond got a little rinse.', 'drop');
+        } }, 'Clean pond'),
+        el('button', { class: 'btn small', onclick: () => {
+          const n = this.world.tidyLand();
+          this.toast(n ? `Tidied up ${n} squishy leftovers.` : 'Nothing squishy to tidy up.', 'leaf');
+        } }, 'Tidy leftovers'))
+    );
     zc('jungle', 'Jungle', 'leaf', [
       slider('Heat lamp', () => env.jungle.lamp, (v) => (env.jungle.lamp = v)),
       slider('Mister', () => env.jungle.mister, (v) => (env.jungle.mister = v)),
@@ -538,7 +558,10 @@ export class UI {
 
   setClimate(c) {
     const env = this.world.env;
-    for (const z of Object.keys(c)) Object.assign(env[z], c[z]);
+    for (const z of Object.keys(c)) {
+      if (z === 'room') env.roomSet = c.room;
+      else Object.assign(env[z], c[z]);
+    }
   }
 
   updateClimate() {

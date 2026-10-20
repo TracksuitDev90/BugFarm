@@ -44,6 +44,7 @@ body {
   font-size: 17px;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
 }
@@ -294,6 +295,12 @@ button {
 @keyframes rise {
   from {
     transform: translate(-50%, 20px);
+    opacity: 0;
+  }
+}
+@keyframes rise-y {
+  from {
+    transform: translateY(16px);
     opacity: 0;
   }
 }
@@ -890,7 +897,17 @@ input[type='range']::-moz-range-thumb {
     display: none;
   }
   #sheet {
-    max-height: calc(100vh - var(--tb) - 70px);
+    left: calc(6px + var(--left));
+    transform: none;
+    width: min(540px, 57vw);
+    max-height: calc(100vh - var(--tb) - 62px - var(--top));
+    animation: rise-y 0.18s ease-out;
+  }
+  .sheet-head .title {
+    font-size: 18px;
+  }
+  .hint {
+    font-size: 14px;
   }
   #zones {
     display: none;
@@ -899,14 +916,25 @@ input[type='range']::-moz-range-thumb {
     display: none;
   }
   #card {
-    width: min(380px, calc(100% - 12px));
+    width: min(360px, 41vw);
     left: auto;
     right: calc(6px + var(--right));
     transform: none;
     top: calc(52px + var(--top));
     bottom: auto;
-    max-height: calc(100vh - 120px);
+    max-height: calc(100vh - var(--tb) - 62px - var(--top));
     overflow-y: auto;
+    animation: rise-y 0.18s ease-out;
+  }
+  .card-name {
+    font-size: 19px;
+  }
+  .thought {
+    font-size: 15px;
+  }
+  .meters {
+    font-size: 13px;
+    gap: 1px 8px;
   }
   #card.withsheet {
     top: calc(52px + var(--top));

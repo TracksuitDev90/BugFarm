@@ -97,6 +97,33 @@ const steps = {
     await pg.waitForTimeout(2500);
     await shot('later');
   },
+  async landscape() {
+    await pg.click('text=Full tank');
+    await pg.waitForTimeout(800);
+    await pg.click('#toolbar button[aria-label="Critters"]');
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => {
+      const { game, ui } = window.bugfarm;
+      ui.select(game.world.creatures.find((k) => k.sp === 'turtle'));
+    });
+    await pg.waitForTimeout(800);
+    await shot('landscape');
+  },
+  async jungle() {
+    await pg.click('text=Full tank');
+    await pg.waitForTimeout(500);
+    await pg.evaluate(() => {
+      const { game } = window.bugfarm;
+      const w = game.world;
+      for (let i = 0; i < 30 * 200; i++) w.step(1 / 30);
+      game.cam.zoom = game.cam.fitHeight * 3.2;
+      game.cam.x = 1300;
+      game.cam.y = 420;
+      game.cam.clampAll();
+    });
+    await pg.waitForTimeout(1500);
+    await shot('jungle');
+  },
   async inspect() {
     await pg.click('text=Full tank');
     await pg.waitForTimeout(800);

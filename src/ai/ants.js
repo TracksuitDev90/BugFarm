@@ -661,7 +661,10 @@ def('antRest', {
     const d = c.brain.data;
     if (c.arrived || d.here || !antMoving(c, w)) {
       c.pose = w.env.sun < 0.4 || c.energy < 0.6 || c.stage === 'queen' ? 'sleep' : 'idle';
-      if (d.hot) w.events.emit('antHide', { c });
+      if (d.hot && !d.told) {
+        d.told = true;
+        w.events.emit('antHide', { c });
+      }
       if (c.stage === 'queen' && c.hunger > 0.3) {
         const col = colonyOf(c, w);
         if (col && col.food > 0.05) {

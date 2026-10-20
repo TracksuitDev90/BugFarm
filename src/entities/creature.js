@@ -137,7 +137,8 @@ export class Creature {
     return !!this.stageDef.amphibious;
   }
   get aquatic() {
-    return this.def.habitat === 'water';
+    const st = this.stageDef;
+    return st.aquatic != null ? st.aquatic : this.def.habitat === 'water';
   }
   get size() {
     const s = this.def.size;
@@ -278,6 +279,7 @@ export class Creature {
     if (this.aquatic && !surfWet) {
       if (!t.waterAt(this.x, this.y)) {
         this.distress(w, dt, 'dry');
+        if (this.dead) return;
       }
     } else if (!this.aquatic && surfWet && !this.amphibious) {
       // swept into water: paddle to shore
@@ -289,7 +291,7 @@ export class Creature {
       return;
     }
     let moving = false;
-    if (tp) {
+    if (tp && this.target) {
       const tgt = this.target;
       let tx = tp[0];
       // climb onto plants from their base
@@ -360,6 +362,7 @@ export class Creature {
     const lx = clamp(this.x + dir * reach, 8, W - 8);
     const ly = t.surfaceY(lx);
     if (t.waterAt(lx, ly - 2) && !this.amphibious) return false;
+    if (this.aquatic || ly - this.foot < this.y - 70) return false; // no leaping up cliffs
     const T = 0.5;
     const ty = ly - this.foot;
     this.vx = (lx - this.x) / T;
@@ -384,6 +387,11 @@ export class Creature {
     }
     this.x = nx;
     this.y = Math.min(ny, H - 4);
+    if (this.y < 12) {
+      // bonk on the lid
+      this.y = 12;
+      if (this.vy < 0) this.vy = 0;
+    }
     this.angle = clamp(this.vy / 900, -0.6, 0.6) * this.facing;
     if (t.waterAt(this.x, this.y)) {
       this.mode = 'swim';
@@ -669,7 +677,7 @@ export class Creature {
     if (tp) {
       const want = Math.atan2(tp[1] - this.y, tp[0] - this.x);
       ang += clamp(angleDiff(ang, want), -2 * dt, 2 * dt);
-      if (Math.hypot(tp[0] - this.x, tp[1] - this.y) < 4) this.arrived = true;
+      if (Math.hypot(tp[0] - this.x, tp[1] - this.y) < 6) this.arrived = true;
     } else ang += Math.sin(w.time * 0.7 + this.id) * dt;
     ang += Math.sin(w.time * 2 + this.id) * dt * 0.8;
     let nx = this.x + Math.cos(ang) * sp * dt;
@@ -832,7 +840,7 @@ export class Creature {
     const mf = d.moist[0] < 0 && d.moist[3] > 1 ? 1 : band(this.M, d.moist[0], d.moist[1], d.moist[2], d.moist[3]);
     let oxy = 1;
     if (d.oxygen && this.inWater) oxy = clamp01((w.env.pond.oxygen - d.oxygen * 0.4) / (d.oxygen * 1.2));
-    this.comfort = Math.min(tf, mf, oxy) * (this.shelterBonus || 1);
+    this.comfort = Math.min(tf, mf, oxy) * (this.shelterBonus || 1) * (this.plump > 1.3 ? 1 - (this.plump - 1.3) * 1.5 : 1);
     this.tf = tf;
     this.mf = mf;
     this.oxy = oxy;

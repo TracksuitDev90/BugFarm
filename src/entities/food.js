@@ -24,7 +24,7 @@ export class Food {
     this.inWater = !!opts.inWater;
     this.floatT = opts.floatT != null ? opts.floatT : this.def.float || 0;
     this.gone = false;
-    this.flyT = rrange(0.3, 1);
+    this.flyT = rrange(0.08, 0.25);
     this.rotSince = 0;
     this.angle = rrange(-0.3, 0.3);
     this.px = x;

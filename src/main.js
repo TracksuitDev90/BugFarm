@@ -179,6 +179,9 @@ async function boot() {
     hover: (x, y) => ui.hover(x, y),
   });
   window.addEventListener('resize', resize);
+  // iOS Safari: stop page pinch-zoom when pinching on the UI panels
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   game.onFrame = onFrame;
 

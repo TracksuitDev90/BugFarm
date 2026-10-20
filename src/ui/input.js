@@ -41,6 +41,12 @@ export class Input {
     this.pointers.set(e.pointerId, { x, y, sx: x, sy: y, t: performance.now() });
     this.cam.vx = this.cam.vy = 0;
     if (this.pointers.size === 1) {
+      // middle/right mouse always pans (handy while sculpting on desktop)
+      if (e.pointerType === 'mouse' && e.button > 0) {
+        this.state = 'pan';
+        this.samples.length = 0;
+        return;
+      }
       this.state = 'press';
       this.pressT = performance.now();
       this.samples.length = 0;

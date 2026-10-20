@@ -9,6 +9,7 @@ export class Environment {
     this.time = DAY_LEN * (8 / 24); // start at 8am on day 1
     this.lightsMode = 'auto'; // auto | day | night
     this.roomTemp = 21;
+    this.roomSet = 21; // thermostat for the room the tank sits in
     this.desert = { lamp: 0.55, mister: 0, temp: 28, moist: 0.14 };
     this.pond = {
       lamp: 0.15,
@@ -75,7 +76,7 @@ export class Environment {
     const h = this.hour;
     // Room cools a little at night and warms in the afternoon.
     const daily = Math.sin(((h - 9) / 24) * Math.PI * 2);
-    this.roomTemp = 20.5 + daily * 1.8 + sun * 0.6;
+    this.roomTemp = this.roomSet - 0.5 + daily * 1.8 + sun * 0.6;
 
     const k = 1 - Math.exp(-dt / 45); // air relaxes over ~45 game seconds
     const km = 1 - Math.exp(-dt / 90);
@@ -93,18 +94,19 @@ export class Environment {
     const kw = 1 - Math.exp(-dt / 160);
     const wTgt = (p.heater ? p.heaterTarget : this.roomTemp - 1) + p.lamp * 7 + sun * 0.4;
     p.temp += (wTgt - p.temp) * kw;
-    const sat = clamp(1.16 - 0.018 * (p.temp - 10), 0.55, 1.05);
+    const sat = clamp(1.16 - 0.022 * (p.temp - 10), 0.45, 1.05);
     const light = Math.max(sun, p.lamp * 0.8);
-    const photo = (p.algae * 0.006 + this.waterPlants * 0.0012) * light;
-    const resp = this.bioLoad * 0.00035 + p.algae * 0.0025 * (1 - light) + this.rotLoad * 0.0016;
+    const photo = (p.algae * 0.005 + this.waterPlants * 0.0008) * light;
+    const resp = this.bioLoad * 0.00035 + p.algae * 0.0025 * (1 - light) + this.rotLoad * 0.0003;
     p.oxygen += ((sat - p.oxygen) * (0.004 + p.filter * 0.02) + photo - resp) * dt;
-    p.oxygen = clamp(p.oxygen, 0.05, 1.15);
+    // warm water simply can't hold as much air, however many plants there are
+    p.oxygen = clamp(p.oxygen, 0.05, Math.min(1.15, sat + 0.12));
     p.nutrients += (this.bioLoad * 0.00006 + this.rotLoad * 0.0009 - p.nutrients * (0.0005 + p.filter * 0.0016) - p.algae * p.nutrients * 0.0015 - this.waterPlants * 0.00015 * p.nutrients) * dt;
     p.nutrients = clamp(p.nutrients, 0, 1.5);
     const algaeGrow = p.algae * (1 - p.algae) * 0.0016 * light * (0.25 + p.nutrients * 2.5) * smoothstep(8, 22, p.temp);
     const algaeEat = this.grazers * 0.00004 * p.algae + p.filter * 0.00012 * p.algae;
     p.algae = clamp(p.algae + (algaeGrow - algaeEat - p.algae * 0.00008) * dt, 0.01, 1);
-    const cTgt = clamp01(1 - p.nutrients * 0.45 - p.algae * 0.35 - this.rotLoad * 0.05);
+    const cTgt = clamp01(1 - p.nutrients * 0.45 - p.algae * 0.35 - this.rotLoad * 0.022);
     p.clarity += (cTgt - p.clarity) * (1 - Math.exp(-dt * (0.003 + p.filter * 0.012)));
 
     // Soil fertility slowly returns to baseline.
@@ -167,6 +169,7 @@ export class Environment {
     return {
       time: this.time,
       lightsMode: this.lightsMode,
+      roomSet: this.roomSet,
       desert: { ...this.desert },
       pond: { ...this.pond },
       jungle: { ...this.jungle },
@@ -176,6 +179,7 @@ export class Environment {
   load(d) {
     this.time = d.time;
     this.lightsMode = d.lightsMode || 'auto';
+    this.roomSet = d.roomSet != null ? d.roomSet : 21;
     Object.assign(this.desert, d.desert);
     Object.assign(this.pond, d.pond);
     Object.assign(this.jungle, d.jungle);

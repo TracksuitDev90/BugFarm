@@ -416,9 +416,13 @@ export class World {
       like = c.diet.soil || 0.3;
       amt = bite * 0.6;
     } else return false;
-    c.hunger = Math.max(0, c.hunger - (amt / c.appetite) * (0.45 + 0.55 * like));
-    if (c.hunger <= 0.02 && c.plump > 1.2 && !c.memory.stuffedT) {
+    const relief = (amt / c.appetite) * (0.45 + 0.55 * like);
+    // eating when already full goes straight to the waistline
+    if (c.hunger < 0.2) c.plump = Math.min(1.5, c.plump + relief * 0.12 * (1 - c.hunger * 4));
+    c.hunger = Math.max(0, c.hunger - relief);
+    if (c.plump > 1.25 && !c.memory.stuffedT) {
       c.memory.stuffedT = 1;
+      c.emote('food', 1.6);
       this.events.emit('stuffed', { c });
     }
     return true;
@@ -891,6 +895,35 @@ export class World {
     return ok;
   }
 
+  // Aquarium chores: siphon the pond / pick up spoiled food on land.
+  cleanPond() {
+    let n = 0;
+    for (const f of this.foods.slice()) {
+      if (f.inWater && (f.fresh < 0.5 || f.state === 'rest')) {
+        this.removeFood(f);
+        n++;
+      }
+    }
+    const p = this.env.pond;
+    p.nutrients *= 0.4;
+    p.algae = Math.max(0.03, p.algae * 0.6);
+    p.clarity = Math.min(1, p.clarity + 0.25);
+    this.splash(800, this.terrain.waterLevel, 1.2);
+    this.events.emit('chore', { kind: 'pond', n });
+    return n;
+  }
+  tidyLand() {
+    let n = 0;
+    for (const f of this.foods.slice()) {
+      if (!f.inWater && f.fresh < 0.35) {
+        this.removeFood(f);
+        n++;
+      }
+    }
+    this.events.emit('chore', { kind: 'land', n });
+    return n;
+  }
+
   tapGlass(x, y) {
     const list = this.hashC.query(x, y, 150);
     let n = 0;
@@ -929,11 +962,11 @@ export class World {
   step(dt) {
     const env = this.env;
     const t = this.terrain;
+    // environment reacts to the loads gathered during the previous step
+    env.update(dt, this);
     env.rotLoad = 0;
     env.bioLoad = 0;
     env.grazers = 0;
-    env.waterPlants = 0;
-    env.update(dt, this);
 
     if (t.waterDirty) {
       this.waterTimer += dt;
@@ -966,16 +999,18 @@ export class World {
       const pdt = this.plantTick;
       this.plantTick = 0;
       for (const p of this.plants) p.aphids = 0;
+      let wp = 0;
       for (let i = this.plants.length - 1; i >= 0; i--) {
         const p = this.plants[i];
         p.update(pdt, this);
-        if (p.def.oxygen && !p.dead) env.waterPlants += p.growth;
+        if (p.def.aquatic && !p.dead) wp += p.growth * (p.def.oxygen ? 1 : 0.4);
         if (p.dead && p.witherT > DAY_LEN * 0.6) {
           const z = env.zoneAt(p.x);
           if (env.fertility[z] != null) env.fertility[z] = Math.min(1.2, env.fertility[z] + 0.05);
           this.removePlant(p);
         }
       }
+      env.waterPlants = wp;
     }
 
     // creatures

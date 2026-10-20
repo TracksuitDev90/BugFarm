@@ -144,6 +144,43 @@ def('forage', {
   },
 });
 
+// --------------------------------------------------------------------- snack (a tasty treat right there... just one more bite)
+def('snack', {
+  score(c, w) {
+    if (c.hunger > 0.2 || c.hunger < 0.01 || c.mode === 'burrow') return 0;
+    const f = w.hashF.nearest(c.x, c.y, 70, (o) => !o.gone && o.state !== 'fall' && o.rot === 0 && o.tags.some((t) => (c.diet[t] || 0) >= 0.8));
+    if (!f || !reachable(c, w, f.x, f.y - 2)) return 0;
+    c.memory.snack = f;
+    const p = c.plump > 1.4 ? 0.2 : 1;
+    return (0.12 + c.traits.greedy * 0.35) * p * (0.5 + 0.5 * c.act);
+  },
+  start(c, w) {
+    const f = c.memory.snack;
+    c.brain.data.f = f;
+    if (f) c.seek({ kind: 'food', food: f });
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const f = d.f;
+    if (!f || f.gone) return false;
+    if (!c.arrived) return c.brain.t < 15 && !(c.blocked && c.mode !== 'swim' && c.mode !== 'fly');
+    if (c.mode !== 'climb') c.halt();
+    c.pose = 'eat';
+    d.t = (d.t || 0) + dt;
+    if (d.t > 1.2) {
+      d.t = 0;
+      d.n = (d.n || 0) + 1;
+      w.eat(c, { kind: 'food', food: f });
+      if (d.n >= 2 + Math.round(c.traits.greedy * 3)) return false;
+    }
+    return true;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
+  },
+  thought: (c) => (c.plump > 1.25 ? "I'm so full... but it's SO tasty." : 'Not hungry, but... ooh, just one little nibble!'),
+});
+
 // --------------------------------------------------------------------- search (hungry, nothing known)
 def('search', {
   score(c, w) {
@@ -311,7 +348,10 @@ def('comfort', {
     if (d.kind === 'air' && c.inWater && c.y < w.terrain.waterLevel + 10) {
       c.pose = 'gasp';
       if (chance(dt * 2)) w.bubble(c.x + c.facing * c.size * 0.4, c.y - 2);
-      w.events.emit('gasp', { c });
+      if (!d.told) {
+        d.told = true;
+        w.events.emit('gasp', { c });
+      }
     }
     if (c.arrived || d.stay) {
       d.sit = (d.sit || 0) + dt;
@@ -864,7 +904,10 @@ def('huddle', {
       c.huddling = true;
       c.pose = 'sleep';
       const n = w.hashC.query(c.x, c.y, 18, (o) => o.sp === c.sp && o !== c && !o.dead).length;
-      if (n >= 1) w.events.emit('huddle', { c, n });
+      if (n >= 1 && !d.told) {
+        d.told = true;
+        w.events.emit('huddle', { c, n });
+      }
       if (c.tempDisc > -0.05 && c.brain.t > 10) return false;
     }
     return c.brain.t < 120;
@@ -913,13 +956,20 @@ def('surface', {
     c.seekPoint(x, w.terrain.surfaceY(x) - 1);
   },
   tick(c, w, dt) {
-    if (c.arrived) {
-      c.brain.data.up = (c.brain.data.up || 0) + dt;
-      if (c.brain.data.up > 1) w.events.emit('wormRain', { c });
-      if (!c.target || c.arrived) {
-        const x = clamp(c.x + rrange(-30, 30), 1075, W - 10);
-        c.seekPoint(x, w.terrain.surfaceY(x) - 1);
+    const d = c.brain.data;
+    const gy = w.terrain.surfaceY(c.x);
+    if (c.y < gy + 6) {
+      d.up = (d.up || 0) + dt;
+      if (d.up > 1 && !d.told) {
+        d.told = true;
+        w.events.emit('wormRain', { c });
       }
+    }
+    d.re = (d.re || 0) - dt;
+    if (!c.target || c.arrived || d.re <= 0) {
+      d.re = 4;
+      const x = clamp(c.x + rrange(-40, 40), 1075, W - 10);
+      c.seekPoint(x, w.terrain.surfaceY(x) - 1);
     }
     return c.brain.t < 25 && w.env.jungle.moist > 0.7;
   },
@@ -960,7 +1010,7 @@ def('investigate', {
 });
 
 // Which behaviours each species knows.
-const BASE = ['idle', 'wander', 'rest', 'forage', 'search', 'comfort', 'flee', 'mate', 'investigate'];
+const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate'];
 export const SPECIES_BEHAVIORS = {
   default: BASE,
   cricket: [...BASE, 'chirp', 'hide'],
@@ -970,8 +1020,8 @@ export const SPECIES_BEHAVIORS = {
   goldfish: [...BASE, 'hunt', 'graze'],
   frog: [...BASE, 'hunt', 'croak', 'graze'],
   turtle: [...BASE, 'bask'],
-  pondsnail: ['idle', 'wander', 'rest', 'forage', 'graze', 'comfort', 'flee', 'mate'],
-  shrimp: ['idle', 'wander', 'rest', 'forage', 'graze', 'comfort', 'flee', 'mate', 'investigate'],
+  pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate'],
+  shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate'],
   ladybug: [...BASE, 'hunt', 'huddle'],
   aphid: ['idle', 'sap', 'mate', 'comfort'],
   butterfly: [...BASE, 'pollinate', 'pupate'],

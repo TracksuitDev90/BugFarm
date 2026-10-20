@@ -161,74 +161,48 @@ export class Renderer {
     this.backdrop = paintBackdrop(this.world.style.backdrop, this.q.backdrop);
   }
 
+  // Water colour follows the pond's health and the chosen tint; the water
+  // itself is painted in chunks by the terrain renderer as it flows.
   ensureWater() {
     const t = this.world.terrain;
     const p = this.world.env.pond;
     const tint = this.world.style.water || 'clear';
-    const key = t.waterVersion + '|' + Math.round(p.clarity * 10) + '|' + Math.round(p.algae * 10) + '|' + tint;
-    if (key === this.waterKey) return;
-    this.waterKey = key;
-    // bounding box of water cells
-    let x0 = GW;
-    let x1 = -1;
-    let y0 = 1e9;
-    let y1 = -1;
-    const GHn = t.water.length / GW;
-    for (let cx = 0; cx < GW; cx++) {
-      for (let cy = 0; cy < GHn; cy++) {
-        if (t.water[cy * GW + cx] !== 1) continue;
-        if (cx < x0) x0 = cx;
-        if (cx > x1) x1 = cx;
-        if (cy < y0) y0 = cy;
-        if (cy > y1) y1 = cy;
-      }
-    }
-    if (x1 < 0) {
-      this.water = null;
-      return;
-    }
-    x0 = Math.max(0, x0 - 2);
-    y0 = Math.max(0, y0 - 2);
-    x1 = Math.min(GW - 1, x1 + 2);
-    y1 = Math.min(GHn - 1, y1 + 2);
-    const wx = x0 * CELL;
-    const wy = y0 * CELL;
-    const ww = (x1 - x0 + 1) * CELL;
-    const wh = (y1 - y0 + 1) * CELL;
-    const c = document.createElement('canvas');
-    c.width = ww;
-    c.height = wh;
-    const g = c.getContext('2d');
-    g.translate(-wx, -wy);
-    const base = {
-      clear: [[150, 212, 238], [52, 112, 168]],
-      teal: [[136, 216, 206], [34, 118, 132]],
-      green: [[166, 212, 160], [56, 112, 84]],
-      blue: [[126, 184, 242], [36, 74, 160]],
-    }[tint] || [[150, 212, 238], [52, 112, 168]];
     const murk = 1 - p.clarity;
     const algae = Math.min(1, p.algae * 1.5);
-    const mixc = (col) => {
-      const r = lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7);
-      const gg = lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7);
-      const b = lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7);
-      return `rgb(${Math.round(r)},${Math.round(gg)},${Math.round(b)})`;
-    };
-    const grad = g.createLinearGradient(0, t.waterLevel, 0, H);
-    grad.addColorStop(0, mixc(base[0]));
-    grad.addColorStop(1, mixc(base[1]));
-    this.tr.paintWater(g, x0, y0, x1, y1, grad);
-    this.water = c;
-    this.waterRect = [wx, wy, ww, wh];
-    this.waterAlpha = 0.42 + murk * 0.4;
+    const key = Math.round(p.clarity * 10) + '|' + Math.round(p.algae * 10) + '|' + tint + '|' + Math.round(t.waterLevel / 24);
+    if (key !== this.waterKey) {
+      this.waterKey = key;
+      const base = {
+        clear: [[168, 222, 240], [110, 182, 220], [60, 122, 176]],
+        teal: [[152, 224, 210], [92, 180, 184], [38, 120, 134]],
+        green: [[180, 220, 168], [124, 176, 128], [58, 114, 86]],
+        blue: [[140, 196, 244], [90, 146, 222], [40, 80, 164]],
+      }[tint] || [[168, 222, 240], [110, 182, 220], [60, 122, 176]];
+      const mixc = (col, a = 1) => {
+        const r = lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7);
+        const gg = lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7);
+        const b = lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7);
+        return `rgba(${Math.round(r)},${Math.round(gg)},${Math.round(b)},${a})`;
+      };
+      const deep = base[2];
+      this.tr.setWaterLook({
+        key,
+        top: t.waterLevel,
+        c0: mixc(base[0]),
+        c1: mixc(base[1]),
+        c2: mixc(base[2]),
+        pool: mixc([deep[0] * 0.7, deep[1] * 0.75, deep[2] * 0.85], 0.22),
+        bloomLight: 'rgba(255,255,255,0.16)',
+        bloomDark: mixc(deep, 0.16),
+      });
+      this.waterAlpha = 0.5 + murk * 0.36;
+    }
+    this.tr.updateWater(this.view, this.q.budget > 8 ? 3 : 2);
   }
 
   drawWater(g) {
-    if (!this.water) return;
-    const [x, y, w, h] = this.waterRect;
-    g.globalAlpha = this.waterAlpha;
-    g.drawImage(this.water, x, y, w, h);
-    g.globalAlpha = 1;
+    this.tr.drawWater(g, this.view, this.waterAlpha || 0.5, this.k, this.ox, this.oy);
+    this.setWorld(g);
   }
 
   // ------------------------------------------------------------------ static background cache
@@ -344,9 +318,9 @@ export class Renderer {
     if (!this.paused) this.flapT += dt;
     this.fx.update(dt, t, this.time);
     this.ensureBackdrop();
-    this.ensureWater();
     const view = cam.view(40);
     this.view = view;
+    this.ensureWater();
     this.sprites.frame(this.q.budget);
     const chunks = this.tr.update(view, 3);
     const px = cam.zoom * this.dpr;
@@ -763,13 +737,13 @@ export class Renderer {
     }
   }
 
+  // Every open water surface gets a wavy, inked line with a bright band
+  // under it. Ripples from splashes run along the pond's surface.
   drawWaterSurface(g) {
     const t = this.world.terrain;
-    const wl = t.waterLevel;
-    const row = Math.ceil(wl / CELL);
     const tm = this.time;
     const ripples = this.fx.ripples;
-    const wave = (x) => {
+    const wave = (x, y0) => {
       let y = Math.sin(x * 0.05 + tm * 1.8) * 1.1 + Math.sin(x * 0.11 - tm * 1.2) * 0.6;
       for (const r of ripples) {
         const d = Math.abs(x - r.x);
@@ -777,39 +751,43 @@ export class Renderer {
         const k = d - front;
         if (k > -14 && k < 14) y += Math.cos(k * 0.35) * (1 - r.t / 1.6) * 2.2 * r.s;
       }
-      return wl + y;
+      return y0 + y;
     };
     this.setWorld(g);
-    let start = -1;
-    for (let cx = 0; cx <= GW; cx++) {
-      const open = cx < GW && t.waterTop[cx] === row;
-      if (open && start < 0) start = cx;
-      if (!open && start >= 0) {
-        const x0 = start * CELL;
-        const x1 = cx * CELL;
-        if (x1 > this.view.x0 && x0 < this.view.x1) {
-          g.beginPath();
-          g.moveTo(x0, wave(x0));
-          for (let x = x0 + 6; x < x1; x += 6) g.lineTo(x, wave(x));
-          g.lineTo(x1, wave(x1));
-          g.lineTo(x1, wl + 5);
-          g.lineTo(x0, wl + 5);
-          g.closePath();
-          g.fillStyle = 'rgba(255,255,255,0.2)';
-          g.fill();
-          g.beginPath();
-          g.moveTo(x0, wave(x0));
-          for (let x = x0 + 6; x < x1; x += 6) g.lineTo(x, wave(x));
-          g.lineTo(x1, wave(x1));
-          g.lineWidth = 1.6;
-          g.strokeStyle = 'rgba(255,255,255,0.85)';
-          g.stroke();
-          g.lineWidth = 0.7;
-          g.strokeStyle = 'rgba(40,80,120,0.55)';
-          g.stroke();
-        }
-        start = -1;
-      }
+    const v = this.view;
+    for (const seg of t.surfSegs) {
+      const n = seg.ys.length;
+      const x0 = seg.cx * CELL;
+      const x1 = (seg.cx + n) * CELL;
+      if (x1 < v.x0 || x0 > v.x1) continue;
+      // surface height along the segment, smoothed between columns
+      const yAt = (x) => {
+        const f = clamp((x - x0) / CELL - 0.5, 0, n - 1);
+        const i = Math.floor(f);
+        const j = Math.min(n - 1, i + 1);
+        return seg.ys[i] + (seg.ys[j] - seg.ys[i]) * (f - i);
+      };
+      const calm = n < 4 ? 0.35 : 1;
+      const pts = [];
+      for (let x = x0; x < x1; x += 6) pts.push(x, wave(x, yAt(x)) * calm + yAt(x) * (1 - calm));
+      pts.push(x1, wave(x1, yAt(x1)) * calm + yAt(x1) * (1 - calm));
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+      g.lineTo(x1, yAt(x1) + 5);
+      g.lineTo(x0, yAt(x0) + 5);
+      g.closePath();
+      g.fillStyle = 'rgba(255,255,255,0.22)';
+      g.fill();
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+      g.lineWidth = 1.7;
+      g.strokeStyle = 'rgba(255,255,255,0.9)';
+      g.stroke();
+      g.lineWidth = 0.8;
+      g.strokeStyle = 'rgba(36,70,110,0.6)';
+      g.stroke();
     }
   }
 

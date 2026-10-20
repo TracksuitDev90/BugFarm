@@ -7,6 +7,7 @@ import { randomName } from '../data/names.js';
 import { DAY_LEN, W, H, CELL, GW } from '../config.js';
 import { clamp, clamp01, band, lerp, angleDiff, smoothstep } from '../util/math.js';
 import { rrange, rint, chance } from '../util/rng.js';
+import { nearestWalkable } from '../world/pathfind.js';
 
 const GRAV = 620;
 let ID = 1;
@@ -397,7 +398,7 @@ export class Creature {
       this.mode = 'swim';
       this.paddling = !this.amphibious && !this.aquatic;
       this.vy *= 0.2;
-      w.splash(this.x, t.waterLevel, 0.6);
+      w.splash(this.x, t.waterSurfY(this.x), 0.6);
       return;
     }
     const gy = this.groundAt(w, this.x);
@@ -488,7 +489,7 @@ export class Creature {
 
   moveSwim(w, dt) {
     const t = w.terrain;
-    const wl = t.waterLevel;
+    const wl = t.waterSurfY(this.x);
     if (!t.waterAt(this.x, this.y)) {
       // left the water (drained or jumped)
       if (this.y < wl + 2 && t.waterAt(this.x, wl + 6)) {
@@ -722,6 +723,7 @@ export class Creature {
   moveCrawl(w, dt) {
     // ants: follow an A* path of cells
     const t = w.terrain;
+    if (this.paddle(w, dt)) return;
     if (!this.path || this.pathI >= this.path.length) {
       // settle on a walkable cell
       const cx = Math.floor(this.x / CELL);
@@ -781,6 +783,58 @@ export class Creature {
     this.moving = true;
   }
 
+  // Caught by water (a flood, or a tunnel dug into the pond): float up to
+  // the surface and paddle to the nearest dry footing. Returns true while
+  // that's all this crawler can do.
+  paddle(w, dt) {
+    const t = w.terrain;
+    const cx = Math.floor(this.x / CELL);
+    const cy = Math.floor(this.y / CELL);
+    const wet = t.isWater(cx, cy);
+    const onWater = !wet && t.isWater(cx, cy + 1) && !t.walkable(cx, cy);
+    if (!wet && !onWater) {
+      this.memory.shore = null;
+      return false;
+    }
+    this.path = null;
+    this.repath = true;
+    this.moving = true;
+    if (wet && t.isWater(cx, cy - 1)) {
+      // still under: bob upward
+      this.y -= 26 * dt;
+      this.x += Math.sin(w.time * 3 + this.id) * 5 * dt;
+      this.angle += angleDiff(this.angle, -0.5 * this.facing) * Math.min(1, dt * 4);
+      return true;
+    }
+    if (!this.memory.shore || (this.memory.shoreT -= dt) <= 0) {
+      this.memory.shore = nearestWalkable(t, cx, cy, 24);
+      this.memory.shoreT = 0.7;
+      if (chance(0.3)) this.emote('!', 0.8);
+    }
+    const s = this.memory.shore;
+    const sy = t.waterSurfY(this.x) - 1;
+    this.y += (sy - this.y) * Math.min(1, dt * 6);
+    if (s) {
+      const tx = s[0] * CELL + CELL / 2;
+      const ty = s[1] * CELL + CELL / 2;
+      const dx = tx - this.x;
+      const dy = ty - this.y;
+      const d = Math.hypot(dx, dy);
+      const sp = this.walkSpeed() * 0.6 * dt;
+      if (d <= sp + 0.5) {
+        this.x = tx;
+        this.y = ty;
+        this.memory.shore = null;
+      } else {
+        this.x += (dx / d) * sp;
+        if (dy < 0) this.y += (dy / d) * sp;
+        this.facing = dx >= 0 ? 1 : -1;
+      }
+    }
+    this.angle += angleDiff(this.angle, Math.sin(w.time * 6 + this.id) * 0.15) * Math.min(1, dt * 6);
+    return true;
+  }
+
   moveStill(w, dt) {
     const t = w.terrain;
     if (this.climb && this.climb.plant && !this.climb.plant.removed) {
@@ -791,7 +845,7 @@ export class Creature {
       return;
     }
     if (this.memory.floats) {
-      this.y = t.waterLevel + 3 + Math.sin(w.time + this.id) * 0.6;
+      this.y = t.waterSurfY(this.x) + 3 + Math.sin(w.time + this.id) * 0.6;
       if (!t.waterAt(this.x, this.y)) this.memory.floats = false;
       return;
     }

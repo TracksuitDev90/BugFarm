@@ -502,14 +502,23 @@ export class UI {
   }
 
   water(dy) {
-    const t = this.world.terrain;
-    if (!this.world.setWaterLevel(t.waterLevel + dy)) this.toast(dy < 0 ? 'Splash! Any more and the pond would overflow.' : 'That is as low as it goes.', '!');
-    else {
-      this.world.env.pond.full = t.waterLevel;
-      this.world.env.pond.evap = 0;
-      this.sound.play('splash', 0.5);
-      this.world.splash(810, t.waterLevel, 1);
+    const w = this.world;
+    const t = w.terrain;
+    const target = t.waterLevel + dy;
+    if (dy < 0 && !t.pondVolumeAt(target).ok) {
+      this.toast('Splash! Any more and the pond would overflow.', '!');
+      return;
     }
+    if (dy > 0 && target > H - 60) {
+      this.toast('That is as low as it goes.', '!');
+      return;
+    }
+    w.pourToLevel(target);
+    w.env.pond.full = target;
+    w.env.pond.evap = 0;
+    this.sound.play('splash', 0.5);
+    if (dy < 0) w.pour(810, t.waterLevel);
+    else w.splash(810, t.waterLevel, 1);
   }
 
   buildClimate(body) {

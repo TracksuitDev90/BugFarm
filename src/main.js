@@ -110,6 +110,8 @@ function newTank(mode) {
   g.renderer.world = fresh;
   g.renderer.tr.terrain = fresh.terrain;
   g.renderer.tr.chunks.fill(null);
+  g.renderer.tr.wchunks.fill(undefined);
+  g.renderer.tr.waterLook = null;
   g.renderer.plantCache.clear();
   g.renderer.waterKey = '';
   g.renderer.backdropKey = '';

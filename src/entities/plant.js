@@ -12,7 +12,7 @@ function flowerCount(def) {
   if (def.kind === 'flower') return def.branches || 1;
   if (def.kind === 'clover') return 2;
   if (def.kind === 'strawberry') return 3;
-  if (def.kind === 'cactus' || def.kind === 'lily') return 1;
+  if (def.kind === 'cactus' || def.kind === 'lily' || def.kind === 'bromeliad') return 1;
   return 0;
 }
 
@@ -249,6 +249,84 @@ export class Plant {
         }
         break;
       }
+      case 'monstera': {
+        // big split leaves on long stalks, the newest ones held highest
+        const n = def.leaves;
+        for (let k = 0; k < n; k++) {
+          if (g < (k / n) * 0.6) continue;
+          const eaten = this.leafEaten[k] || 0;
+          const side = k % 2 ? 1 : -1;
+          const a = -Math.PI / 2 + side * (0.3 + 0.32 * Math.floor(k / 2)) + (this.h(180 + k) - 0.5) * 0.25;
+          const len = H * (0.62 + 0.38 * this.h(190 + k)) * (1 - Math.floor(k / 2) * 0.12);
+          const tx = Math.cos(a) * len;
+          const ty = Math.sin(a) * len * (1 - droop * 0.35);
+          S.stems.push({ pts: [[0, 0], [tx * 0.25, ty * 0.65], [tx, ty]], w: 1.8 });
+          const size = 17 * (0.45 + 0.55 * g) * (1 - eaten * 0.5);
+          const la = -Math.PI / 2 + side * (1.05 + droop * 0.8) + (this.h(200 + k) - 0.5) * 0.3;
+          S.leaves.push({ x: tx, y: ty, a: la, len: size, wid: size * 0.82, i: k, eaten, shape: 'monstera', splits: g > 0.45 ? 3 : g > 0.25 ? 1 : 0 });
+          addSlot(tx + Math.cos(la) * size * 0.5, ty + Math.sin(la) * size * 0.5, 'leaf', k, tx, ty);
+        }
+        break;
+      }
+      case 'palm': {
+        // a slim ringed trunk with arching fronds at the crown
+        const th = H * 0.62;
+        const tpts = [];
+        for (let i = 0; i <= 8; i++) tpts.push(stemPt(i / 8, th, lean * 0.6));
+        S.extra = [{ type: 'trunk', pts: tpts, w: 3 + 3 * g }];
+        const [cx, cy] = tpts[8];
+        const n = def.leaves;
+        for (let k = 0; k < n; k++) {
+          if (g < (k / n) * 0.45) continue;
+          const eaten = this.leafEaten[k] || 0;
+          const u = n > 1 ? k / (n - 1) - 0.5 : 0;
+          const a = -Math.PI / 2 + u * 2.7 + (this.h(210 + k) - 0.5) * 0.2;
+          const len = H * 0.42 * (0.7 + 0.3 * this.h(220 + k)) * (1 - Math.abs(u) * 0.25) * (1 - eaten * 0.5);
+          const curl = (Math.abs(u) < 0.08 ? 0.5 : Math.sign(u)) * (1.5 + droop * 0.8);
+          const pts = [];
+          for (let i = 0; i <= 8; i++) {
+            const t = i / 8;
+            const ang = a + curl * t * t;
+            const prev = pts[i - 1] || [cx, cy];
+            pts.push(i === 0 ? [cx, cy] : [prev[0] + (Math.cos(ang) * len) / 8, prev[1] + (Math.sin(ang) * len) / 8]);
+          }
+          S.leaves.push({ pts, i: k, eaten, shape: 'palmFrond', len });
+          const m = pts[4];
+          addSlot(m[0], m[1], 'leaf', k, cx, cy);
+        }
+        addSlot(cx, cy, 'stem', 0, 0, 0);
+        break;
+      }
+      case 'bromeliad': {
+        // a rosette of stiff, arching straps around a bright bract
+        const n = def.leaves;
+        for (let k = 0; k < n; k++) {
+          if (g < (k / n) * 0.5) continue;
+          const eaten = this.leafEaten[k] || 0;
+          const u = k / (n - 1) - 0.5;
+          const a = -Math.PI / 2 + u * 2.5 + (this.h(230 + k) - 0.5) * 0.2;
+          const len = H * (0.75 + 0.35 * (1 - Math.abs(u) * 1.4)) * (1 - eaten * 0.6);
+          const bend = Math.sign(u || 0.01) * (0.9 + droop) * Math.min(1, Math.abs(u) * 3);
+          const pts = [];
+          for (let i = 0; i <= 6; i++) {
+            const t = i / 6;
+            const ang = a + bend * t * t;
+            const prev = pts[i - 1] || [u * 3, 0];
+            pts.push(i === 0 ? [u * 3, 0] : [prev[0] + (Math.cos(ang) * len) / 6, prev[1] + (Math.sin(ang) * len) / 6]);
+          }
+          S.blades.push({ pts, i: k, w: 4.6 });
+          addSlot(pts[3][0], pts[3][1], 'leaf', k, 0, 0);
+        }
+        this.flowers.forEach((f, i) => {
+          if (g < 0.55) return;
+          const open = clamp01((g - 0.55) / 0.3);
+          const by = -H * (0.45 + 0.25 * open);
+          S.stems.push({ pts: [[0, 0], [0.4, by * 0.5], [0, by]], w: 2 });
+          S.flowers.push({ x: 0, y: by, r: 6.5 * (0.4 + 0.6 * open), i, open, shape: 'bract', pollinated: f.pollinated });
+          addSlot(0, by - 3, 'flower', i, 0, 0);
+        });
+        break;
+      }
       case 'mushroom': {
         const sh = H * 0.6;
         const cr = 9 * (0.35 + 0.65 * g) * (1 - this.capEaten * 0.5);
@@ -325,7 +403,7 @@ export class Plant {
       else grow(l.x, l.y, (l.r || 4) * 2 + 3);
       if (l.len && !l.pts) grow(l.x, l.y);
     }
-    for (const f of S.flowers) grow(f.x, f.y, f.r * 1.8 + 4);
+    for (const f of S.flowers) grow(f.x, f.y - (f.shape === 'bract' ? f.r * 1.6 : 0), f.r * 1.8 + 4);
     for (const f of S.fruits) grow(f.x, f.y, f.r + 4);
     for (const p of S.pads) grow(p.x, p.y, p.r + 4);
     if (S.extra) {
@@ -336,6 +414,7 @@ export class Plant {
           grow(0, 0, e.w + 14);
         }
         if (e.type === 'cattail') grow(e.x, e.y - e.h, 6);
+        if (e.type === 'trunk') for (const p of e.pts) grow(p[0], p[1], e.w + 3);
       }
     }
     S.box = [x0, y0, x1, y1];

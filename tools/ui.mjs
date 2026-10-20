@@ -37,12 +37,12 @@ await pg.waitForTimeout(1200);
 const steps = {
   async start() {
     await shot('01-welcome');
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(1500);
     await shot('02-tank');
   },
   async tools() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(800);
     for (const t of ['Feed', 'Critters', 'Plants', 'Decor', 'Shape', 'Climate']) {
       await pg.click(`#toolbar >> text=${t}`);
@@ -54,7 +54,7 @@ const steps = {
     await shot('journal');
   },
   async night() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
       const { game } = window.bugfarm;
@@ -71,7 +71,7 @@ const steps = {
     await shot('night');
   },
   async pond() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
       const { game } = window.bugfarm;
@@ -86,7 +86,7 @@ const steps = {
     await shot('pond');
   },
   async later() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
       const { game } = window.bugfarm;
@@ -98,7 +98,7 @@ const steps = {
     await shot('later');
   },
   async landscape() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(800);
     await pg.click('#toolbar button[aria-label="Critters"]');
     await pg.waitForTimeout(300);
@@ -110,7 +110,7 @@ const steps = {
     await shot('landscape');
   },
   async jungle() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
       const { game } = window.bugfarm;
@@ -125,7 +125,7 @@ const steps = {
     await shot('jungle');
   },
   async readme() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
       const { game } = window.bugfarm;
@@ -141,7 +141,7 @@ const steps = {
     await shot('readme');
   },
   async inspect() {
-    await pg.click('text=Full tank');
+    await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(800);
     // fly to the jungle and tap a critter via the page API
     await pg.evaluate(() => {

@@ -10,6 +10,9 @@ export const PLANTS = {
   grass: { name: 'Tall grass', zone: 'jungle', place: 'ground', kind: 'grass', h: 30, leaves: 7, leaf: '#8cc152', temp: [-2, 8, 34, 42], moist: [0.05, 0.2, 1.01, 2], growDays: 1.4, spreads: true },
   strawberry: { name: 'Strawberry plant', zone: 'jungle', place: 'ground', kind: 'strawberry', h: 20, leaves: 3, petals: '#ffffff', center: '#f0bf45', leaf: '#5f9e45', fruit: '#e2453f', temp: [0, 12, 30, 38], moist: [0.1, 0.35, 1.01, 2], growDays: 3 },
   bigleaf: { name: 'Elephant ear', zone: 'jungle', place: 'ground', kind: 'bigleaf', h: 70, leaves: 3, leaf: '#4f8a3c', temp: [8, 18, 32, 40], moist: [0.2, 0.5, 1.01, 2], growDays: 4, shade: true },
+  monstera: { name: 'Monstera', zone: 'jungle', place: 'ground', kind: 'monstera', h: 62, leaves: 4, leaf: '#3f8a3c', temp: [8, 20, 32, 40], moist: [0.22, 0.5, 1.01, 2], growDays: 4, shade: true },
+  palm: { name: 'Parlour palm', zone: 'jungle', place: 'ground', kind: 'palm', h: 150, leaves: 7, leaf: '#4f9a3c', trunk: '#9a7650', temp: [8, 20, 34, 42], moist: [0.18, 0.45, 1.01, 2], growDays: 6, shade: true },
+  bromeliad: { name: 'Bromeliad', zone: 'jungle', place: 'ground', kind: 'bromeliad', h: 30, leaves: 8, leaf: '#5f9e45', petals: '#e8475a', center: '#f6d64a', temp: [10, 18, 32, 40], moist: [0.2, 0.45, 1.01, 2], growDays: 3 },
   mushroom: { name: 'Toadstool', zone: 'jungle', place: 'ground', kind: 'mushroom', h: 22, leaves: 0, cap: '#e2453f', spots: '#ffffff', temp: [2, 10, 26, 34], moist: [0.3, 0.55, 1.01, 2], growDays: 1.2, likesDark: true, edibleCap: true },
   cactus: { name: 'Cactus', zone: 'desert', place: 'ground', kind: 'cactus', h: 52, leaves: 0, leaf: '#7aa35a', petals: '#f39ac0', center: '#f6d64a', temp: [4, 16, 42, 52], moist: [-1, 0, 0.45, 0.9], growDays: 5 },
   succulent: { name: 'Aloe', zone: 'desert', place: 'ground', kind: 'succulent', h: 22, leaves: 7, leaf: '#8fb87a', temp: [4, 14, 40, 50], moist: [-1, 0, 0.5, 0.95], growDays: 3 },
@@ -21,5 +24,5 @@ export const PLANTS = {
   forgetmenot: { name: 'Forget-me-not', zone: 'any', place: 'ground', kind: 'flower', h: 18, leaves: 3, petals: '#8fc4f0', center: '#f6d64a', petalShape: 'daisy', leaf: '#77b255', branches: 3, temp: [-2, 6, 32, 42], moist: [-1, 0.05, 1.01, 2], growDays: 0.8, memorial: true },
 };
 
-export const PLANT_ORDER = ['daisy', 'tulip', 'sunflower', 'clover', 'fern', 'grass', 'strawberry', 'bigleaf', 'mushroom', 'cactus', 'succulent', 'marigold', 'drygrass', 'lilypad', 'reed', 'eelgrass'];
+export const PLANT_ORDER = ['daisy', 'tulip', 'sunflower', 'clover', 'fern', 'grass', 'strawberry', 'bigleaf', 'monstera', 'palm', 'bromeliad', 'mushroom', 'cactus', 'succulent', 'marigold', 'drygrass', 'lilypad', 'reed', 'eelgrass'];
 for (const id of Object.keys(PLANTS)) PLANTS[id].id = id;

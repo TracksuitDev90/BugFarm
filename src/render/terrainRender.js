@@ -1,7 +1,7 @@
 // Renders the terrain grid into cached chunk canvases using marching squares
 // so tunnels and banks get smooth, inked edges. Chunks are only redrawn when
 // cells inside them change (ants digging, player sculpting).
-import { CELL, GW, GH, MAT, INK, W, H } from '../config.js';
+import { CELL, GW, GH, MAT, INK, W, H, ZONE_X } from '../config.js';
 import { CHUNK, CHW, CHH } from '../world/terrain.js';
 import { hash2, noise1 } from '../util/rng.js';
 import { ell, circ, fill, stroke } from '../art/ink.js';
@@ -444,7 +444,8 @@ export class TerrainRenderer {
     let surfaceNear = false;
     for (let i = Math.max(0, i0 - 2); i < Math.min(GW, i0 + CHUNK + 2); i++) {
       const top = t.top[i];
-      if (top >= j0 - 1 && top <= j0 + CHUNK + 4) {
+      // (jungle roots and humus reach down into the chunk below the surface)
+      if (top >= j0 - 12 && top <= j0 + CHUNK + 4) {
         surfaceNear = true;
         break;
       }
@@ -571,15 +572,22 @@ export class TerrainRenderer {
 
   drawSurfaceDetail(g, i0, j0, yT, yB) {
     const t = this.terrain;
+    const jx = ZONE_X.jungle[0] - 30;
+    this.drawHumus(g, Math.max(1, i0 - 3), Math.min(GW - 1, i0 + CHUNK + 3), jx);
     for (let i = Math.max(1, i0 - 3); i < Math.min(GW - 1, i0 + CHUNK + 3); i++) {
       const top = t.top[i];
       if (top >= GH) continue;
       const m = t.mat[top * GW + i];
       const y = top * CELL;
-      if (y < yT - 16 || y > yB + 16) continue;
-      if (t.isWater(i, top - 1)) continue;
       const x = i * CELL + CELL / 2;
+      const jungle = x > jx && m === MAT.SOIL;
+      if (y < yT - (jungle ? 48 : 16) || y > yB + 16) continue;
+      if (t.isWater(i, top - 1)) continue;
       const h = hash2(i, 3, 11);
+      if (jungle) {
+        this.drawForestFloor(g, t, i, x, h);
+        continue;
+      }
       if (m === MAT.SOIL) {
         const n = 2 + Math.floor(h * 2);
         for (let b = 0; b < n; b++) {
@@ -616,6 +624,121 @@ export class TerrainRenderer {
           g.stroke();
         }
       }
+    }
+  }
+
+  // Dark humus under the jungle floor: soft bands that follow the surface.
+  drawHumus(g, ia, ib, jx) {
+    const t = this.terrain;
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        for (const [off, w, a] of [[5, 9, 0.26], [14, 12, 0.12]]) {
+          g.beginPath();
+          run.forEach(([x, y], k) => (k ? g.lineTo(x, y + off) : g.moveTo(x, y + off)));
+          g.lineWidth = w;
+          g.lineCap = 'butt';
+          g.lineJoin = 'round';
+          g.strokeStyle = `rgba(38,24,12,${a})`;
+          g.stroke();
+        }
+        g.lineCap = 'round';
+      }
+      run = [];
+    };
+    for (let i = ia; i < ib; i++) {
+      const top = t.top[i];
+      const x = i * CELL + CELL / 2;
+      if (x > jx && top < GH && t.mat[top * GW + i] === MAT.SOIL && !t.isWater(i, top - 1)) run.push([x, t.surfaceY(x)]);
+      else flush();
+    }
+    flush();
+  }
+
+  // Rainforest floor: roots, leaf litter, moss and lush undergrowth.
+  drawForestFloor(g, t, i, x, h) {
+    const by = t.surfaceY(x);
+    if (h < 0.17) {
+      // a root wandering down, with a side rootlet
+      const len = 14 + hash2(i, 1, 21) * 22;
+      const sw = (hash2(i, 2, 21) - 0.5) * 10;
+      g.beginPath();
+      g.moveTo(x, by + 2);
+      g.bezierCurveTo(x + sw, by + len * 0.35, x - sw, by + len * 0.7, x + sw * 0.5, by + len);
+      g.moveTo(x + sw * 0.15, by + len * 0.45);
+      g.quadraticCurveTo(x + sw + 5, by + len * 0.55, x + sw + 7, by + len * 0.75);
+      g.lineWidth = 0.7;
+      g.strokeStyle = 'rgba(74,47,28,0.55)';
+      g.stroke();
+    }
+    if (h > 0.4 && h < 0.52) {
+      // moss cushion
+      const r = 3 + h * 4;
+      ell(g, x, by - 0.5, r, r * 0.45);
+      fill(g, h < 0.46 ? '#7fae4a' : '#6a9a3c');
+      stroke(g, 0.45, 'rgba(58,42,31,0.8)');
+      for (let k = 0; k < 3; k++) {
+        circ(g, x - r * 0.5 + k * r * 0.5, by - r * 0.3, 0.45);
+        fill(g, '#a8cf6a');
+      }
+    }
+    // lush, dark undergrowth blades
+    const n = 3 + Math.floor(h * 3);
+    for (let b = 0; b < n; b++) {
+      const hx = x + (hash2(i, b, 5) - 0.5) * CELL * 1.8;
+      const hh = 6 + hash2(i, b, 6) * 12;
+      const lean = (hash2(i, b, 7) - 0.5) * 7;
+      const cols = ['#4f8a3c', '#5f9e45', '#3f7a34', '#6fae4a'];
+      const sy = t.surfaceY(hx) + 0.8;
+      g.beginPath();
+      g.moveTo(hx - 1.3, sy);
+      g.quadraticCurveTo(hx + lean * 0.3, sy - hh * 0.6, hx + lean, sy - hh);
+      g.quadraticCurveTo(hx + lean * 0.4, sy - hh * 0.5, hx + 1.3, sy);
+      g.closePath();
+      g.fillStyle = cols[Math.floor(hash2(i, b, 8) * cols.length)];
+      g.fill();
+      g.lineWidth = 0.55;
+      g.strokeStyle = 'rgba(58,42,31,0.85)';
+      g.stroke();
+    }
+    if (h > 0.86) {
+      // a little fern sprig
+      for (const side of [-1, 0, 1]) {
+        const len = 10 + h * 6 - Math.abs(side) * 3;
+        const a = -Math.PI / 2 + side * 0.7;
+        const ex = x + Math.cos(a) * len;
+        const ey = by + Math.sin(a) * len;
+        g.beginPath();
+        g.moveTo(x, by);
+        g.quadraticCurveTo(x + Math.cos(a) * len * 0.5, by + Math.sin(a) * len * 0.6 - 2, ex + side * 2, ey + 2);
+        g.lineWidth = 0.7;
+        g.strokeStyle = '#3f7a34';
+        g.stroke();
+        for (let k = 1; k <= 4; k++) {
+          const tt = k / 5;
+          const px = x + (ex - x) * tt;
+          const py = by + (ey - by) * tt;
+          for (const s of [-1, 1]) {
+            ell(g, px + s * 1.4, py + 0.4, 1.5 * (1 - tt * 0.5), 0.6, a + s * 1.1);
+            fill(g, '#5f9e45');
+          }
+        }
+      }
+    }
+    // fallen leaves on top of everything
+    if (h > 0.18 && h < 0.42 || h > 0.72 && h < 0.8) {
+      const cols = ['#b9733a', '#c98a4a', '#8a5a2c', '#d9a050', '#8f9a42'];
+      const lx = x + (hash2(i, 9, 3) - 0.5) * 3;
+      const rot = (hash2(i, 9, 4) - 0.5) * 1.2;
+      ell(g, lx, t.surfaceY(lx) - 0.4, 2.6, 1.1, rot);
+      fill(g, cols[Math.floor(hash2(i, 9, 5) * cols.length)]);
+      stroke(g, 0.45, 'rgba(58,42,31,0.85)');
+      g.beginPath();
+      g.moveTo(lx - Math.cos(rot) * 2.2, t.surfaceY(lx) - 0.4 - Math.sin(rot) * 2.2);
+      g.lineTo(lx + Math.cos(rot) * 2.2, t.surfaceY(lx) - 0.4 + Math.sin(rot) * 2.2);
+      g.lineWidth = 0.3;
+      g.strokeStyle = 'rgba(58,42,31,0.5)';
+      g.stroke();
     }
   }
 

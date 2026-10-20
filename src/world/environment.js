@@ -1,5 +1,25 @@
 import { DAY_LEN, ZONE_X, ZONE_BLEND, CELL, W } from '../config.js';
 import { clamp, clamp01, lerp, smoothstep } from '../util/math.js';
+import { rrange } from '../util/rng.js';
+
+// The weather outside the tank drifts every day or so, nudging the room
+// temperature (and how damp the air is) so the keeper has to rebalance.
+//   temp: degrees added to the room, moist: added to zone dampness, w: how often
+export const WEATHER = {
+  mild: { name: 'Mild', temp: 0, moist: 0, w: 3, icon: 'sun' },
+  warm: { name: 'Warm spell', temp: 4, moist: -0.03, w: 2, icon: 'hot' },
+  cool: { name: 'Cool spell', temp: -4, moist: 0.02, w: 2, icon: 'cold' },
+  heat: { name: 'Heat wave', temp: 7.5, moist: -0.08, w: 1, icon: 'hot' },
+  cold: { name: 'Cold snap', temp: -7, moist: 0, w: 1, icon: 'cold' },
+  dry: { name: 'Dry spell', temp: 1.5, moist: -0.15, w: 1.2, icon: 'sun' },
+  muggy: { name: 'Muggy', temp: 2, moist: 0.1, w: 1, icon: 'drop' },
+};
+function pickWeather(not) {
+  const ids = Object.keys(WEATHER).filter((k) => k !== not);
+  let r = Math.random() * ids.reduce((a, k) => a + WEATHER[k].w, 0);
+  for (const k of ids) if ((r -= WEATHER[k].w) <= 0) return k;
+  return 'mild';
+}
 
 // The tank's climate. Each zone has player-controlled equipment (heat lamps,
 // misters, water heater, filter) and simulated state that drifts toward
@@ -10,7 +30,8 @@ export class Environment {
     this.lightsMode = 'auto'; // auto | day | night
     this.roomTemp = 21;
     this.roomSet = 21; // thermostat for the room the tank sits in
-    this.desert = { lamp: 0.55, mister: 0, temp: 28, moist: 0.14 };
+    // water: how full each mister's bottle is (it empties as it sprays)
+    this.desert = { lamp: 0.5, mister: 0, temp: 28, moist: 0.14, water: 1 };
     this.pond = {
       lamp: 0.15,
       heater: false,
@@ -21,9 +42,18 @@ export class Environment {
       clarity: 1,
       algae: 0.12,
       nutrients: 0.1,
+      filterClean: 1, // gunk builds up in the filter sponge over a few days
+      full: 425, // the water line when topped up; evaporation lowers it
+      evap: 0,
     };
-    this.jungle = { lamp: 0.25, mister: 0.35, temp: 24, moist: 0.62 };
+    this.jungle = { lamp: 0.25, mister: 0.35, temp: 24, moist: 0.62, water: 1 };
     this.fertility = { desert: 0.3, jungle: 0.6 };
+    this.weatherOn = true;
+    this.wx = { now: 'mild', next: 'warm', change: DAY_LEN * 1.6 };
+    this.wxT = 0; // weather offsets as felt right now (they ease in)
+    this.wxM = 0;
+    this.greenery = { desert: 0, jungle: 0 }; // leafy plants breathe out damp air
+    this.lowWater = 0; // 0..1, how far the pond has evaporated below its line
     // Accumulators fed by the world each tick.
     this.rotLoad = 0; // rotting food in water
     this.bioLoad = 0; // breathing creatures in water
@@ -69,45 +99,83 @@ export class Environment {
   zone(name) {
     return this[name];
   }
+  // How hard a mister is actually spraying (nothing once its bottle is dry).
+  misting(z) {
+    const e = this[z];
+    return e.water > 0.001 ? e.mister : 0;
+  }
+  // The pond filter works less well as it clogs.
+  get filterFlow() {
+    return this.pond.filter * (0.25 + 0.75 * this.pond.filterClean);
+  }
+  get weather() {
+    return WEATHER[this.weatherOn ? this.wx.now : 'mild'];
+  }
+  get forecast() {
+    return this.weatherOn ? WEATHER[this.wx.next] : null;
+  }
+
+  updateWeather(dt) {
+    if (this.time >= this.wx.change) {
+      this.wx.now = this.wx.next;
+      this.wx.next = pickWeather(this.wx.now);
+      this.wx.change = this.time + rrange(0.8, 1.5) * DAY_LEN;
+    }
+    const w = this.weather;
+    const k = 1 - Math.exp(-dt / (DAY_LEN * 0.1)); // spells roll in over a couple of hours
+    this.wxT += (w.temp - this.wxT) * k;
+    this.wxM += (w.moist - this.wxM) * k;
+  }
 
   update(dt, world) {
     this.time += dt;
+    this.updateWeather(dt);
     const sun = this.sun;
     const h = this.hour;
-    // Room cools a little at night and warms in the afternoon.
+    // Room cools a little at night and warms in the afternoon, and follows
+    // the weather outside.
     const daily = Math.sin(((h - 9) / 24) * Math.PI * 2);
-    this.roomTemp = this.roomSet - 0.5 + daily * 1.8 + sun * 0.6;
+    this.roomTemp = this.roomSet - 0.5 + daily * 1.8 + sun * 0.6 + this.wxT;
 
     const k = 1 - Math.exp(-dt / 45); // air relaxes over ~45 game seconds
     const km = 1 - Math.exp(-dt / 90);
-    for (const z of [this.desert, this.jungle]) {
-      const isDesert = z === this.desert;
-      const tgt = this.roomTemp + z.lamp * (isDesert ? 20 : 16) + sun * 0.8 - z.mister * 3;
+    for (const name of ['desert', 'jungle']) {
+      const z = this[name];
+      const isDesert = name === 'desert';
+      const mist = this.misting(name);
+      // misters drink from their bottle: a full one lasts ~2.5 days at 35%
+      if (z.mister > 0) z.water = Math.max(0, z.water - (dt * z.mister) / (DAY_LEN * 0.9));
+      const tgt = this.roomTemp + z.lamp * (isDesert ? 20 : 16) + sun * 0.8 - mist * 3;
       z.temp += (tgt - z.temp) * k;
       const base = isDesert ? 0.06 : 0.26;
-      const mTgt = clamp01(base + z.mister * (isDesert ? 0.85 : 0.72) - Math.max(0, z.temp - 24) * 0.012 + (world ? world.rainBoost(isDesert ? 'desert' : 'jungle') : 0));
+      const green = Math.min(isDesert ? 0.03 : 0.1, this.greenery[name] * 0.006);
+      const mTgt = clamp01(base + mist * (isDesert ? 0.85 : 0.72) - Math.max(0, z.temp - 24) * 0.012 + green + this.wxM + (world ? world.rainBoost(name) : 0));
       z.moist += (mTgt - z.moist) * km;
     }
 
     // Pond: big thermal mass, oxygen/algae/clarity chemistry.
     const p = this.pond;
+    const flow = this.filterFlow;
+    // the sponge clogs faster in a dirty, overfed pond
+    p.filterClean = Math.max(0, p.filterClean - (dt * (0.1 + p.nutrients * 0.9 + this.rotLoad * 0.01) * p.filter) / DAY_LEN);
     const kw = 1 - Math.exp(-dt / 160);
     const wTgt = (p.heater ? p.heaterTarget : this.roomTemp - 1) + p.lamp * 7 + sun * 0.4;
     p.temp += (wTgt - p.temp) * kw;
-    const sat = clamp(1.16 - 0.022 * (p.temp - 10), 0.45, 1.05);
+    // a shallow, evaporated pond holds less air and gets murkier
+    const sat = clamp(1.16 - 0.022 * (p.temp - 10) - this.lowWater * 0.12, 0.45, 1.05);
     const light = Math.max(sun, p.lamp * 0.8);
     const photo = (p.algae * 0.005 + this.waterPlants * 0.0008) * light;
     const resp = this.bioLoad * 0.00035 + p.algae * 0.0025 * (1 - light) + this.rotLoad * 0.0003;
-    p.oxygen += ((sat - p.oxygen) * (0.004 + p.filter * 0.02) + photo - resp) * dt;
+    p.oxygen += ((sat - p.oxygen) * (0.004 + flow * 0.02) + photo - resp) * dt;
     // warm water simply can't hold as much air, however many plants there are
     p.oxygen = clamp(p.oxygen, 0.05, Math.min(1.15, sat + 0.12));
-    p.nutrients += (this.bioLoad * 0.00006 + this.rotLoad * 0.0009 - p.nutrients * (0.0005 + p.filter * 0.0016) - p.algae * p.nutrients * 0.0015 - this.waterPlants * 0.00015 * p.nutrients) * dt;
+    p.nutrients += (this.bioLoad * 0.00006 + this.rotLoad * 0.0009 - p.nutrients * (0.0005 + flow * 0.0016) - p.algae * p.nutrients * 0.0015 - this.waterPlants * 0.00015 * p.nutrients) * dt;
     p.nutrients = clamp(p.nutrients, 0, 1.5);
     const algaeGrow = p.algae * (1 - p.algae) * 0.0016 * light * (0.25 + p.nutrients * 2.5) * smoothstep(8, 22, p.temp);
-    const algaeEat = this.grazers * 0.00004 * p.algae + p.filter * 0.00012 * p.algae;
+    const algaeEat = this.grazers * 0.00004 * p.algae + flow * 0.00012 * p.algae;
     p.algae = clamp(p.algae + (algaeGrow - algaeEat - p.algae * 0.00008) * dt, 0.01, 1);
-    const cTgt = clamp01(1 - p.nutrients * 0.45 - p.algae * 0.35 - this.rotLoad * 0.022);
-    p.clarity += (cTgt - p.clarity) * (1 - Math.exp(-dt * (0.003 + p.filter * 0.012)));
+    const cTgt = clamp01(1 - p.nutrients * 0.45 - p.algae * 0.35 - this.rotLoad * 0.022 - this.lowWater * 0.15);
+    p.clarity += (cTgt - p.clarity) * (1 - Math.exp(-dt * (0.003 + flow * 0.012)));
 
     // Soil fertility slowly returns to baseline.
     this.fertility.desert = lerp(this.fertility.desert, 0.3, dt * 0.0002);
@@ -174,6 +242,10 @@ export class Environment {
       pond: { ...this.pond },
       jungle: { ...this.jungle },
       fertility: { ...this.fertility },
+      weatherOn: this.weatherOn,
+      wx: { ...this.wx },
+      wxT: +this.wxT.toFixed(2),
+      wxM: +this.wxM.toFixed(3),
     };
   }
   load(d) {
@@ -184,6 +256,11 @@ export class Environment {
     Object.assign(this.pond, d.pond);
     Object.assign(this.jungle, d.jungle);
     Object.assign(this.fertility, d.fertility || {});
+    this.weatherOn = d.weatherOn !== false;
+    if (d.wx) Object.assign(this.wx, d.wx);
+    else this.wx.change = this.time + DAY_LEN; // older saves: weather starts tomorrow
+    this.wxT = d.wxT || 0;
+    this.wxM = d.wxM || 0;
   }
 }
 

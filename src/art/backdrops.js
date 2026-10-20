@@ -73,6 +73,142 @@ function house(g, x, y, w, h, wall, roof) {
   });
 }
 
+// The rainforest painted behind the jungle side of the tank: a wall of far
+// canopy, tall buttressed trunks, hanging lianas, big understory leaves and
+// a low mist. It fades out toward the pond so each backdrop still shows.
+const FOREST_TONES = {
+  night: { far: '#2d4a52', mid: '#2f5646', near: '#2a4a3a', trunk: '#4d4a52', vine: '#2c4434', mist: 'rgba(160,180,220,0.18)', light: 'rgba(200,220,255,0.05)' },
+  desert: { far: '#a8b47e', mid: '#7f9c5c', near: '#668a48', trunk: '#9a7a5c', vine: '#557a3a', mist: 'rgba(255,236,210,0.3)', light: 'rgba(255,240,200,0.1)' },
+  seaside: { far: '#8fbca0', mid: '#5f9e66', near: '#4c8a4c', trunk: '#9a8a72', vine: '#4a7a3c', mist: 'rgba(240,250,250,0.32)', light: 'rgba(255,255,240,0.1)' },
+  default: { far: '#8cb98c', mid: '#5f9e5a', near: '#4a8644', trunk: '#9c8466', vine: '#4a7a36', mist: 'rgba(245,250,240,0.34)', light: 'rgba(255,252,220,0.12)' },
+};
+
+function rainforest(scale, kind) {
+  const T = FOREST_TONES[kind] || FOREST_TONES.default;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(W * scale);
+  c.height = Math.ceil(H * scale);
+  const g = c.getContext('2d');
+  g.scale(scale, scale);
+  g.translate(0, -80);
+  const rng = new RNG(4242);
+  const x0 = 930;
+  // 1) far canopy: a soft wall of treetops
+  const bumps = (y, amp, step, color, ink) => {
+    g.beginPath();
+    g.moveTo(x0, H + 100);
+    let x = x0;
+    g.lineTo(x, y);
+    while (x < W + 40) {
+      const nx = x + step * rng.range(0.7, 1.3);
+      const ny = y + rng.range(-amp, amp);
+      g.quadraticCurveTo((x + nx) / 2, ny - step * 0.7, nx, ny);
+      x = nx;
+    }
+    g.lineTo(W + 40, H + 100);
+    g.closePath();
+    g.fillStyle = color;
+    g.fill();
+    if (ink) stroke(g, 1.2, ink);
+  };
+  bumps(150, 26, 48, T.far, 'rgba(58,42,31,0.3)');
+  // light shafts through the canopy
+  g.fillStyle = T.light;
+  for (const lx of [1120, 1300, 1480]) {
+    g.beginPath();
+    g.moveTo(lx, 150);
+    g.lineTo(lx + 34, 150);
+    g.lineTo(lx + 120, 520);
+    g.lineTo(lx + 40, 520);
+    g.closePath();
+    g.fill();
+  }
+  // 2) tall trunks with buttress roots
+  const trunk = (x, w, top, col) => {
+    paint(g, col, 1.2, () => {
+      g.beginPath();
+      g.moveTo(x - w * 1.9, 470);
+      g.quadraticCurveTo(x - w * 0.6, 455, x - w * 0.5, 400);
+      g.lineTo(x - w * 0.4, top);
+      g.lineTo(x + w * 0.4, top);
+      g.lineTo(x + w * 0.5, 400);
+      g.quadraticCurveTo(x + w * 0.6, 455, x + w * 1.9, 470);
+      g.closePath();
+    });
+    for (let y = top + 30; y < 440; y += rng.range(22, 40)) {
+      g.beginPath();
+      g.moveTo(x - w * 0.3, y);
+      g.quadraticCurveTo(x, y + 4, x + w * 0.3, y - 2);
+      stroke(g, 0.8, 'rgba(58,42,31,0.3)');
+    }
+  };
+  for (const [x, w] of [[1020, 16], [1180, 22], [1395, 26], [1560, 18]]) trunk(x, w, 120, T.trunk);
+  // 3) mid canopy clumps over the trunk tops
+  const clump = (cx, cy, r, col) => {
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      paint(g, col, 1.1, () => ell(g, cx + Math.cos(a) * r * 0.7, cy + Math.sin(a) * r * 0.35, r * 0.6, r * 0.42));
+    }
+    paint(g, col, 1.1, () => ell(g, cx, cy, r * 0.75, r * 0.5));
+  };
+  for (const [x, y, r] of [[990, 140, 60], [1110, 120, 70], [1260, 110, 80], [1420, 115, 76], [1560, 130, 70], [1640, 160, 60]]) clump(x, y, r, T.mid);
+  // 4) lianas looping down from the canopy
+  for (let i = 0; i < 9; i++) {
+    const x = rng.range(990, W);
+    const len = rng.range(140, 300);
+    const sway = rng.range(-30, 30);
+    g.beginPath();
+    g.moveTo(x, 150);
+    g.bezierCurveTo(x + sway, 150 + len * 0.4, x - sway, 150 + len * 0.7, x + sway * 0.3, 150 + len);
+    stroke(g, 2.2, T.vine);
+    stroke(g, 0.6, 'rgba(58,42,31,0.45)');
+    for (let k = 1; k < 8; k++) {
+      const t = k / 8;
+      const lx = x + sway * (3 * t * (1 - t) * (1 - t) - 3 * t * t * (1 - t)) + sway * 0.3 * t * t * t;
+      const ly = 150 + len * t;
+      paint(g, T.near, 0.7, () => ell(g, lx + (k % 2 ? 4 : -4), ly, 4, 2.2, k % 2 ? 0.5 : -0.5));
+    }
+  }
+  // 5) understory: big fan leaves, palms and ferns along the ground
+  const fanLeaf = (x, y, len, a, col) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(a);
+    paint(g, col, 1, () => {
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.bezierCurveTo(len * 0.3, -len * 0.32, len * 0.8, -len * 0.3, len, 0);
+      g.bezierCurveTo(len * 0.8, len * 0.22, len * 0.3, len * 0.22, 0, 0);
+      g.closePath();
+    });
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.lineTo(len * 0.95, 0);
+    stroke(g, 0.7, 'rgba(58,42,31,0.4)');
+    g.restore();
+  };
+  for (let i = 0; i < 16; i++) {
+    const x = rng.range(980, W + 10);
+    const n = rng.int(3, 6);
+    for (let k = 0; k < n; k++) fanLeaf(x, 470, rng.range(40, 80), -Math.PI / 2 + (k / (n - 1) - 0.5) * 2.2, rng.chance(0.5) ? T.near : T.mid);
+  }
+  // 6) low mist hanging over the forest floor
+  const mist = g.createLinearGradient(0, 360, 0, 470);
+  mist.addColorStop(0, 'rgba(255,255,255,0)');
+  mist.addColorStop(1, T.mist);
+  g.fillStyle = mist;
+  g.fillRect(x0, 360, W - x0 + 40, 120);
+  // fade in from the pond side
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'destination-in';
+  const fade = g.createLinearGradient(980 * scale, 0, 1120 * scale, 0);
+  fade.addColorStop(0, 'rgba(0,0,0,0)');
+  fade.addColorStop(1, 'rgba(0,0,0,1)');
+  g.fillStyle = fade;
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
 export function paintBackdrop(kind, scale) {
   const c = document.createElement('canvas');
   c.width = Math.ceil(W * scale);
@@ -290,6 +426,12 @@ export function paintBackdrop(kind, scale) {
       stroke(g, 1.6, '#fbf3df');
       break;
     }
+  }
+  if (kind !== 'paper') {
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(rainforest(scale, kind), 0, 0);
+    g.restore();
   }
   // Glass haze so the backdrop reads as "behind" the tank contents.
   g.fillStyle = 'rgba(240,248,250,0.18)';

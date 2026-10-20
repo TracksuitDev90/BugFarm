@@ -5,13 +5,13 @@ and a grassy jungle, full of small critters going about their lives. Look after
 them, feed them, rearrange their world, and run gentle experiments to see what
 happens.
 
-![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond, and a jungle with a mushroom cottage, bee house and sunflowers](docs/tank.jpg)
+![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond, and a misty rainforest jungle with palms, vines, a mushroom cottage and sunflowers, and thermometers on the glass](docs/tank.jpg)
 
 <img src="docs/phone.jpg" width="260" align="right" alt="Bug Farm on a phone, zoomed into the ant colony">
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
-- **Small and quick to load.** About 110 KB of gzipped JavaScript and two
+- **Small and quick to load.** About 130 KB of gzipped JavaScript and two
   small fonts. All the art is drawn in code, so there are no image downloads.
 - **Smooth on old hardware.** The static scenery is cached, critters are
   pre-rendered sprites, and the simulation runs at a fixed 30 steps a second.
@@ -37,22 +37,55 @@ remember.
 | --- | --- | --- |
 | Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and chambers and pile the sand into a mound. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
 | Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish school together. The turtle climbs out to bask on the rocks. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
-| Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | Ants farm aphids for honeydew and ladybugs hunt them. Bees pollinate flowers so they set seed. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
+| Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads, with vines trailing from the lid. Ants farm aphids for honeydew and ladybugs hunt them. Bees pollinate flowers so they set seed. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
+
+## Growing your farm
+
+A new farm starts small: each zone has just two kinds of critter (ants and
+crickets in the desert, goldfish and pond snails in the pond, snails and
+butterflies in the jungle). Each zone has a level and three keeper goals,
+such as "keep the desert comfy for 6 hours", "a caterpillar wraps up in a
+chrysalis" or "rinse out the pond filter". Finishing them levels the zone up
+and unlocks new critters, snacks, plants and decorations: beetles and then a
+gecko in the desert, shrimp, frogs and a turtle in the pond, and worms, pill
+bugs, aphids, ladybugs, bees, fireflies and grasshoppers in the jungle. The
+**Sandbox** choices on the welcome screen (or in Settings) unlock everything
+at once.
+
+The tank doesn't stay put, either. The weather outside changes every day or
+so (warm and cool spells, heat waves, cold snaps, dry and muggy days), which
+shifts the room temperature. Misters drink from a water bottle that runs dry,
+the pond slowly evaporates below its fill line, the filter sponge clogs with
+gunk, and leafy jungle plants make the air more humid as they grow.
+
+None of that comes as a pop-up. Instead:
+
+- **The keeper's clipboard** (top right) lists what needs doing, most urgent
+  first, each with a one-tap fix: refill, rinse, top up, clean, or a jump to
+  the right climate control or snack. Its badge shows how many things want
+  attention. Each zone's tab shows its goals, progress and what's next.
+- **Comfy ranges.** Every zone works out the temperature (and dampness) that
+  suits whoever actually lives there, and says who's too hot or too dry.
+  The clock colours each zone's temperature, the Climate panel shows the
+  range on a gauge, and strip thermometers on the glass show it in the tank.
+- **The forecast.** The clipboard and the Climate panel say what weather is
+  coming, so a heat wave is never a surprise.
 
 ## How to play
 
 | Tool | What it does |
 | --- | --- |
 | **Look** | Drag to pan, pinch or scroll to zoom. Tap a critter to see its needs, mood and what it is thinking, and to pet it or give it a treat. Tap the glass to startle everyone. |
-| **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle. |
+| **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle. Critters eat it bite by bite until it's gone. |
 | **Critters** | Adopt new critters and choose where they live. |
-| **Plants** | 17 plants, including daisies, sunflowers, ferns, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
+| **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
 | **Decor** | 26 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car and a castle. Many of them do something useful: shelters give shade and warmth, bubblers add oxygen, lamp posts glow at night, the bee house lets bees breed, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
 | **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself. You can also raise or lower the pond. |
-| **Climate** | Set each zone's heat lamp and mister, the pond heater and bubbler, the room thermostat and the day/night cycle. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day*, *Dry spell*, *Always day* and *Always night*. There are also buttons to clean the pond and tidy up leftovers. |
+| **Climate** | Set each zone's heat lamp and mister, the pond heater and filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
 | **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 39 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
+| **Clipboard** | The button at the top right. What needs doing now, how each zone is doing, and the goals for its next level. Tapping a thermometer on the glass opens it too. |
 
 The lens button in the top right switches between overlays for temperature,
 dampness, ant scent trails and what each critter is thinking. The speed control
@@ -98,6 +131,7 @@ Other tools in `tools/`:
 | `node tools/fuzz.mjs [days] [seed]` | Has a random player feed, sculpt, adopt and change the climate, and reports any broken state. |
 | `node tools/savetest.mjs` | Save and load round-trip, plus the "while you were away" catch-up. |
 | `node tools/experiments.mjs` | Runs each experiment and checks that the expected outcome happens. |
+| `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper and checks that every zone levels up. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
 
 `tools/dev.html` and `tools/gallery.html` show every critter, food, plant and
@@ -123,11 +157,13 @@ src/
   entities/            Creature (needs, life stages, movement), Plant, Food, Decor
   ai/                  utility brain, shared behaviours, food/prey/mate search,
                        ant colony (castes, brood, digging, scent trails, aphid herding)
-  data/                species, foods, plants, decor, names, discoveries
+  data/                species, foods, plants, decor, names, discoveries,
+                       progression (what each zone level unlocks)
   art/                 procedural ink-and-watercolour drawing of everything
   render/              sprite cache, chunked terrain renderer, particles, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal
-  sim/                 away catch-up, journal
+  sim/                 away catch-up, journal, care (comfy ranges and the
+                       to-do list), progress (zone levels and goals)
   save/                localStorage save, backup, export/import
   audio/               tiny procedural sound effects (WebAudio, no files)
 ```
@@ -161,6 +197,9 @@ The catalogs are plain data, and most additions are a single line:
   `src/art/decor.js` if it needs new art.
 - **Critter:** add a species to `src/data/species.js`, built from existing
   behaviours, and an entry in `CREATURE_ART` in `src/art/creatures.js`.
+  Flyers also get a `WINGS` entry there (hinge point, length, beat rate).
+- **Unlock:** list a critter, food, plant or decoration under a zone level in
+  `src/data/progression.js`. Anything not listed is available from the start.
 
 ## Credits
 

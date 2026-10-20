@@ -406,8 +406,48 @@ const SHAPES = {
   },
 };
 
-// rot: 0 fresh, 1 overripe, 2 rotten/mouldy
-export function drawFood(g, def, rot, lw = 0.7) {
+// Bite marks, in shape units, added level by level as a snack gets eaten.
+// Each is a scalloped mouthful [x, y, r] taken from the right-hand side
+// (the renderer mirrors the sprite when the eater is on the left).
+const BITES = [
+  [[5.4, -3.6, 2.6]],
+  [[2.6, -6.4, 2.7]],
+  [[5.8, 0.2, 3.0], [3.4, -2.6, 2.8]],
+  [[0.2, -4.6, 3.3], [-2.6, -6.6, 2.6], [1.2, 0.4, 2.8]],
+];
+
+function biteOut(g, b, lw) {
+  const marks = [];
+  for (let l = 0; l < b; l++) marks.push(...BITES[l]);
+  // the mouthfuls, with a frill of little tooth scallops round each one
+  g.save();
+  g.globalCompositeOperation = 'destination-out';
+  for (const [x, y, r] of marks) {
+    circ(g, x, y, r);
+    g.fill();
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI * 0.6 + i * 0.42;
+      circ(g, x + Math.cos(a) * r, y + Math.sin(a) * r, r * 0.26);
+      g.fill();
+    }
+  }
+  // re-ink the bitten edge, only where food is left
+  g.globalCompositeOperation = 'source-atop';
+  for (const [x, y, r] of marks) {
+    circ(g, x, y, r + lw * 0.9);
+    g.lineWidth = lw * 1.6;
+    g.strokeStyle = 'rgba(255,248,230,0.55)';
+    g.stroke();
+    circ(g, x, y, r + lw * 0.25);
+    g.lineWidth = lw;
+    g.strokeStyle = INK;
+    g.stroke();
+  }
+  g.restore();
+}
+
+// rot: 0 fresh, 1 overripe, 2 rotten/mouldy; bites: 0 untouched .. 4 nearly gone
+export function drawFood(g, def, rot, lw = 0.7, bites = 0) {
   const s = def.size || 1;
   g.save();
   g.scale(s, s);
@@ -434,6 +474,7 @@ export function drawFood(g, def, rot, lw = 0.7) {
       g.stroke();
     }
   }
+  if (bites > 0) biteOut(g, bites, lw / s);
   g.restore();
 }
 

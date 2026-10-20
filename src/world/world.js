@@ -55,12 +55,15 @@ export class World {
   }
 
   // ------------------------------------------------------------------ setup
+  // starter: 'farm' (each zone begins with its two first critters),
+  // true / 'full' (everyone moved in, for sandbox play) or false (empty).
   newGame(seed = (Math.random() * 1e9) | 0, starter = true) {
     this.seed = seed;
     this.terrain.generate(seed);
+    this.env.pond.full = this.terrain.waterLevel;
     this.computeRegions();
     if (!starter) return;
-    const rng = new RNG(seed + 5);
+    const farm = starter === 'farm';
     const t = this.terrain;
     // ant colony
     this.foundColony(50);
@@ -69,65 +72,71 @@ export class World {
     for (const [type, x] of [
       ['cactus', 120], ['cactus', 520], ['succulent', 330], ['marigold', 300], ['marigold', 470], ['drygrass', 30], ['drygrass', 250], ['drygrass', 540],
       ['reed', 588], ['reed', 1040], ['eelgrass', 720], ['eelgrass', 860], ['eelgrass', 960], ['lilypad', 790], ['lilypad', 930],
-      ['daisy', 1110], ['daisy', 1180], ['daisy', 1520], ['tulip', 1290], ['tulip', 1305], ['sunflower', 1400], ['clover', 1150], ['clover', 1460],
-      ['fern', 1235], ['fern', 1570], ['grass', 1090], ['grass', 1340], ['grass', 1500], ['strawberry', 1430], ['bigleaf', 1270], ['mushroom', 1560], ['mushroom', 1255],
+      ['palm', 1086], ['palm', 1556], ['monstera', 1160], ['monstera', 1452], ['bromeliad', 1236], ['bromeliad', 1512], ['bigleaf', 1272],
+      ['fern', 1132], ['fern', 1300], ['fern', 1584], ['daisy', 1180], ['tulip', 1305], ['sunflower', 1400], ['clover', 1350], ['grass', 1340],
+      ['strawberry', 1430], ['mushroom', 1580], ['mushroom', 1255],
     ]) plant(type, x + rrange(-6, 6));
-    // decor
+    // decor (a new farm earns its bee hotel, library and lamp post later)
     this.addDecor('sign', 505);
     this.addDecor('flowerpot', 300);
     this.addDecor('castle', 880);
-    this.addDecor('bubbler', 960);
-    this.addDecor('library', 1200);
     this.addDecor('log', 1480);
-    this.addDecor('beeHouse', 1370);
-    this.addDecor('lampPost', 1545);
     this.addDecor('mushroomHouse', 1110);
-    // critters
-    const add = (sp, x, y, opts) => this.spawn(sp, x, y, Object.assign({ stage: SPECIES[sp].adultStage }, opts || {}));
+    if (!farm) {
+      this.addDecor('bubbler', 960);
+      this.addDecor('library', 1200);
+      this.addDecor('beeHouse', 1370);
+      this.addDecor('lampPost', 1545);
+    }
+    // critters (alternating boys and girls, so every pair can raise a family)
+    const add = (sp, x, y, opts) => this.spawn(sp, x, y, Object.assign({ stage: SPECIES[sp].adultStage, sex: this.balancedSex(sp) }, opts || {}));
     add('cricket', 280);
     add('cricket', 330);
     add('cricket', 470);
-    add('gecko', 420);
-    add('beetle', 160);
-    add('beetle', 360);
     add('goldfish', 760, 520);
     add('goldfish', 800, 560);
     add('goldfish', 840, 540);
-    add('frog', 700, 480, { stage: 'tadpole' });
-    add('frog', 900, 520, { stage: 'tadpole' });
-    add('frog', 980, 480, { stage: 'tadpole' });
-    add('turtle', 820, 600);
     add('pondsnail', 760, t.surfaceY(760));
     add('pondsnail', 930, t.surfaceY(930));
-    add('shrimp', 800, t.surfaceY(800));
-    add('shrimp', 880, t.surfaceY(880));
-    add('shrimp', 1000, t.surfaceY(1000));
-    add('ladybug', 1150);
-    add('ladybug', 1300);
-    add('ladybug', 1450);
-    add('butterfly', 1250, 300);
     add('snail', 1210);
     add('snail', 1500);
-    add('bee', 1350, 320);
-    add('bee', 1420, 300);
-    add('worm', 1200, 560);
-    add('worm', 1450, 640);
-    add('firefly', 1330);
-    add('firefly', 1390);
-    add('firefly', 1520);
-    add('firefly', 1180);
-    add('pillbug', 1470);
-    add('pillbug', 1490);
-    add('pillbug', 1260);
-    add('grasshopper', 1380);
-    for (let i = 0; i < 6; i++) this.adopt('aphid', rrange(1100, 1550), 400);
+    add('butterfly', 1250, 300);
+    add('butterfly', 1420, 260);
     this.adopt('butterfly', 1180, 420);
-    this.adopt('butterfly', 1520, 420);
+    if (!farm) {
+      add('gecko', 420);
+      add('beetle', 160);
+      add('beetle', 360);
+      add('frog', 700, 480, { stage: 'tadpole' });
+      add('frog', 900, 520, { stage: 'tadpole' });
+      add('frog', 980, 480, { stage: 'tadpole' });
+      add('turtle', 820, 600);
+      add('shrimp', 800, t.surfaceY(800));
+      add('shrimp', 880, t.surfaceY(880));
+      add('shrimp', 1000, t.surfaceY(1000));
+      add('ladybug', 1150);
+      add('ladybug', 1300);
+      add('ladybug', 1450);
+      add('bee', 1350, 320);
+      add('bee', 1420, 300);
+      add('worm', 1200, 560);
+      add('worm', 1450, 640);
+      add('firefly', 1330);
+      add('firefly', 1390);
+      add('firefly', 1520);
+      add('firefly', 1180);
+      add('pillbug', 1470);
+      add('pillbug', 1490);
+      add('pillbug', 1260);
+      add('grasshopper', 1380);
+      for (let i = 0; i < 6; i++) this.adopt('aphid', rrange(1100, 1550), 400);
+      this.adopt('butterfly', 1520, 420);
+    }
     // a few snacks to start
-    this.addFood('apple', 1330, t.surfaceY(1330), { state: 'rest' });
+    this.addFood(farm ? 'lettuce' : 'apple', 1330, t.surfaceY(1330), { state: 'rest' });
     this.addFood('seedmix', 250, t.surfaceY(250), { state: 'rest' });
     this.addFood('flakes', 800, t.waterLevel + 1, { state: 'float', inWater: true });
-    this.addLog('Welcome to your Bug Farm! Everyone has just moved in.', 'star');
+    this.addLog(farm ? 'Welcome to your Bug Farm! Each corner has its first two kinds of critter. Check the clipboard to see what they need.' : 'Welcome to your Bug Farm! Everyone has just moved in.', 'star');
   }
 
   foundColony(entranceCx) {
@@ -388,17 +397,19 @@ export class World {
   }
 
   // ------------------------------------------------------------------ interactions used by AI
-  eat(c, tgt) {
+  // One bite. Critters chew little and often (a bite every ~0.6s), so food
+  // visibly goes down mouthful by mouthful.
+  eat(c, tgt, mouthfuls = 1) {
     let like = 0;
     let amt = 0;
-    const bite = c.appetite * 0.3;
+    const bite = c.appetite * 0.15 * mouthfuls;
     if (tgt.kind === 'food') {
       const f = tgt.food;
-      if (!f || f.gone || f.amount <= 0) return false;
+      if (!f || f.gone || f.amount <= 0.001) return false;
       for (const tg of f.tags) like = Math.max(like, c.diet[tg] || 0);
       amt = Math.min(f.amount, bite);
-      f.amount -= amt;
-      if (f.amount <= 0.001) this.removeFood(f);
+      f.amount = Math.max(0, f.amount - amt);
+      this.nibbled(f, c);
       this.events.emit('eat', { c, food: f });
     } else if (tgt.kind === 'plant') {
       const p = tgt.plant;
@@ -426,6 +437,13 @@ export class World {
       this.events.emit('stuffed', { c });
     }
     return true;
+  }
+
+  // Visual side of a bite: crumbs, a little wobble, bites from the eater's side.
+  nibbled(f, c) {
+    f.biteT = 0.3;
+    if (!f.biteSide) f.biteSide = c && c.x < f.x ? -1 : 1;
+    if (this.fx) this.fx.crumbs(f.x + f.biteSide * 3, f.y - 3, f.def.colors, f.inWater ? -1 : f.y);
   }
 
   predation(pred, prey) {
@@ -710,14 +728,22 @@ export class World {
     return { ok: true };
   }
 
-  dropFood(type, x, y) {
+  dropFood(type, x, y, opts) {
     const t = this.terrain;
     if (t.solidAt(x, y)) y = t.surfaceY(x) - 2;
     y = Math.min(y, H - 6);
-    const f = this.addFood(type, x, y, { vy: 30 });
+    const f = this.addFood(type, x, y, Object.assign({ vy: 30 }, opts));
     this.stats.fed++;
     this.events.emit('feed', { food: f });
     return f;
+  }
+
+  // The sex a newcomer should be so the tank's grown-ups pair up.
+  balancedSex(sp) {
+    let f = 0;
+    let m = 0;
+    for (const c of this.creatures) if (c.sp === sp && !c.dead) c.sex === 'f' ? f++ : m++;
+    return f === m ? (Math.random() < 0.5 ? 'f' : 'm') : f < m ? 'f' : 'm';
   }
 
   adopt(sp, x, y) {
@@ -750,18 +776,18 @@ export class World {
         if (!wet) return { ok: false, msg: `${def.plural} need to live in the pond.` };
         const st = def.adultStage;
         const yy = sp === 'goldfish' ? clamp(y, t.waterLevel + 10, sy - 10) : sy;
-        c = this.spawn(sp, x, yy, { stage: st });
+        c = this.spawn(sp, x, yy, { stage: st, sex: this.balancedSex(sp) });
         break;
       }
       case 'frog': {
         if (!wet) return { ok: false, msg: 'Tadpoles need water! Tap the pond.' };
-        for (let i = 0; i < 3; i++) c = this.spawn('frog', x + rrange(-10, 10), clamp(y, t.waterLevel + 10, sy - 10), { stage: 'tadpole' });
+        for (let i = 0; i < 3; i++) c = this.spawn('frog', x + rrange(-10, 10), clamp(y, t.waterLevel + 10, sy - 10), { stage: 'tadpole', sex: this.balancedSex('frog') });
         return { ok: !!c, c, msg: 'Three wriggly tadpoles! One day they will be frogs.' };
       }
       case 'turtle': {
         const st = 'adult';
-        if (wet) c = this.spawn('turtle', x, clamp(y, t.waterLevel + 10, sy - 14), { stage: st });
-        else if (Math.abs(x - (ZONE_X.pond[0] + ZONE_X.pond[1]) / 2) < 380) c = this.spawn('turtle', x, null, { stage: st });
+        if (wet) c = this.spawn('turtle', x, clamp(y, t.waterLevel + 10, sy - 14), { stage: st, sex: this.balancedSex('turtle') });
+        else if (Math.abs(x - (ZONE_X.pond[0] + ZONE_X.pond[1]) / 2) < 380) c = this.spawn('turtle', x, null, { stage: st, sex: this.balancedSex('turtle') });
         else return { ok: false, msg: 'Turtles like to be near the pond.' };
         if (c && !wet) c.mode = 'walk';
         break;
@@ -790,7 +816,7 @@ export class World {
       }
       case 'butterfly': {
         if (wet) return { ok: false, msg: 'Caterpillars would get soggy in the pond!' };
-        c = this.spawn('butterfly', x, null, { stage: 'caterpillar' });
+        c = this.spawn('butterfly', x, null, { stage: 'caterpillar', sex: this.balancedSex('butterfly') });
         const s = c && this.plants.find((p) => !p.dead && !p.def.aquatic && Math.abs(p.x - x) < 120 && p.shape.slots.some((k) => k.kind === 'leaf'));
         if (s) {
           const slot = s.shape.slots.find((k) => k.kind === 'leaf');
@@ -806,18 +832,18 @@ export class World {
       }
       case 'worm': {
         if (x < ZONE_X.jungle[0] - 20) return { ok: false, msg: 'Earthworms like the dark jungle soil.' };
-        c = this.spawn('worm', x, sy + 40, { stage: 'adult' });
+        c = this.spawn('worm', x, sy + 40, { stage: 'adult', sex: this.balancedSex('worm') });
         break;
       }
       case 'bee':
       case 'fruitfly': {
-        c = this.spawn(sp, x, Math.min(y, sy - 30), { stage: 'adult' });
+        c = this.spawn(sp, x, Math.min(y, sy - 30), { stage: 'adult', sex: this.balancedSex(sp) });
         if (c) c.mode = 'fly';
         break;
       }
       default: {
         if (wet) return { ok: false, msg: `${def.plural} would get soggy in the pond!` };
-        c = this.spawn(sp, x, null, { stage: def.adultStage });
+        c = this.spawn(sp, x, null, { stage: def.adultStage, sex: this.balancedSex(sp) });
       }
     }
     if (!c) return { ok: false, msg: 'Hmm, could not fit one in there.' };
@@ -924,6 +950,43 @@ export class World {
     return n;
   }
 
+  // Keeper chores for the equipment that wears down over time.
+  refillMister(z) {
+    if (!this.env[z] || this.env[z].water == null) return false;
+    this.env[z].water = 1;
+    this.events.emit('chore', { kind: 'refill', zone: z });
+    return true;
+  }
+  rinseFilter() {
+    this.env.pond.filterClean = 1;
+    this.splash(1036, this.terrain.waterLevel, 0.6);
+    this.events.emit('chore', { kind: 'rinse', zone: 'pond' });
+  }
+  topUpPond() {
+    const t = this.terrain;
+    const p = this.env.pond;
+    p.evap = 0;
+    // fill back to the line, or as close as the banks allow
+    for (let y = p.full; y < t.waterLevel; y += CELL) if (this.setWaterLevel(y)) break;
+    this.env.lowWater = 0;
+    this.splash(810, t.waterLevel, 1);
+    this.events.emit('chore', { kind: 'topup', zone: 'pond' });
+  }
+  // Warm water and lamps slowly evaporate the pond below its line.
+  evaporate(dt) {
+    const t = this.terrain;
+    const p = this.env.pond;
+    if (p.full == null) p.full = t.waterLevel;
+    const drop = t.waterLevel - p.full;
+    this.env.lowWater = clamp01((drop - 12) / 36);
+    if (drop >= 48 || drop < -8) return;
+    p.evap += (dt * (0.6 + Math.max(0, p.temp - 18) * 0.08 + p.lamp * 0.5) * CELL) / (DAY_LEN * 0.6);
+    if (p.evap >= CELL) {
+      p.evap -= CELL;
+      this.setWaterLevel(t.waterLevel + CELL);
+    }
+  }
+
   tapGlass(x, y) {
     const list = this.hashC.query(x, y, 150);
     let n = 0;
@@ -1000,10 +1063,15 @@ export class World {
       this.plantTick = 0;
       for (const p of this.plants) p.aphids = 0;
       let wp = 0;
+      const green = { desert: 0, jungle: 0 };
       for (let i = this.plants.length - 1; i >= 0; i--) {
         const p = this.plants[i];
         p.update(pdt, this);
         if (p.def.aquatic && !p.dead) wp += p.growth * (p.def.oxygen ? 1 : 0.4);
+        else if (!p.dead && p.health > 0.5) {
+          const z = env.zoneAt(p.x);
+          if (green[z] != null) green[z] += p.growth * (p.def.h > 50 ? 1.5 : 1);
+        }
         if (p.dead && p.witherT > DAY_LEN * 0.6) {
           const z = env.zoneAt(p.x);
           if (env.fertility[z] != null) env.fertility[z] = Math.min(1.2, env.fertility[z] + 0.05);
@@ -1011,7 +1079,9 @@ export class World {
         }
       }
       env.waterPlants = wp;
+      env.greenery = green;
     }
+    this.evaporate(dt);
 
     // creatures
     const cs = this.creatures;
@@ -1119,7 +1189,7 @@ export class World {
   updateEquipment(dt) {
     const env = this.env;
     // filter & bubblers aerate
-    let bub = env.pond.filter;
+    let bub = env.filterFlow;
     for (const d of this.decor) {
       if (d.def.oxygen) {
         env.pond.oxygen = Math.min(1.15, env.pond.oxygen + d.def.oxygen * 0.004 * dt);
@@ -1127,14 +1197,20 @@ export class World {
       }
       if (this.fx && d.def.bubbles && chance(dt * d.def.bubbles * 3)) this.fx.bubble(d.x + rrange(-4, 4), d.y - (d.type === 'chest' ? 18 : d.type === 'diver' ? 30 : 6));
     }
-    if (this.fx && env.pond.filter > 0 && chance(dt * env.pond.filter * 8)) {
+    if (this.fx && env.filterFlow > 0 && chance(dt * env.filterFlow * 8)) {
       this.fx.bubble(1036 + rrange(-4, 4), this.terrain.waterLevel + 30 + rrange(0, 40));
     }
     // misters make it rain
     if (this.fx) {
       for (const z of ['desert', 'jungle']) {
-        const m = env[z].mister;
+        const m = env.misting(z);
         if (m > 0.02) this.fx.rain(MISTER_X[z], m, dt, this.terrain);
+      }
+      // a humid jungle breathes out wisps of ground mist
+      const hum = env.jungle.moist;
+      if (hum > 0.55 && chance(dt * (hum - 0.55) * 3)) {
+        const x = rrange(ZONE_X.jungle[0] + 20, W - 20);
+        this.fx.mist(x, this.terrain.surfaceY(x) - rrange(4, 16));
       }
     }
   }
@@ -1171,6 +1247,7 @@ export class World {
     this.seed = d.seed;
     this.terrain.load(d.terrain);
     this.env.load(d.env);
+    if (!d.env.pond || d.env.pond.full == null) this.env.pond.full = this.terrain.waterLevel;
     this.style = Object.assign(this.style, d.style || {});
     this.stats = Object.assign(this.stats, d.stats || {});
     this.history = d.history || [];

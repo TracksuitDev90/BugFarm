@@ -16,6 +16,10 @@ import { Plant } from '../entities/plant.js';
 import { force } from '../ai/brain.js';
 import { fmtTemp, clamp, clamp01 } from '../util/math.js';
 import { rrange } from '../util/rng.js';
+import { zoneBand, zoneStatus, tankNeeds, ZONE_NAMES, listWords, plural } from '../sim/care.js';
+import { maxLevel } from '../data/progression.js';
+import { GAUGE_AT } from '../render/renderer.js';
+import { MISTER_X } from '../world/environment.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 function el(tag, attrs = {}, ...kids) {
@@ -43,6 +47,8 @@ const TOOLS = [
   { id: 'climate', icon: 'thermo', label: 'Climate' },
   { id: 'journal', icon: 'book', label: 'Journal' },
 ];
+// which unlock list each tool's tray draws from
+const TOOL_KIND = { feed: 'feed', adopt: 'adopt', plant: 'plant', decor: 'decor' };
 const LENSES = [
   { id: 'none', label: '' },
   { id: 'temp', label: 'Temperature view' },
@@ -58,7 +64,12 @@ const ZONES = [
 ];
 const TIPS = [
   'Drag to look around. Pinch or scroll to zoom.',
+  "The clipboard (top right) shows what your critters need and your farm's goals.",
   'Tap any critter to see what it is thinking.',
+  'Zone temperatures up top turn red when too hot and blue when too chilly.',
+  'Each zone levels up as you finish its goals. New critters and snacks unlock!',
+  'Misters run on a water bottle. Refill it before the air dries out.',
+  'The weather changes every day or so. Check the forecast on the clipboard.',
   'Tap the glass to give everyone a little startle.',
   'Try the lens button (top right) to see heat, damp and scent trails.',
   'Turn the desert lamp way up and see where the ants go.',
@@ -114,7 +125,7 @@ export class UI {
     this.brush = 22;
     this.selected = null;
     this.moving = null;
-    this.tab = { adopt: 'all', plant: 'all', decor: 'items', journal: 'disc' };
+    this.tab = { adopt: 'all', plant: 'all', decor: 'items', journal: 'disc', clip: 'needs' };
     this.lensIdx = 0;
     this.hudT = 0;
     this.toastT = 0;
@@ -141,7 +152,9 @@ export class UI {
     const speedBox = el('div', { class: 'panel speed' }, this.playBtn, this.fastBtn);
     this.lensBtn = el('button', { class: 'btn iconbtn', 'aria-label': 'Science lens', title: 'Science lens', onclick: () => this.cycleLens() }, iconCanvas('lens', 28));
     const gear = el('button', { class: 'btn iconbtn', 'aria-label': 'Settings', title: 'Settings', onclick: () => this.openSettings() }, iconCanvas('gear', 28));
-    const hud = el('header', { id: 'hud' }, el('div', { class: 'hud-left' }, clock, speedBox), el('div', { class: 'hud-right' }, this.lensBtn, gear));
+    this.clipBadge = el('span', { class: 'badge hidden' });
+    this.clipBtn = el('button', { class: 'btn iconbtn clipbtn', 'aria-label': "Keeper's clipboard", title: "Keeper's clipboard: what needs doing, and your farm's goals", onclick: () => this.setTool('clip') }, iconCanvas('clip', 30), this.clipBadge);
+    const hud = el('header', { id: 'hud' }, el('div', { class: 'hud-left' }, clock, speedBox), el('div', { class: 'hud-right' }, this.clipBtn, this.lensBtn, gear));
     this.lensLabel = el('div', { id: 'lensLabel', class: 'panel hidden' });
     // zone chips
     this.zoneBox = el('nav', { id: 'zones', class: 'panel', 'aria-label': 'Jump to zone' });
@@ -153,8 +166,10 @@ export class UI {
     // toolbar
     this.toolbar = el('nav', { id: 'toolbar', class: 'panel', 'aria-label': 'Tools' });
     this.toolBtns = {};
+    this.newDots = {};
     for (const t of TOOLS) {
       const b = el('button', { class: 'tool', 'aria-label': t.label, title: t.label, onclick: () => this.setTool(t.id) }, iconCanvas(t.icon, 28), el('span', {}, t.label));
+      if (TOOL_KIND[t.id]) b.append((this.newDots[t.id] = el('i', { class: 'newdot hidden', title: 'Something new to try!' })));
       this.toolBtns[t.id] = b;
       this.toolbar.append(b);
     }
@@ -208,7 +223,10 @@ export class UI {
       this.renderSheet();
       this.sheet.classList.remove('hidden');
     }
+    this.clipBtn.classList.toggle('on', id === 'clip');
     this.card.classList.toggle('withsheet', id !== 'look');
+    // the tray has shown its NEW badges; next time they're old news
+    if (TOOL_KIND[id]) this.journal.progress.seen(TOOL_KIND[id]);
     this.sound.play('pop', 0.5);
   }
 
@@ -218,7 +236,7 @@ export class UI {
     const head = el('div', { class: 'sheet-head' });
     const body = el('div', { class: 'sheet-body' });
     const close = el('button', { class: 'card-close', 'aria-label': 'Close', onclick: () => this.setTool('look') }, '×');
-    const titles = { feed: 'Feed', adopt: 'Critters', plant: 'Plants', decor: 'Decorate', shape: 'Shape the tank', climate: 'Climate' };
+    const titles = { feed: 'Feed', adopt: 'Critters', plant: 'Plants', decor: 'Decorate', shape: 'Shape the tank', climate: 'Climate', clip: window.innerWidth < 560 ? 'Clipboard' : "Keeper's clipboard" };
     head.append(el('div', { class: 'title' }, titles[this.tool] || ''));
     if (this.tool === 'adopt' || this.tool === 'plant') {
       const tabs = el('div', { class: 'tabs' });
@@ -228,6 +246,18 @@ export class UI {
           this.renderSheet();
         } }, z[0].toUpperCase() + z.slice(1));
         tabs.append(b);
+      }
+      head.append(tabs);
+    }
+    if (this.tool === 'clip') {
+      const tabs = el('div', { class: 'tabs' });
+      const prog = this.journal.progress;
+      for (const z of ['needs', 'desert', 'pond', 'jungle']) {
+        const lv = z === 'needs' ? '' : this.journal.sandbox || prog.legacy ? '' : ` ★${prog.levels[z]}`;
+        tabs.append(el('button', { class: this.tab.clip === z ? 'on' : '', onclick: () => {
+          this.tab.clip = z;
+          this.renderSheet();
+        } }, (z === 'needs' ? 'To do' : ZONE_NAMES[z]) + lv));
       }
       head.append(tabs);
     }
@@ -264,6 +294,9 @@ export class UI {
       case 'climate':
         this.buildClimate(body);
         break;
+      case 'clip':
+        this.buildClipboard(body);
+        break;
       default:
         break;
     }
@@ -284,6 +317,7 @@ export class UI {
       } });
       b.append(it.canvas(), el('div', {}, it.name));
       if (it.count) b.append(el('span', { class: 'count' }, it.count));
+      if (it.fresh) b.append(el('span', { class: 'new' }, 'NEW'));
       if (it.locked) b.append(el('span', { class: 'lock' }, iconCanvas('lock', 22)));
       tray.append(b);
     }
@@ -293,8 +327,16 @@ export class UI {
     return tray;
   }
 
+  // Tray entries for a kind of unlockable: locked ones say how to get them.
+  lockInfo(kind, id) {
+    const j = this.journal;
+    const ok = j.canUse(kind, id);
+    return { locked: !ok, lockHint: ok ? '' : j.lockHint(kind, id), fresh: ok && j.progress.isFresh(kind, id) };
+  }
+
   buildFeed(body) {
-    const items = FOOD_ORDER.map((id) => ({ id, name: FOODS[id].name, canvas: () => artCanvas([64, 52], [-11, -12, 11, 3], (g) => drawFood(g, FOODS[id], 0)) }));
+    const items = FOOD_ORDER.map((id) => Object.assign({ id, name: FOODS[id].name, canvas: () => artCanvas([64, 52], [-11, -12, 11, 3], (g) => drawFood(g, FOODS[id], 0)) }, this.lockInfo('feed', id)));
+    if (!this.journal.canUse('feed', this.choice.feed)) this.choice.feed = items.find((it) => !it.locked).id;
     const say = (id) => {
       const fans = lovedBy(id, SPECIES).map((sp) => SPECIES[sp].plural).slice(0, 5);
       this.hint.innerHTML = `<b>${esc(FOODS[id].name)}</b> — loved by ${fans.length ? esc(fans.join(', ')) : 'hmm, nobody much'}. Tap the tank to drop it; hold to sprinkle.`;
@@ -312,20 +354,22 @@ export class UI {
     const items = list.map((sp) => {
       const st = sp === 'frog' ? 'tadpole' : sp === 'butterfly' ? 'caterpillar' : sp === 'ant' ? 'queen' : SPECIES[sp].adultStage;
       const pose = sp === 'goldfish' || st === 'tadpole' ? 'swim' : sp === 'bee' ? 'fly' : 'idle';
-      return {
+      return Object.assign({
         id: sp,
         name: adoptLabel(sp),
         count: `${this.world.count(sp)}/${SPECIES[sp].maxPop}`,
         canvas: () => (sp === 'worm' ? wormIcon() : creatureArt(sp, st, pose)),
-      };
+      }, this.lockInfo('adopt', sp));
     });
+    if (this.choice.adopt && !this.journal.canUse('adopt', this.choice.adopt)) this.choice.adopt = null;
     const say = (sp) => {
       if (!sp) {
         this.hint.textContent = 'Pick a critter, then tap where it should live.';
         return;
       }
       const d = SPECIES[sp];
-      this.hint.innerHTML = `<b>${esc(adoptLabel(sp))}</b> — ${esc(d.blurb)}`;
+      const u = this.settings.units;
+      this.hint.innerHTML = `<b>${esc(adoptLabel(sp))}</b> — ${esc(d.blurb)} <i>Comfy at ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)}${d.moist[0] >= 0 && d.moist[1] >= 0.3 ? ' in damp air' : ''}.</i>`;
     };
     this.tray(body, items, this.choice.adopt, (it) => {
       this.choice.adopt = it.id;
@@ -337,14 +381,15 @@ export class UI {
   buildPlants(body) {
     const z = this.tab.plant;
     const list = PLANT_ORDER.filter((id) => z === 'all' || PLANTS[id].zone === z);
-    const items = list.map((id) => ({
+    const items = list.map((id) => Object.assign({
       id,
       name: PLANTS[id].name,
       canvas: () => {
         const p = new Plant(id, 0, 0, { growth: 1, waterY: -50, seed: 7 });
         return artCanvas([64, 52], p.shape.box, (g) => drawPlant(g, p, 0));
       },
-    }));
+    }, this.lockInfo('plant', id)));
+    if (this.choice.plant && !this.journal.canUse('plant', this.choice.plant)) this.choice.plant = null;
     const say = (id) => {
       if (!id) {
         this.hint.textContent = 'Pick a plant, then tap where to plant it.';
@@ -365,16 +410,13 @@ export class UI {
     const list = DECOR_ORDER;
     const items = list.map((id) => {
       const d = DECOR[id];
-      const unlocked = this.journal.isDecorUnlocked(id);
-      const by = !unlocked ? this.journal.unlockerOf('decor', id) : null;
-      return {
+      return Object.assign({
         id,
         name: d.name,
-        locked: !unlocked,
-        lockHint: by ? `discover “${by.title}”. Hint: ${by.hint}` : '',
         canvas: () => artCanvas([64, 52], decorBox(d), (g) => DECOR_ART[id](g, 0)),
-      };
+      }, this.lockInfo('decor', id));
     });
+    if (this.choice.decor && !this.journal.canUse('decor', this.choice.decor)) this.choice.decor = null;
     const say = (id) => {
       if (!id) {
         this.hint.textContent = 'Pick a decoration and tap to place it. Tap an existing one to move or remove it.';
@@ -463,6 +505,8 @@ export class UI {
     const t = this.world.terrain;
     if (!this.world.setWaterLevel(t.waterLevel + dy)) this.toast(dy < 0 ? 'Splash! Any more and the pond would overflow.' : 'That is as low as it goes.', '!');
     else {
+      this.world.env.pond.full = t.waterLevel;
+      this.world.env.pond.evap = 0;
       this.sound.play('splash', 0.5);
       this.world.splash(810, t.waterLevel, 1);
     }
@@ -473,7 +517,7 @@ export class UI {
     const u = this.settings.units;
     const presets = el('div', { class: 'presets' });
     const pre = [
-      ['Just right', () => this.setClimate({ room: 21, desert: { lamp: 0.55, mister: 0 }, pond: { lamp: 0.15, filter: 0.5, heater: false }, jungle: { lamp: 0.25, mister: 0.35 } })],
+      ['Just right', () => this.setClimate({ room: 21, desert: { lamp: 0.5, mister: 0 }, pond: { lamp: 0.15, filter: 0.5, heater: false }, jungle: { lamp: 0.25, mister: 0.35 } })],
       ['Heat wave', () => this.setClimate({ room: 28, desert: { lamp: 1, mister: 0 }, pond: { lamp: 0.8, heater: true, heaterTarget: 31 }, jungle: { lamp: 0.9, mister: 0 } })],
       ['Cold snap', () => this.setClimate({ room: 9, desert: { lamp: 0, mister: 0 }, pond: { lamp: 0, heater: true, heaterTarget: 10 }, jungle: { lamp: 0, mister: 0.2 } })],
       ['Rainy day', () => this.setClimate({ desert: { mister: 0.7 }, jungle: { mister: 1 } })],
@@ -485,6 +529,13 @@ export class UI {
       this.toast(`${n}! Watch how everyone reacts.`, 'thermo');
     } }, n));
     body.append(presets);
+    // the weather outside, and what's coming
+    this.weatherLine = el('span', { class: 'wx' });
+    const wxToggle = el('input', { type: 'checkbox', checked: env.weatherOn, 'aria-label': 'Changing weather', onchange: (e) => {
+      env.weatherOn = e.target.checked;
+      this.updateClimate();
+    } });
+    body.append(el('div', { class: 'row', style: 'margin-bottom:6px' }, iconCanvas('sun', 22), this.weatherLine, el('label', { class: 'mini-toggle', title: 'When off, the weather stays mild' }, wxToggle, 'Changing weather')));
     // lights
     const lights = el('div', { class: 'row', style: 'margin-bottom:8px' }, el('span', {}, 'Room lights:'));
     for (const [k, l] of [['auto', 'Day & night'], ['day', 'Always day'], ['night', 'Always night']]) {
@@ -496,33 +547,49 @@ export class UI {
     body.append(lights);
     const roomOut = el('output', {}, fmtTemp(env.roomSet, u));
     body.append(
-      el('div', { class: 'slider', style: 'grid-template-columns:120px 1fr 52px;margin-bottom:6px' }, el('span', {}, 'Room thermostat'),
+      el('div', { class: 'slider', style: 'grid-template-columns:120px 1fr 52px;margin-bottom:6px' }, el('span', { title: 'Warms or cools the whole tank, all three zones at once' }, 'Room thermostat'),
         el('input', { type: 'range', min: 6, max: 30, step: 1, value: env.roomSet, 'aria-label': 'Room thermostat', oninput: (e) => {
           env.roomSet = +e.target.value;
           roomOut.textContent = fmtTemp(env.roomSet, u);
         } }), roomOut)
     );
     const grid = el('div', { class: 'zones3' });
-    const slider = (label, get, set, fmt = (v) => Math.round(v * 100) + '%', min = 0, max = 1, step = 0.05) => {
+    const slider = (label, help, get, set, fmt = (v) => Math.round(v * 100) + '%', min = 0, max = 1, step = 0.05) => {
       const out = el('output', {}, fmt(get()));
       const r = el('input', { type: 'range', min, max, step, value: get(), 'aria-label': label, oninput: (e) => {
         set(+e.target.value);
         out.textContent = fmt(+e.target.value);
+        this.updateClimate();
       } });
-      return el('div', { class: 'slider' }, el('span', {}, label), r, out);
+      return el('div', { class: 'slider', title: help }, el('span', {}, label), r, out);
     };
     this.climateEls = {};
     const zc = (name, title, icon, inner) => {
       const big = el('span', { class: 'big' });
       const read = el('div', { class: 'readouts' });
-      this.climateEls[name] = { big, read };
-      const c = el('div', { class: 'zonecard' }, el('h3', {}, iconCanvas(icon, 24), title, big), read, ...inner);
+      const gauges = el('div', { class: 'gauges' });
+      const advice = el('div', { class: 'advice' });
+      this.climateEls[name] = { big, read, gauges, advice };
+      const c = el('div', { class: 'zonecard', 'data-z': name }, el('h3', {}, iconCanvas(icon, 24), title, big), gauges, advice, read, ...inner);
       grid.append(c);
+      return c;
+    };
+    const bottle = (z) => {
+      const m = el('div', { class: 'meter bottle' }, el('i'));
+      const b = el('button', { class: 'btn small blue', onclick: () => {
+        this.world.refillMister(z);
+        this.sound.play('splash', 0.4);
+        this.toast(`Glug glug! The ${z} mister bottle is full again.`, 'drop');
+        this.updateClimate();
+      } }, 'Refill');
+      this.climateEls[z].bottle = m;
+      return el('div', { class: 'equip', title: 'The mister sprays from this bottle. When it runs dry the air dries out.' }, el('span', {}, 'Mister water'), m, b);
     };
     zc('desert', 'Desert', 'sun', [
-      slider('Heat lamp', () => env.desert.lamp, (v) => (env.desert.lamp = v)),
-      slider('Mister', () => env.desert.mister, (v) => (env.desert.mister = v)),
+      slider('Heat lamp', 'Warms the desert air, and makes a hot basking spot right under the lamp', () => env.desert.lamp, (v) => (env.desert.lamp = v)),
+      slider('Mister', 'Sprays fine rain: damper air, a little cooler. Uses water from its bottle', () => env.desert.mister, (v) => (env.desert.mister = v)),
     ]);
+    grid.lastChild.append(bottle('desert'));
     const heaterOut = el('output', {}, fmtTemp(env.pond.heaterTarget, u));
     const heaterRange = el('input', { type: 'range', min: 6, max: 34, step: 1, value: env.pond.heaterTarget, 'aria-label': 'Heater temperature', oninput: (e) => {
       env.pond.heaterTarget = +e.target.value;
@@ -532,28 +599,51 @@ export class UI {
     this.pondMeters = el('div', { class: 'meters' });
     zc('pond', 'Pond', 'drop', [
       this.pondMeters,
-      slider('Lamp', () => env.pond.lamp, (v) => (env.pond.lamp = v)),
-      slider('Filter', () => env.pond.filter, (v) => (env.pond.filter = v)),
-      el('div', { class: 'slider' }, el('label', { style: 'display:flex;gap:4px;align-items:center' }, heaterToggle, 'Heater'), heaterRange, heaterOut),
+      slider('Lamp', 'Light and a little warmth. Plants like light, but so does algae', () => env.pond.lamp, (v) => (env.pond.lamp = v)),
+      slider('Filter', 'Pumps and cleans the water: more air, less cloud and algae', () => env.pond.filter, (v) => (env.pond.filter = v)),
+      el('div', { class: 'slider', title: 'Holds the water at this temperature, whatever the room does' }, el('label', { style: 'display:flex;gap:4px;align-items:center' }, heaterToggle, 'Heater'), heaterRange, heaterOut),
     ]);
+    const chore = (label, cls, fn) => el('button', { class: 'btn small' + (cls ? ' ' + cls : ''), onclick: () => {
+      fn();
+      this.updateClimate();
+    } }, label);
     grid.lastChild.append(
       el('div', { class: 'row', style: 'margin-top:4px' },
-        el('button', { class: 'btn small blue', onclick: () => {
+        chore('Clean pond', 'blue', () => {
           const n = this.world.cleanPond();
           this.sound.play('splash', 0.6);
           this.toast(n ? `Swish! Siphoned out ${n} bits of old food.` : 'Swish! The pond got a little rinse.', 'drop');
-        } }, 'Clean pond'),
-        el('button', { class: 'btn small', onclick: () => {
+        }),
+        chore('Rinse filter', '', () => {
+          this.world.rinseFilter();
+          this.sound.play('splash', 0.4);
+          this.toast('Squeeze, rinse, squeeze! The filter sponge is clean.', 'drop');
+        }),
+        chore('Top up', '', () => {
+          this.world.topUpPond();
+          this.sound.play('splash', 0.5);
+          this.toast('Topped the pond back up to its line.', 'drop');
+        }),
+        chore('Tidy leftovers', '', () => {
           const n = this.world.tidyLand();
           this.toast(n ? `Tidied up ${n} squishy leftovers.` : 'Nothing squishy to tidy up.', 'leaf');
-        } }, 'Tidy leftovers'))
+        }))
     );
     zc('jungle', 'Jungle', 'leaf', [
-      slider('Heat lamp', () => env.jungle.lamp, (v) => (env.jungle.lamp = v)),
-      slider('Mister', () => env.jungle.mister, (v) => (env.jungle.mister = v)),
+      slider('Heat lamp', 'Warms the jungle air', () => env.jungle.lamp, (v) => (env.jungle.lamp = v)),
+      slider('Mister', 'Rainforest drizzle: damp air for snails, worms and frogs. Uses water from its bottle', () => env.jungle.mister, (v) => (env.jungle.mister = v)),
     ]);
+    grid.lastChild.append(bottle('jungle'));
     body.append(grid);
-    this.updateClimate();
+    this.updateClimate(true);
+    if (this.flashZone) {
+      const card = grid.querySelector(`[data-z="${this.flashZone}"]`);
+      this.flashZone = null;
+      if (card) {
+        card.classList.add('flash');
+        requestAnimationFrame(() => card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      }
+    }
   }
 
   setClimate(c) {
@@ -564,21 +654,225 @@ export class UI {
     }
   }
 
-  updateClimate() {
+  // A thermometer-style bar: the comfy range shaded green, a pin for now.
+  gaugeHTML(v, lo, hi, min, max, cls, label) {
+    const pct = (x) => clamp01((x - min) / (max - min)) * 100;
+    return `<div class="gauge ${cls}" title="${esc(label)}"><div class="track"><b style="left:${pct(lo)}%;width:${Math.max(1.5, pct(hi) - pct(lo))}%"></b><i style="left:${pct(v)}%"></i></div></div>`;
+  }
+
+  // How a zone's critters feel about the climate, in a sentence.
+  zoneAdvice(st) {
+    const b = st.band;
+    const names = (sps) => listWords(sps.slice(0, 3).map((sp) => plural(sp, 2)));
+    if (st.ok) return b.sps.length ? `<span class="good">Just right for the ${esc(names(b.sps))}.</span>` : '<span class="good">All set for whoever moves in.</span>';
+    const out = [];
+    if (st.tState !== 'ok') out.push(`Too ${st.tState === 'hot' ? 'hot' : 'chilly'} for the ${esc(names(st.tState === 'hot' ? b.tHi : b.tLo))}`);
+    if (st.mState !== 'ok') out.push(`too ${st.mState === 'dry' ? 'dry' : 'soggy'} for the ${esc(names(st.mState === 'dry' ? b.mLo : b.mHi))}`);
+    if (st.water === 'air') out.push('the water is short of air');
+    else if (st.water === 'cloudy') out.push('the water is cloudy');
+    const t = out.join(', and ');
+    return `<span class="bad sev${st.sev}">${t[0].toUpperCase() + t.slice(1)}.</span>`;
+  }
+
+  updateClimate(force) {
     if (!this.climateEls || this.tool !== 'climate') return;
     const env = this.world.env;
     const u = this.settings.units;
     const d = this.climateEls;
     const wet = (m) => (m < 0.15 ? 'bone dry' : m < 0.35 ? 'dry' : m < 0.6 ? 'a bit damp' : m < 0.8 ? 'damp' : 'soggy');
-    d.desert.big.textContent = fmtTemp(env.desert.temp, u);
+    const wx = env.weather;
+    const fc = env.forecast;
+    const hrs = Math.max(1, Math.round(((env.wx.change - env.time) / DAY_LEN) * 24));
+    this.weatherLine.innerHTML = `Weather: <b>${esc(wx.name)}</b>${wx.temp ? ` (${wx.temp > 0 ? '+' : ''}${Math.round(wx.temp)}°)` : ''}${fc && fc !== wx ? ` · next: ${esc(fc.name)} in ~${hrs}h` : ''}`;
+    for (const z of ['desert', 'pond', 'jungle']) {
+      const band = zoneBand(this.world, z);
+      const st = zoneStatus(this.world, z, band);
+      const e = d[z];
+      e.big.textContent = fmtTemp(st.T, u);
+      e.big.className = 'big ' + (st.tState === 'ok' ? 'ok' : st.tState);
+      let g = this.gaugeHTML(st.T, band.t[0], band.t[1], 0, 45, st.tState, 'Temperature') + `<span class="glabel">comfy ${fmtTemp(band.t[0], u)}–${fmtTemp(band.t[1], u)}</span>`;
+      if (band.m) g += this.gaugeHTML(st.M, band.m[0], band.m[1], 0, 1, 'damp ' + st.mState, 'Dampness') + `<span class="glabel">damp ${Math.round(st.M * 100)}%, comfy ${Math.round(band.m[0] * 100)}–${Math.round(band.m[1] * 100)}%</span>`;
+      e.gauges.innerHTML = g;
+      e.advice.innerHTML = this.zoneAdvice(st);
+      if (e.bottle) {
+        const w = env[z].water;
+        e.bottle.firstChild.style.width = Math.round(w * 100) + '%';
+        e.bottle.firstChild.style.background = w < 0.2 ? '#e2553f' : '#7cc0e6';
+      }
+    }
     d.desert.read.textContent = `Air is ${wet(env.desert.moist)} · sand under the lamp ${fmtTemp(env.tempAt(416, this.world.terrain.surfaceY(416) - 3, this.world.terrain), u)}`;
-    d.jungle.big.textContent = fmtTemp(env.jungle.temp, u);
-    d.jungle.read.textContent = `Air is ${wet(env.jungle.moist)} · ${Math.round(env.jungle.moist * 100)}% humid`;
-    d.pond.big.textContent = fmtTemp(env.pond.temp, u);
+    d.jungle.read.textContent = `Air is ${wet(env.jungle.moist)} · leafy plants keep it humid`;
     const p = env.pond;
     const meter = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
-    this.pondMeters.innerHTML = `<span>Air</span>${meter(p.oxygen, p.oxygen < 0.45 ? '#e2553f' : '#7cc0e6')}<span>Clear</span>${meter(p.clarity, p.clarity < 0.6 ? '#c98a4a' : '#77b255')}<span>Algae</span>${meter(p.algae, '#5f9e45')}`;
-    d.pond.read.textContent = p.oxygen < 0.45 ? 'The water is stuffy — fish need more air!' : p.clarity < 0.6 ? 'The water is getting cloudy.' : 'Water looks healthy.';
+    const fill = 1 - env.lowWater;
+    this.pondMeters.innerHTML = `<span>Air</span>${meter(p.oxygen, p.oxygen < 0.45 ? '#e2553f' : '#7cc0e6')}<span>Clear</span>${meter(p.clarity, p.clarity < 0.6 ? '#c98a4a' : '#77b255')}<span>Algae</span>${meter(p.algae, '#5f9e45')}<span>Filter</span>${meter(p.filterClean, p.filterClean < 0.35 ? '#c98a4a' : '#9aa0a6')}<span>Water</span>${meter(fill, fill < 0.6 ? '#e2553f' : '#4c8fd6')}`;
+    d.pond.read.textContent = p.oxygen < 0.45 ? 'The water is stuffy — fish need more air!' : p.clarity < 0.6 ? 'The water is getting cloudy.' : p.filterClean < 0.35 ? 'The filter sponge is clogged.' : env.lowWater > 0 ? 'Water is evaporating below the line.' : 'Water looks healthy.';
+  }
+
+  // ------------------------------------------------------------------ clipboard
+  // The keeper's clipboard: one place to see what needs doing right now, how
+  // each zone is doing, and the goals that grow the farm.
+  buildClipboard(body) {
+    const z = this.tab.clip;
+    this.clipEls = { z, needs: el('div', { class: 'needs' }), status: el('div', { class: 'zstatus' }), goals: el('div', { class: 'goals' }) };
+    if (z === 'needs') {
+      body.append(this.clipEls.status, el('h4', {}, 'Things to do'), this.clipEls.needs);
+    } else {
+      body.append(this.clipEls.status, el('h4', {}, 'Needs here'), this.clipEls.needs, this.clipEls.goals);
+      this.buildGoals(z, this.clipEls.goals);
+    }
+    this.needsKey = '';
+    this.updateClipboard(true);
+  }
+
+  buildGoals(z, box) {
+    const j = this.journal;
+    const prog = j.progress;
+    box.innerHTML = '';
+    if (j.sandbox || prog.legacy) {
+      box.append(el('p', { class: 'small' }, 'Everything is unlocked in this tank. Start a new farm from Settings to grow one zone at a time.'));
+      return;
+    }
+    const lv = prog.levels[z];
+    const max = maxLevel(z);
+    const stars = '★'.repeat(lv) + '☆'.repeat(max - lv);
+    box.append(el('h4', {}, `${ZONE_NAMES[z]} level ${lv} `, el('span', { class: 'stars' }, stars)));
+    const next = prog.nextUnlocks(z);
+    if (!next) {
+      box.append(el('p', {}, `The ${z} is fully grown! Every ${z} critter, snack and plant is yours.`));
+      return;
+    }
+    box.append(el('p', { class: 'small' }, `Finish these to reach level ${lv + 1}:`));
+    this.goalEls = [];
+    for (const g of prog.goals(z)) {
+      const bar = el('i');
+      const lab = el('span', { class: 'glab' });
+      const row = el('div', { class: 'goal' }, el('span', { class: 'tick' }), el('span', { class: 'gtext' }, g.text, g.tip ? el('small', {}, g.tip) : null), el('div', { class: 'meter' }, bar), lab);
+      this.goalEls.push({ g, row, bar, lab });
+      box.append(row);
+    }
+    const names = [];
+    for (const sp of next.critters || []) names.push(SPECIES[sp].plural);
+    for (const f of next.foods || []) names.push(FOODS[f].name);
+    for (const pl of next.plants || []) names.push(PLANTS[pl].name);
+    for (const d of next.decor || []) names.push(DECOR[d].name);
+    box.append(el('div', { class: 'unlocks' }, el('b', {}, 'Unlocks: '), names.join(' · ')));
+  }
+
+  updateClipboard(force) {
+    if (!this.clipEls || this.tool !== 'clip') return;
+    const w = this.world;
+    const u = this.settings.units;
+    const z = this.clipEls.z;
+    const zones = z === 'needs' ? ['desert', 'pond', 'jungle'] : [z];
+    // zone status rows
+    let html = '';
+    for (const zz of zones) {
+      const band = zoneBand(w, zz);
+      const st = zoneStatus(w, zz, band);
+      const damp = band.m ? `<span class="ztemp ${st.mState}" title="How damp the air is">${Math.round(st.M * 100)}%</span>${this.gaugeHTML(st.M, band.m[0], band.m[1], 0, 1, 'damp ' + st.mState, 'Dampness')}` : '<span></span><span></span>';
+      html += `<div class="zrow"><span class="zname">${ZONE_NAMES[zz]}</span><span class="ztemp ${st.tState}" title="Air temperature">${fmtTemp(st.T, u)}</span>${this.gaugeHTML(st.T, band.t[0], band.t[1], 0, 45, st.tState, 'Temperature')}${damp}<div class="zadvice">${this.zoneAdvice(st)}</div></div>`;
+    }
+    this.clipEls.status.innerHTML = html;
+    // needs (rebuilt only when they change, so buttons don't jump under a finger)
+    const needs = this.needs.filter((n) => z === 'needs' || n.zone === z || n.zone == null);
+    const key = needs.map((n) => n.text).join('|');
+    if (force || key !== this.needsKey) {
+      this.needsKey = key;
+      const box = this.clipEls.needs;
+      box.innerHTML = '';
+      const real = needs.filter((n) => n.sev > 0);
+      if (!real.length) box.append(el('div', { class: 'need ok' }, iconCanvas('heart', 22), el('span', {}, z === 'needs' ? 'Everyone is happy and comfy. Lovely keeping!' : `Nothing needs doing in the ${z} right now.`)));
+      for (const n of needs) {
+        const act = n.act ? el('button', { class: 'btn small' + (n.sev >= 2 ? ' yellow' : ''), onclick: () => this.doNeed(n) }, this.needLabel(n.act)) : null;
+        const named = n.zone && n.text.toLowerCase().includes(n.zone);
+        box.append(el('div', { class: 'need sev' + Math.floor(n.sev) }, iconCanvas(n.icon || 'leaf', 22), el('span', {}, (z === 'needs' && n.zone && !named ? `${ZONE_NAMES[n.zone]}: ` : '') + n.text), act));
+      }
+    }
+    if (this.goalEls) {
+      const prog = this.journal.progress;
+      for (const ge of this.goalEls) {
+        const gp = prog.goalProgress(z, ge.g);
+        ge.bar.style.width = Math.round(gp.f * 100) + '%';
+        ge.lab.textContent = gp.label;
+        ge.row.classList.toggle('done', gp.f >= 1);
+      }
+    }
+  }
+
+  needLabel(act) {
+    return { climate: 'Climate', feed: 'Feed', refill: 'Refill', clean: 'Clean', rinse: 'Rinse', topup: 'Top up', tidy: 'Tidy' }[act.kind] || 'Show me';
+  }
+
+  // Do (or open the controls for) whatever a need asks.
+  doNeed(n) {
+    const w = this.world;
+    const a = n.act;
+    switch (a.kind) {
+      case 'refill':
+        w.refillMister(a.zone);
+        this.sound.play('splash', 0.4);
+        this.toast(`Glug glug! The ${a.zone} mister bottle is full again.`, 'drop');
+        break;
+      case 'clean':
+        w.cleanPond();
+        this.sound.play('splash', 0.6);
+        this.toast('Swish! The pond is clean again.', 'drop');
+        break;
+      case 'rinse':
+        w.rinseFilter();
+        this.sound.play('splash', 0.4);
+        this.toast('The filter sponge is clean.', 'drop');
+        break;
+      case 'topup':
+        w.topUpPond();
+        this.sound.play('splash', 0.5);
+        this.toast('Topped the pond back up to its line.', 'drop');
+        break;
+      case 'tidy': {
+        const k = w.tidyLand();
+        this.toast(k ? `Tidied up ${k} squishy leftovers.` : 'All tidy.', 'leaf');
+        break;
+      }
+      case 'feed':
+        if (a.food) this.choice.feed = a.food;
+        this.setTool('feed');
+        if (a.zone) this.goZone(ZONES.find((zz) => zz.id === a.zone));
+        return;
+      default:
+        this.flashZone = a.zone;
+        this.setTool('climate');
+        if (a.zone) this.goZone(ZONES.find((zz) => zz.id === a.zone));
+        return;
+    }
+    this.refreshNeeds();
+    this.updateClipboard(true);
+  }
+
+  refreshNeeds() {
+    this.needs = tankNeeds(this.world, (k, id) => this.journal.canUse(k, id), (t) => fmtTemp(t, this.settings.units));
+    const urgent = this.needs.filter((n) => n.sev >= 1);
+    const top = urgent.length ? urgent[0].sev : 0;
+    this.clipBadge.textContent = urgent.length;
+    this.clipBadge.classList.toggle('hidden', !urgent.length);
+    this.clipBadge.className = 'badge' + (urgent.length ? '' : ' hidden') + (top >= 2 ? ' hot' : '');
+  }
+
+  // A zone grew: show off what's new.
+  levelUp(z, lv, unlocks) {
+    const names = [];
+    for (const sp of unlocks.adopt) names.push(SPECIES[sp].plural);
+    for (const f of unlocks.feed) names.push(FOODS[f].name);
+    for (const pl of unlocks.plant) names.push(PLANTS[pl].name);
+    for (const d of unlocks.decor) names.push(DECOR[d].name);
+    this.sound.play('sparkle', 0.9);
+    this.haptic(30);
+    this.toast(`<b>${ZONE_NAMES[z]} reached level ${lv}!</b><br>New: ${esc(names.join(', '))}`, 'star', true, 7000);
+    const zz = ZONES.find((k) => k.id === z);
+    if (zz) this.world.sparkle(zz.x, 300, 14);
+    this.clipBtn.classList.add('pulse');
+    setTimeout(() => this.clipBtn.classList.remove('pulse'), 4000);
+    if (this.tool === 'clip' || TOOL_KIND[this.tool]) this.renderSheet();
   }
 
   setSpeed(v, quiet) {
@@ -733,6 +1027,7 @@ export class UI {
         this.hooks.terrainChanged();
         return;
       default: {
+        if (this.tapEquipment(wx, wy)) return;
         const hit = this.pick(wx, wy);
         if (hit) {
           this.select(hit);
@@ -757,6 +1052,33 @@ export class UI {
         }
       }
     }
+  }
+
+  // The glass thermometers open the clipboard; a mister's bottle refills.
+  tapEquipment(wx, wy) {
+    const slop = 6 / Math.max(0.5, this.cam.zoom);
+    for (const [z, [x, y]] of Object.entries(GAUGE_AT)) {
+      if (Math.abs(wx - x) < 9 + slop && wy > y - 6 - slop && wy < y + (z === 'pond' ? 64 : 84) + slop) {
+        this.tab.clip = z;
+        this.setTool('clip');
+        return true;
+      }
+    }
+    for (const z of ['desert', 'jungle']) {
+      const x = MISTER_X[z];
+      if (Math.abs(wx - (x + 8)) < 14 + slop && wy < 10 + slop && wy > -24 - slop) {
+        if (this.world.env[z].water < 0.97) {
+          this.world.refillMister(z);
+          this.sound.play('splash', 0.4);
+          this.toast(`Glug glug! The ${z} mister bottle is full again.`, 'drop');
+        } else {
+          this.flashZone = z;
+          this.setTool('climate');
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   hold(wx, wy, held) {
@@ -935,7 +1257,12 @@ export class UI {
         this._chipT = performance.now();
         const t = e.traits;
         const chips = [mood];
-        chips.push(`Feels ${fmtTemp(e.T, u)}`);
+        const d = e.def;
+        chips.push(`Feels ${fmtTemp(e.T, u)} · likes ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)}`);
+        if (e.hunger > 0.55 && d.diet) {
+          const fav = Object.entries(e.diet).sort((a, b) => b[1] - a[1])[0];
+          if (fav) chips.push(`Hungry for ${fav[0]}${d.prey ? ' or ' + d.prey.map((p) => SPECIES[p].plural.toLowerCase()).slice(0, 2).join('/') : ''}`);
+        }
         if (t.bold > 0.66) chips.push('Brave');
         else if (t.bold < 0.34) chips.push('Shy');
         if (t.curious > 0.66) chips.push('Curious');
@@ -979,9 +1306,9 @@ export class UI {
       this.cardSub.textContent = e.def.shelter ? (inside.length ? `Inside: ${inside.map((c) => c.name).slice(0, 4).join(', ')}` : 'Nobody home right now.') : e.def.hive ? `Pollen stored: ${e.store || 0}` : e.def.feeder ? 'Drops food every morning at 8:00.' : 'Looking lovely.';
       this.cardMeters.innerHTML = '';
     } else if (e.kind === 'food') {
-      if (!this.portraitKey) {
-        this.portraitKey = 'f';
-        const p = artCanvas([72, 64], [-11, -12, 11, 3], (g) => drawFood(g, e.def, e.rot));
+      if (this.portraitKey !== 'f' + e.bites + e.rot) {
+        this.portraitKey = 'f' + e.bites + e.rot;
+        const p = artCanvas([72, 64], [-11, -12, 11, 3], (g) => drawFood(g, e.def, e.rot, 0.7, e.bites));
         p.className = 'portrait';
         this.portrait.replaceWith(p);
         this.portrait = p;
@@ -1010,10 +1337,13 @@ export class UI {
     return 'Content';
   }
 
+  // Drop a favourite snack beside a critter. It's a portion sized to how
+  // hungry they are, so a hungry critter munches it all the way down.
   treat(c) {
     let best = null;
     let bv = 0;
     for (const id of FOOD_ORDER) {
+      if (!this.journal.canUse('feed', id)) continue;
       let v = 0;
       for (const t of FOODS[id].tags) v = Math.max(v, c.diet[t] || 0);
       if (v > bv) {
@@ -1030,7 +1360,13 @@ export class UI {
     let y = c.y - 30;
     if (c.inWater || c.mode === 'swim') y = t.waterLevel - 10;
     if (c.mode === 'burrow') y = t.surfaceY(c.x) - 20;
-    this.world.dropFood(best, clamp(x, 10, W - 10), Math.max(14, y));
+    const need = (Math.max(0.25, c.hunger) * c.appetite) / (0.45 + 0.55 * bv);
+    const portion = clamp(need, c.appetite * 0.3, FOODS[best].amount);
+    const f = this.world.dropFood(best, clamp(x, 10, W - 10), Math.max(14, y), { amount: portion, max: portion });
+    // they spot it straight away
+    c.memory.ff = { kind: 'food', food: f, value: bv, name: f.def.name };
+    c.memory.ffT = this.world.time;
+    c.brain.think = 0;
     this.toast(`A ${FOODS[best].name.toLowerCase()} for ${c.name}!`, 'food');
   }
 
@@ -1055,9 +1391,15 @@ export class UI {
     this.hudT -= dt;
     if (this.hudT <= 0) {
       this.hudT = 0.25;
+      this.needT = (this.needT || 0) - 0.25;
+      if (this.needT <= 0 || !this.needs) {
+        this.needT = 1;
+        this.refreshNeeds();
+      }
       this.updateHUD();
       this.updateCard();
       this.updateClimate();
+      this.updateClipboard();
     }
     if (this.moving && !this.r.ghost) {
       /* ghost set on hover */
@@ -1073,7 +1415,20 @@ export class UI {
     const h12 = hh % 12 === 0 ? 12 : hh % 12;
     this.clockWhen.textContent = `Day ${env.day} · ${h12}:${String(mm).padStart(2, '0')}${ampm}`;
     const u = this.settings.units;
-    this.clockTemps.textContent = `Desert ${fmtTemp(env.desert.temp, u)} · Pond ${fmtTemp(env.pond.temp, u)} · Jungle ${fmtTemp(env.jungle.temp, u)}`;
+    // each zone's temperature, coloured against what its critters like
+    const parts = [];
+    for (const z of ['desert', 'pond', 'jungle']) {
+      const st = zoneStatus(this.world, z);
+      const arrow = st.tState === 'hot' ? '▲' : st.tState === 'cold' ? '▼' : st.mState === 'dry' ? ' dry' : '';
+      const cls = st.tState !== 'ok' ? st.tState : st.mState === 'dry' ? 'dry' : st.sev ? 'warn' : 'ok';
+      parts.push(`<span class="zt ${cls}">${ZONE_NAMES[z]} ${fmtTemp(st.T, u)}${arrow}</span>`);
+    }
+    const html = parts.join(' · ');
+    if (html !== this._tempsHTML) {
+      this._tempsHTML = html;
+      this.clockTemps.innerHTML = html;
+    }
+    for (const [id, kind] of Object.entries(TOOL_KIND)) this.newDots[id].classList.toggle('hidden', !this.journal.progress.anyFresh(kind) || this.journal.sandbox);
     const night = env.sun < 0.5;
     if (this._night !== night) {
       this._night = night;
@@ -1247,7 +1602,7 @@ export class UI {
       b.append(el('h4', {}, 'Care'));
       b.append(toggle('gentle', 'Gentle mode — nobody passes away from neglect while you are away', (v) => (this.world.gentle = v)));
       b.append(choice('away', 'While I am away', [['living', 'The tank keeps living'], ['paused', 'Pause the tank']]));
-      b.append(toggle('sandbox', 'Sandbox — unlock every decoration and style', (v) => {
+      b.append(toggle('sandbox', 'Sandbox — unlock every critter, snack, plant, decoration and style', (v) => {
         this.journal.sandbox = v;
       }));
       b.append(toggle('tips', 'Show tips'));
@@ -1274,22 +1629,22 @@ export class UI {
     });
   }
 
+  // onChoose('farm' | 'full' | 'empty')
   showWelcome(onChoose) {
     this.openModal('Welcome!', (b, head) => {
       head.querySelector('.card-close').remove();
       b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
-      b.append(el('p', {}, 'Feed them, decorate, change the weather, and try experiments: what happens if it gets too hot, too cold, or too dry? Your tank keeps living while you are away.'));
+      b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
+      const pick = (mode) => () => {
+        this.closeModal();
+        onChoose(mode);
+      };
       b.append(
         el('div', { class: 'welcome-choices' },
-          el('button', { class: 'btn green', onclick: () => {
-            this.closeModal();
-            onChoose(true);
-          } }, el('span', { class: 'title', style: 'font-size:20px' }, 'Full tank'), el('small', {}, 'Moved-in critters & plants')),
-          el('button', { class: 'btn yellow', onclick: () => {
-            this.closeModal();
-            onChoose(false);
-          } }, el('span', { class: 'title', style: 'font-size:20px' }, 'Empty tank'), el('small', {}, 'Build it all yourself')))
+          el('button', { class: 'btn green wide', onclick: pick('farm') }, el('span', { class: 'title', style: 'font-size:22px' }, 'Start my farm'), el('small', {}, 'Two critters per zone · unlock the rest')),
+          el('button', { class: 'btn yellow', onclick: pick('full') }, el('span', { class: 'title', style: 'font-size:18px' }, 'Sandbox: full tank'), el('small', {}, 'Everyone moved in, everything unlocked')),
+          el('button', { class: 'btn', onclick: pick('empty') }, el('span', { class: 'title', style: 'font-size:18px' }, 'Sandbox: empty tank'), el('small', {}, 'Build it all yourself')))
       );
     });
   }

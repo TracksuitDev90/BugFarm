@@ -914,6 +914,22 @@ export class Renderer {
     }
     // pond heater & filter
     const wl = t.waterLevel;
+    // the fill line on the glass, once the pond has evaporated below it
+    const pf = env.pond.full;
+    if (wl - pf > 6 && this.visible(840, pf, 160)) {
+      g.setLineDash([5, 4]);
+      g.beginPath();
+      g.moveTo(700, pf);
+      g.lineTo(980, pf);
+      g.lineWidth = 0.9;
+      g.strokeStyle = 'rgba(40,80,120,0.6)';
+      g.stroke();
+      g.setLineDash([]);
+      g.font = "7px 'Patrick Hand', sans-serif";
+      g.textAlign = 'left';
+      g.fillStyle = 'rgba(40,80,120,0.8)';
+      g.fillText('fill line', 704, pf - 2.5);
+    }
     if (this.visible(1000, wl, 140)) {
       const p = env.pond;
       g.beginPath();
@@ -953,21 +969,6 @@ export class Renderer {
       g.fillStyle = INK;
       g.textAlign = 'center';
       g.fillText('FILTER', 1036, wl - 28);
-      // the fill line on the glass, once the pond has evaporated below it
-      if (wl - p.full > 6 && this.visible(800, p.full, 300)) {
-        g.setLineDash([5, 4]);
-        g.beginPath();
-        g.moveTo(700, p.full);
-        g.lineTo(980, p.full);
-        g.lineWidth = 0.9;
-        g.strokeStyle = 'rgba(40,80,120,0.6)';
-        g.stroke();
-        g.setLineDash([]);
-        g.font = "7px 'Patrick Hand', sans-serif";
-        g.textAlign = 'left';
-        g.fillStyle = 'rgba(40,80,120,0.8)';
-        g.fillText('fill line', 704, p.full - 2.5);
-      }
       if (this.world.env.filterFlow > 0.02) {
         g.beginPath();
         for (let i = 0; i < 4; i++) {

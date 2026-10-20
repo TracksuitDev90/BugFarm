@@ -9,6 +9,8 @@
 //   comfy:  keep the zone's climate comfy for its residents for `hours`
 //   check:  a number read from the world (value) reaching n
 //   tip:    a nudge shown under the goal on the clipboard
+//   now:    only count it once the zone is at this level (event goals
+//           otherwise count early, so something that already happened counts)
 export const ZONE_PLAN = {
   desert: [
     {
@@ -113,8 +115,8 @@ export const ZONE_PLAN = {
       plants: ['sunflower'],
       decor: ['beeHouse'],
       goals: [
-        { id: 'j4pollen', text: 'Bees pollinate 6 flowers', kind: 'event', on: 'pollinate', n: 6, tip: 'Bees need flowers, and their bee hotel to raise young.' },
-        { id: 'j4sprout', text: 'A seed sprouts into a new plant', kind: 'event', on: 'sprout', n: 1, tip: 'Pollinated flowers drop seeds.' },
+        { id: 'j4pollen', text: 'Bees pollinate 6 flowers', kind: 'event', on: 'pollinate', sp: ['bee'], n: 6, tip: 'Bees need flowers, and their bee hotel to raise young.' },
+        { id: 'j4sprout', text: 'A seed sprouts into a new plant', kind: 'event', on: 'sprout', now: true, n: 1, tip: 'Pollinated flowers drop seeds.' },
         { id: 'j4comfy', text: 'Keep the jungle warm and damp for a whole day', kind: 'comfy', hours: 24 },
       ],
     },

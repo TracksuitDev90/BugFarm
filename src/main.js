@@ -54,7 +54,7 @@ function wireWorld() {
   w.gentle = settings.gentle;
   journal.attach(w);
   journal.onUnlock = (d) => ui && ready && ui.discovery(d);
-  journal.progress.onLevel = (z, lv, unlocks) => ui && ready && ui.levelUp(z, lv, unlocks);
+  journal.progress.onLevel = (z, lv, unlocks) => ui && ready && !journal.sandbox && ui.levelUp(z, lv, unlocks);
   w.events.on('sound', ({ name, x, y, p }) => {
     const cam = game.cam;
     const v = cam.view(20);
@@ -69,7 +69,8 @@ function wireWorld() {
   w.events.on('log', (l) => {
     if (!ui || !ready || w.awayMode) return;
     const now = performance.now();
-    if (l.icon === 'crown' || (l.icon === 'star' && !/^Discovery/.test(l.text)) || ((l.icon === 'heart' || l.icon === 'flower') && now - lastToast > 9000)) {
+    // discoveries and level-ups have their own bigger toasts
+    if (l.icon === 'crown' || (l.icon === 'star' && !/^Discovery|reached level/.test(l.text)) || ((l.icon === 'heart' || l.icon === 'flower') && now - lastToast > 9000)) {
       lastToast = now;
       ui.toast(l.text, l.icon === 'flower' ? 'flower' : l.icon);
     }
@@ -119,6 +120,8 @@ function newTank(mode) {
   g.renderer.tr.renderAll();
   ui.world = fresh;
   ui.select(null);
+  ui.choice.adopt = ui.choice.plant = ui.choice.decor = null;
+  ui.setTool('look');
   wireWorld();
   g.cam.reset();
   ready = true;
@@ -129,6 +132,10 @@ async function loadFromData(data, elapsedReal) {
   const w = game.world;
   w.load(data.world);
   journal.load(data.journal);
+  if (settings.sandbox !== journal.sandbox) {
+    settings.sandbox = journal.sandbox;
+    saveSettings(settings);
+  }
   game.speed = data.speed || 1;
   game.renderer.applyStyle();
   wireWorld();
@@ -159,6 +166,7 @@ async function boot() {
       try {
         const d = await importSave(file);
         saveGame({ world: { serialize: () => d.world }, cam: { serialize: () => d.cam }, speed: d.speed }, { serialize: () => d.journal });
+        ready = false; // don't let the page-hide save overwrite the import
         location.reload();
       } catch (e) {
         ui.toast('That file is not a Bug Farm save.', '!');

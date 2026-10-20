@@ -15,6 +15,7 @@ export class Journal {
     this.checkT = 0;
     this.offs = [];
     this.progress = new Progress();
+    this.progress.journal = this;
   }
 
   attach(world) {
@@ -120,7 +121,7 @@ export class Journal {
   }
 
   serialize() {
-    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize() };
+    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), sandbox: this.sandbox };
   }
   load(d) {
     if (!d) return;
@@ -128,8 +129,11 @@ export class Journal {
     this.flags = d.flags || {};
     this.counts = d.counts || {};
     this.met = d.met || {};
+    // sandbox or farm is a property of the tank (older saves keep the device setting)
+    if (d.sandbox != null) this.sandbox = !!d.sandbox;
     const onLevel = this.progress.onLevel;
     this.progress = new Progress();
+    this.progress.journal = this;
     this.progress.onLevel = onLevel;
     this.progress.load(d.progress);
     if (this.world) this.progress.attach(this.world);

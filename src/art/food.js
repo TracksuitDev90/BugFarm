@@ -442,6 +442,13 @@ function biteOut(g, b, lw) {
     g.lineWidth = lw;
     g.strokeStyle = INK;
     g.stroke();
+    // and round each tooth scallop, which the ring above can't reach
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI * 0.6 + i * 0.42;
+      circ(g, x + Math.cos(a) * r, y + Math.sin(a) * r, r * 0.26 + lw * 0.25);
+      g.lineWidth = lw;
+      g.stroke();
+    }
   }
   g.restore();
 }

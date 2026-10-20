@@ -21,6 +21,7 @@ export class Progress {
     this.comfy = { desert: 0, pond: 0, jungle: 0 }; // game seconds comfy at this level
     this.fresh = {}; // 'kind:id' -> true for unlocks the keeper hasn't looked at
     this.legacy = false; // tanks from before progression: everything open
+    this.journal = null; // set by the journal; a sandbox tank doesn't level up
     this.onLevel = null;
     this.world = null;
     this.offs = [];
@@ -56,6 +57,7 @@ export class Progress {
       for (let lv = this.levels[z] - 1; lv < plan.length; lv++) {
         for (const g of plan[lv].goals || []) {
           if (g.kind !== 'event' || g.on !== ev || this.done[g.id]) continue;
+          if (g.now && lv !== this.levels[z] - 1) continue;
           if (g.inZone && zoneOfEvent(w, d) !== z) continue;
           if (g.sp && !(d.c && g.sp.includes(d.c.sp))) continue;
           if (g.test && !g.test(d, w)) continue;
@@ -102,6 +104,7 @@ export class Progress {
   }
 
   levelUps() {
+    if (this.journal && this.journal.sandbox) return;
     for (const z of ZONES) {
       if (this.maxed(z)) continue;
       const goals = this.goals(z);

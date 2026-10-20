@@ -58,8 +58,7 @@ for (let i = 0; i < steps; i++) {
     // snacks twice a day in each zone, chosen for whoever lives there
     if (Math.round(env.hour) % 12 === 8) {
       for (const z of ['desert', 'pond', 'jungle']) {
-        const sps = [...new Set(residents(w, z).map((c) => c.sp))];
-        for (const f of favouriteFoods(sps, canUse, 2)) {
+        for (const f of favouriteFoods(residents(w, z).map((c) => c.diet), canUse, 2)) {
           const x = mid[z] + (Math.random() - 0.5) * 200;
           w.dropFood(f, x, z === 'pond' ? w.terrain.waterLevel - 20 : 60);
           fed++;

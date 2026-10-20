@@ -1,0 +1,61 @@
+<!doctype html>
+<html><body style="margin:0;background:#fff">
+<canvas id="c"></canvas>
+<script type="module">
+import { CREATURE_ART, PALETTES } from '../src/art/creatures.js';
+const params = new URLSearchParams(location.search);
+const size = +(params.get('size') || 512);
+const maskable = params.get('maskable') === '1';
+const c = document.getElementById('c');
+c.width = c.height = size;
+const g = c.getContext('2d');
+const s = size / 512;
+g.scale(s, s);
+// background: warm paper with a soft sky-to-sand split like the tank
+const r = maskable ? 0 : 110;
+g.beginPath();
+g.roundRect ? g.roundRect(0, 0, 512, 512, r) : g.rect(0, 0, 512, 512);
+g.clip();
+const grad = g.createLinearGradient(0, 0, 0, 512);
+grad.addColorStop(0, '#bfe3f2');
+grad.addColorStop(0.62, '#e9f3d8');
+grad.addColorStop(0.62, '#e8c483');
+grad.addColorStop(1, '#d9a35a');
+g.fillStyle = grad;
+g.fillRect(0, 0, 512, 512);
+// ground line
+g.beginPath();
+g.moveTo(0, 318);
+g.bezierCurveTo(120, 300, 380, 336, 512, 312);
+g.lineTo(512, 512);
+g.lineTo(0, 512);
+g.closePath();
+g.fillStyle = '#e8c483';
+g.fill();
+g.lineWidth = 8;
+g.strokeStyle = '#3a2a1f';
+g.stroke();
+// tunnel
+g.beginPath();
+g.moveTo(150, 316);
+g.bezierCurveTo(160, 380, 110, 400, 150, 450);
+g.lineWidth = 26;
+g.strokeStyle = '#5e3f29';
+g.lineCap = 'round';
+g.stroke();
+// ladybug hero
+const k = maskable ? 15 : 18;
+g.save();
+g.translate(250, maskable ? 262 : 252);
+g.scale(k, k);
+CREATURE_ART.ladybug.draw(g, { stage: 'adult', pose: 'idle', frame: 0, pal: PALETTES.ladybug[0], lw: 0.7, closed: false });
+g.restore();
+// little ant in the tunnel
+g.save();
+g.translate(150, 440);
+g.scale(5.5, 5.5);
+CREATURE_ART.ant.draw(g, { stage: 'worker', pose: 'idle', frame: 0, pal: PALETTES.ant[0], lw: 0.75, acc: 'hardhat' });
+g.restore();
+window.__done = true;
+</script>
+</body></html>

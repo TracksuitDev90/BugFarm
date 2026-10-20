@@ -1,0 +1,17 @@
+{
+  "name": "Bug Farm",
+  "short_name": "Bug Farm",
+  "description": "A cosy picture-book terrarium full of cute critters to care for and experiment with.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6ead0",
+  "theme_color": "#f6ead0",
+  "categories": ["games", "education", "kids"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

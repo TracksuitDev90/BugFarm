@@ -278,7 +278,7 @@ export class World {
       for (let xx = Math.floor(cx - rx); xx <= cx + rx; xx++) {
         if (xx >= 0 && xx < GW && t.top[xx] < t.groundTop[xx]) t.setGroundTop(xx, t.top[xx]);
       }
-      t.settleWater();
+      this.settlePond();
       return { stamped: true };
     }
     if (y == null) y = def.place === 'top' ? 0 : t.surfaceY(x);
@@ -899,7 +899,7 @@ export class World {
     }
     if (n) {
       this.sculpted = true;
-      t.settleWater();
+      this.settlePond();
       // keep decor sitting on the ground
       for (const d of this.decor) if (d.def.place !== 'top') d.y = t.surfaceY(d.x);
       for (const p of this.plants) {
@@ -968,10 +968,26 @@ export class World {
     p.evap = 0;
     // fill back to the line, or as close as the banks allow
     for (let y = p.full; y < t.waterLevel; y += CELL) if (this.setWaterLevel(y)) break;
+    // as full as the banks allow becomes the new line
+    p.full = Math.max(p.full, t.waterLevel);
     this.env.lowWater = 0;
     this.splash(810, t.waterLevel, 1);
     this.events.emit('chore', { kind: 'topup', zone: 'pond' });
   }
+  // After terrain changes the pond may overflow and drop. If the banks can no
+  // longer hold the old level, the fill line moves down with the water, so
+  // topping up can always reach it.
+  settlePond() {
+    const t = this.terrain;
+    const before = t.waterLevel;
+    t.settleWater();
+    const p = this.env.pond;
+    if (t.waterLevel > before && p.full != null && t.waterLevel > p.full) {
+      p.full = t.waterLevel;
+      p.evap = 0;
+    }
+  }
+
   // Warm water and lamps slowly evaporate the pond below its line.
   evaporate(dt) {
     const t = this.terrain;
@@ -1035,7 +1051,7 @@ export class World {
       this.waterTimer += dt;
       if (this.waterTimer > 0.4) {
         this.waterTimer = 0;
-        t.settleWater();
+        this.settlePond();
       }
     }
     const rv = t.version + ':' + t.waterVersion;

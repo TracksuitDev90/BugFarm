@@ -331,7 +331,7 @@ export class UI {
   lockInfo(kind, id) {
     const j = this.journal;
     const ok = j.canUse(kind, id);
-    return { locked: !ok, lockHint: ok ? '' : j.lockHint(kind, id), fresh: ok && j.progress.isFresh(kind, id) };
+    return { locked: !ok, lockHint: ok ? '' : j.lockHint(kind, id), fresh: ok && !j.sandbox && j.progress.isFresh(kind, id) };
   }
 
   buildFeed(body) {
@@ -666,8 +666,9 @@ export class UI {
     const names = (sps) => listWords(sps.slice(0, 3).map((sp) => plural(sp, 2)));
     if (st.ok) return b.sps.length ? `<span class="good">Just right for the ${esc(names(b.sps))}.</span>` : '<span class="good">All set for whoever moves in.</span>';
     const out = [];
-    if (st.tState !== 'ok') out.push(`Too ${st.tState === 'hot' ? 'hot' : 'chilly'} for the ${esc(names(st.tState === 'hot' ? b.tHi : b.tLo))}`);
-    if (st.mState !== 'ok') out.push(`too ${st.mState === 'dry' ? 'dry' : 'soggy'} for the ${esc(names(st.mState === 'dry' ? b.mLo : b.mHi))}`);
+    const who = (sps) => (sps.length ? ` for the ${esc(names(sps))}` : '');
+    if (st.tState !== 'ok') out.push(`Too ${st.tState === 'hot' ? 'hot' : 'chilly'}${who(st.tState === 'hot' ? b.tHi : b.tLo)}`);
+    if (st.mState !== 'ok') out.push(`too ${st.mState === 'dry' ? 'dry' : 'soggy'}${who(st.mState === 'dry' ? b.mLo : b.mHi)}`);
     if (st.water === 'air') out.push('the water is short of air');
     else if (st.water === 'cloudy') out.push('the water is cloudy');
     const t = out.join(', and ');
@@ -776,18 +777,28 @@ export class UI {
     this.clipEls.status.innerHTML = html;
     // needs (rebuilt only when they change, so buttons don't jump under a finger)
     const needs = this.needs.filter((n) => z === 'needs' || n.zone === z || n.zone == null);
-    const key = needs.map((n) => n.text).join('|');
+    // (the wording changes with the temperature, so it updates in place)
+    const key = needs.map((n) => `${n.zone}|${n.icon}|${n.act ? n.act.kind : ''}|${Math.floor(n.sev)}`).join(';');
+    const label = (n) => (z === 'needs' && n.zone && !n.text.toLowerCase().includes(n.zone) ? `${ZONE_NAMES[n.zone]}: ` : '') + n.text;
+    this.shownNeeds = needs;
     if (force || key !== this.needsKey) {
       this.needsKey = key;
       const box = this.clipEls.needs;
       box.innerHTML = '';
+      this.needSpans = [];
       const real = needs.filter((n) => n.sev > 0);
       if (!real.length) box.append(el('div', { class: 'need ok' }, iconCanvas('heart', 22), el('span', {}, z === 'needs' ? 'Everyone is happy and comfy. Lovely keeping!' : `Nothing needs doing in the ${z} right now.`)));
-      for (const n of needs) {
-        const act = n.act ? el('button', { class: 'btn small' + (n.sev >= 2 ? ' yellow' : ''), onclick: () => this.doNeed(n) }, this.needLabel(n.act)) : null;
-        const named = n.zone && n.text.toLowerCase().includes(n.zone);
-        box.append(el('div', { class: 'need sev' + Math.floor(n.sev) }, iconCanvas(n.icon || 'leaf', 22), el('span', {}, (z === 'needs' && n.zone && !named ? `${ZONE_NAMES[n.zone]}: ` : '') + n.text), act));
-      }
+      needs.forEach((n, i) => {
+        const act = n.act ? el('button', { class: 'btn small' + (n.sev >= 2 ? ' yellow' : ''), onclick: () => this.doNeed(this.shownNeeds[i] || n) }, this.needLabel(n.act)) : null;
+        const span = el('span', {}, label(n));
+        this.needSpans.push(span);
+        box.append(el('div', { class: 'need sev' + Math.floor(n.sev) }, iconCanvas(n.icon || 'leaf', 22), span, act));
+      });
+    } else {
+      needs.forEach((n, i) => {
+        const span = this.needSpans && this.needSpans[i];
+        if (span && span.textContent !== label(n)) span.textContent = label(n);
+      });
     }
     if (this.goalEls) {
       const prog = this.journal.progress;
@@ -945,9 +956,21 @@ export class UI {
     return null;
   }
 
+  // A tray choice can go stale (a new tank, sandbox switched off), so the
+  // lock is checked again whenever something is actually used.
+  stillUsable(kind) {
+    const id = this.choice[kind];
+    if (!id || this.journal.canUse(kind, id)) return true;
+    this.toast(`Locked: ${this.journal.lockHint(kind, id)}`, 'star');
+    this.choice[kind] = kind === 'feed' ? FOOD_ORDER.find((f) => this.journal.canUse('feed', f)) : null;
+    this.renderSheet();
+    return false;
+  }
+
   tap(wx, wy, sx, sy, dbl) {
     this.sound.unlock();
     const w = this.world;
+    if (TOOL_KIND[this.tool] && !this.stillUsable(TOOL_KIND[this.tool])) return;
     switch (this.tool) {
       case 'feed': {
         if (!this.choice.feed) return;
@@ -1060,7 +1083,8 @@ export class UI {
     for (const [z, [x, y]] of Object.entries(GAUGE_AT)) {
       if (Math.abs(wx - x) < 9 + slop && wy > y - 6 - slop && wy < y + (z === 'pond' ? 64 : 84) + slop) {
         this.tab.clip = z;
-        this.setTool('clip');
+        if (this.tool === 'clip' && !this.sheet.classList.contains('hidden')) this.renderSheet();
+        else this.setTool('clip');
         return true;
       }
     }
@@ -1073,7 +1097,8 @@ export class UI {
           this.toast(`Glug glug! The ${z} mister bottle is full again.`, 'drop');
         } else {
           this.flashZone = z;
-          this.setTool('climate');
+          if (this.tool === 'climate' && !this.sheet.classList.contains('hidden')) this.renderSheet();
+          else this.setTool('climate');
         }
         return true;
       }
@@ -1083,6 +1108,10 @@ export class UI {
 
   hold(wx, wy, held) {
     if (this.tool !== 'feed' || !this.choice.feed) return;
+    if (!this.journal.canUse('feed', this.choice.feed)) {
+      this.stillUsable('feed');
+      return;
+    }
     const now = performance.now();
     if (this._sprinkle && now - this._sprinkle < 220) return;
     this._sprinkle = now;
@@ -1261,7 +1290,7 @@ export class UI {
         chips.push(`Feels ${fmtTemp(e.T, u)} · likes ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)}`);
         if (e.hunger > 0.55 && d.diet) {
           const fav = Object.entries(e.diet).sort((a, b) => b[1] - a[1])[0];
-          if (fav) chips.push(`Hungry for ${fav[0]}${d.prey ? ' or ' + d.prey.map((p) => SPECIES[p].plural.toLowerCase()).slice(0, 2).join('/') : ''}`);
+          if (fav) chips.push(`Hungry for ${fav[0]}${d.prey && e.isAdult ? ' or ' + d.prey.map((p) => SPECIES[p].plural.toLowerCase()).slice(0, 2).join('/') : ''}`);
         }
         if (t.bold > 0.66) chips.push('Brave');
         else if (t.bold < 0.34) chips.push('Shy');
@@ -1604,6 +1633,7 @@ export class UI {
       b.append(choice('away', 'While I am away', [['living', 'The tank keeps living'], ['paused', 'Pause the tank']]));
       b.append(toggle('sandbox', 'Sandbox — unlock every critter, snack, plant, decoration and style', (v) => {
         this.journal.sandbox = v;
+        if (TOOL_KIND[this.tool] || this.tool === 'clip') this.renderSheet();
       }));
       b.append(toggle('tips', 'Show tips'));
       b.append(el('h4', {}, 'Your tank'));

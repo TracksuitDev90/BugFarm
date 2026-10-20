@@ -26,14 +26,18 @@ function listWords(a) {
 
 // Critters that count as living in a zone right now (eggs and chrysalises
 // don't complain about the weather). Flyers only count at home, so a
-// butterfly fluttering over the desert doesn't change what the desert needs.
+// butterfly fluttering over the desert doesn't change what the desert needs,
+// and the pond's band is about water, so only pond critters and swimmers
+// count there (not a cricket wandering along the bank).
 export function residents(w, z) {
   const out = [];
   for (const c of w.creatures) {
     if (c.dead || c.stage === 'egg' || c.stage === 'chrysalis' || c.sp === 'fruitfly') continue;
     if (c.canFly) {
       if (c.def.zone === z) out.push(c);
-    } else if (w.env.zoneAt(c.x) === z) out.push(c);
+    } else if (w.env.zoneAt(c.x) === z) {
+      if (z !== 'pond' || c.def.zone === 'pond' || c.inWater || c.mode === 'swim') out.push(c);
+    }
   }
   return out;
 }
@@ -146,16 +150,16 @@ export function zoneStatus(w, z, band = zoneBand(w, z)) {
 }
 
 // Snacks a group of critters would like most, from what the keeper can use.
-export function favouriteFoods(sps, canUse = () => true, n = 2) {
+// diets: what each critter eats right now (c.diet), so a caterpillar is
+// offered leaves rather than the nectar it will want as a butterfly.
+export function favouriteFoods(diets, canUse = () => true, n = 2) {
   const score = {};
   for (const id of FOOD_ORDER) {
     if (!canUse('feed', id)) continue;
     let s = 0;
-    for (const sp of sps) {
-      const d = SPECIES[sp];
-      const diets = [d.diet, ...d.stages.map((st) => st.diet).filter(Boolean)];
+    for (const diet of diets) {
       let best = 0;
-      for (const diet of diets) for (const t of FOODS[id].tags) best = Math.max(best, diet[t] || 0);
+      for (const t of FOODS[id].tags) best = Math.max(best, diet[t] || 0);
       s += best;
     }
     if (s > 0.6) score[id] = s;
@@ -211,7 +215,7 @@ export function tankNeeds(w, canUse = () => true, fmt = (t) => Math.round(t) + '
     const hungry = list.filter((c) => c.hunger > 0.62 && c.memory.ffT != null && !c.memory.ff && c.sp !== 'aphid');
     if (hungry.length) {
       const sps = [...new Set(hungry.map((c) => c.sp))];
-      const foods = favouriteFoods(sps, canUse);
+      const foods = favouriteFoods(hungry.map((c) => c.diet), canUse);
       const sev = hungry.some((c) => c.hunger > 0.85) ? 2 : 1;
       const names = foods.map((f) => FOODS[f].name.toLowerCase());
       const n = hungry.length;
@@ -225,10 +229,17 @@ export function tankNeeds(w, canUse = () => true, fmt = (t) => Math.round(t) + '
   if (p.filterClean < 0.35 && p.filter > 0.05) add('pond', p.filterClean < 0.1 ? 1.8 : 1.1, 'drop', 'The filter sponge is clogged with gunk, so it barely cleans. Rinse it out.', { kind: 'rinse', zone: 'pond' });
   if (env.lowWater > 0) add('pond', env.lowWater > 0.6 ? 1.8 : 1, 'drop', 'Pond water has been evaporating. Top it back up to the line.', { kind: 'topup', zone: 'pond' });
   // plants
+  // plants: say why they're poorly, since the fix depends on it
   const wilting = w.plants.filter((pl) => !pl.dead && pl.health < 0.5 && !pl.def.memorial);
   if (wilting.length) {
-    const z = env.zoneAt(wilting[0].x);
-    add(z, 1, 'flower', `${wilting.length} plant${wilting.length > 1 ? 's are' : ' is'} wilting${wilting[0].thirsty ? ' — too dry' : ' — the weather is wrong for ' + (wilting.length > 1 ? 'them' : 'it')}.`, { kind: 'climate', zone: z });
+    const weather = wilting.filter((pl) => pl.comfort < 0.4);
+    const pl = weather[0] || wilting[0];
+    const z = env.zoneAt(pl.x);
+    const n = (k) => `${k} plant${k > 1 ? 's are' : ' is'} wilting`;
+    if (weather.length) add(z, 1, 'flower', `${n(weather.length)} — ${pl.thirsty ? 'the soil is too dry' : 'the weather is wrong for ' + (weather.length > 1 ? 'them' : 'it')}.`, { kind: 'climate', zone: z });
+    else if (pl.def.aquatic && env.lowWater > 0) add('pond', 1, 'flower', `${n(wilting.length)} — the pond is too low for ${wilting.length > 1 ? 'them' : 'it'}. Top it up.`, { kind: 'topup', zone: 'pond' });
+    else if (pl.aphids > 0) add(z, 0.6, 'flower', `${n(wilting.length)} — aphids are sipping the sap. Ladybugs will help.`, null);
+    else add(z, 0.6, 'flower', `${n(wilting.length)} from being nibbled. Left alone, ${wilting.length > 1 ? 'they' : 'it'} will grow back.`, null);
   }
   const rotten = w.foods.filter((f) => !f.inWater && f.fresh < 0.35);
   if (rotten.length >= 3) add(env.zoneAt(rotten[0].x), 1, 'leaf', `${rotten.length} squishy leftovers are lying about. Tidy them before the fruit flies find them.`, { kind: 'tidy' });

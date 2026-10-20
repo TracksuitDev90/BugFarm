@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bug Farm art gallery</title>
+<style>body{margin:0;background:#f7eed6;font:12px sans-serif}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import { CREATURE_ART, PALETTES, drawWorm, drawBrood } from '../src/art/creatures.js';
+const c = document.getElementById('c');
+const S = 4;
+const rows = [
+  ['ant', 'worker', ['idle', 'walk', 'carry'], 0, null],
+  ['ant', 'worker', ['dig'], 1, 'hardhat'],
+  ['ant', 'queen', ['idle'], 0, null],
+  ['cricket', 'adult', ['idle', 'walk', 'jump', 'chirp'], 0, 'scarf'],
+  ['grasshopper', 'adult', ['idle', 'jump'], 0, 'cap'],
+  ['gecko', 'adult', ['idle', 'walk', 'eat', 'sleep'], 0, 'sunhat'],
+  ['beetle', 'adult', ['idle', 'walk'], 0, 'bowler'],
+  ['goldfish', 'adult', ['swim', 'gasp'], 0, null],
+  ['goldfish', 'adult', ['swim'], 2, null],
+  ['goldfish', 'fry', ['swim'], 1, null],
+  ['frog', 'egg', ['idle'], 0, null],
+  ['frog', 'tadpole', ['swim'], 0, null],
+  ['frog', 'froglet', ['swim'], 0, null],
+  ['frog', 'adult', ['idle', 'croak', 'jump', 'swim'], 0, 'bowtie'],
+  ['frog', 'adult', ['idle'], 1, 'beret'],
+  ['turtle', 'adult', ['idle', 'walk', 'swim', 'bask', 'hide'], 0, 'cap'],
+  ['turtle', 'hatchling', ['idle'], 1, null],
+  ['pondsnail', 'adult', ['idle', 'shell'], 0, null],
+  ['pondsnail', 'adult', ['idle'], 1, null],
+  ['shrimp', 'adult', ['idle', 'walk'], 0, null],
+  ['shrimp', 'adult', ['idle'], 1, null],
+  ['ladybug', 'adult', ['idle', 'walk', 'fly'], 0, null],
+  ['ladybug', 'young', ['idle'], 0, null],
+  ['aphid', 'adult', ['idle'], 0, null],
+  ['butterfly', 'egg', ['idle'], 0, null],
+  ['butterfly', 'caterpillar', ['walk', 'idle'], 0, 'beanie'],
+  ['butterfly', 'chrysalis', ['idle'], 0, null],
+  ['butterfly', 'adult', ['idle', 'fly'], 0, null],
+  ['butterfly', 'adult', ['fly'], 1, null],
+  ['snail', 'adult', ['idle', 'walk', 'shell'], 0, 'beret'],
+  ['snail', 'adult', ['idle'], 1, 'flower'],
+  ['bee', 'adult', ['fly', 'pollen'], 0, null],
+  ['firefly', 'adult', ['idle', 'fly'], 0, null],
+  ['pillbug', 'adult', ['idle', 'walk', 'ball'], 0, null],
+  ['pillbug', 'adult', ['idle'], 3, null],
+  ['fruitfly', 'adult', ['fly'], 0, null],
+];
+// layout
+let x = 20, y = 20, rowH = 0;
+const items = [];
+for (const [sp, stage, poses, pi, acc] of rows) {
+  for (const pose of poses) {
+    const art = CREATURE_ART[sp];
+    const [bw, bh] = art.box(stage);
+    const w = bw * 2 * S + 10, h = bh * 2 * S + 26;
+    if (x + w > 1580) { x = 20; y += rowH; rowH = 0; }
+    items.push({ sp, stage, pose, pi, acc, x, y, w, h, bw, bh });
+    x += w; rowH = Math.max(rowH, h);
+  }
+}
+c.width = 1600; c.height = y + rowH + 200;
+const g = c.getContext('2d');
+g.fillStyle = '#f7eed6'; g.fillRect(0, 0, c.width, c.height);
+for (const it of items) {
+  const art = CREATURE_ART[it.sp];
+  g.save();
+  g.strokeStyle = 'rgba(0,0,0,0.1)';
+  g.strokeRect(it.x, it.y, it.w - 4, it.h - 4);
+  g.fillStyle = '#333';
+  g.fillText(`${it.sp}/${it.stage}/${it.pose}`, it.x + 4, it.y + 12);
+  g.translate(it.x + it.w / 2, it.y + 16 + it.bh * S);
+  g.scale(S, S);
+  art.draw(g, { stage: it.stage, pose: it.pose, frame: 1, pal: PALETTES[it.sp][it.pi % PALETTES[it.sp].length], acc: it.acc, accColor: '#d9483b', lw: art.lw, closed: it.pose === 'sleep' });
+  g.restore();
+}
+// worm + brood
+g.save();
+g.translate(60, y + rowH + 80);
+g.scale(S, S);
+const pts = [];
+for (let i = 0; i < 12; i++) pts.push({ x: 30 - i * 3.2, y: Math.sin(i * 0.7) * 3 });
+drawWorm(g, pts, PALETTES.worm[0], 0.8, false, 'cap', '#4c8fd6');
+g.translate(50, 0);
+drawBrood(g, 'egg', 0.6); g.translate(6, 0); drawBrood(g, 'larva', 0.6); g.translate(6, 0); drawBrood(g, 'pupa', 0.6);
+g.restore();
+window.__done = true;
+</script>
+</body>
+</html>

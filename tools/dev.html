@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bug Farm dev</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#222}canvas{display:block;touch-action:none}#s{position:fixed;left:4px;top:4px;color:#fff;font:12px monospace;background:rgba(0,0,0,.5);padding:4px;white-space:pre}</style>
+</head>
+<body>
+<canvas id="c"></canvas><div id="s"></div>
+<script type="module">
+import { Game } from '../src/game.js';
+import { Input } from '../src/ui/input.js';
+const params = new URLSearchParams(location.search);
+const c = document.getElementById('c');
+const game = new Game(c);
+window.game = game;
+game.world.newGame(+(params.get('seed') || 42), true);
+game.renderer.tr.renderAll();
+const resize = () => game.resize(innerWidth, innerHeight, 0, 0);
+resize();
+addEventListener('resize', resize);
+game.cam.reset();
+if (params.get('zoom')) { game.cam.zoom = +params.get('zoom'); game.cam.x = +(params.get('x') || 800); game.cam.y = +(params.get('y') || 450); game.cam.clampAll(); }
+if (params.get('hour')) game.world.env.time = +params.get('hour') / 24 * 720;
+if (params.get('lens')) game.renderer.lens = params.get('lens');
+const sim = +(params.get('sim') || 0);
+for (let i = 0; i < sim * 30; i++) game.world.step(1 / 30);
+game.speed = +(params.get('speed') || 1);
+new Input(c, game.cam, { tap: (x, y) => game.world.tapGlass(x, y) });
+const s = document.getElementById('s');
+let n = 0;
+game.onFrame = () => {
+  if (++n % 15) return;
+  const w = game.world;
+  const counts = Object.entries(w.counts).filter(([k, v]) => v).map(([k, v]) => k + ':' + v).join(' ');
+  s.textContent = `frame ${game.avgFrame.toFixed(1)}ms sim ${game.simMs.toFixed(1)}ms day ${w.env.day} ${w.env.hour.toFixed(1)}h\n${counts}\nfood ${w.foods.length} plants ${w.plants.length} col.food ${w.colonies[0] ? w.colonies[0].food.toFixed(2) : '-'} dug ${w.colonies[0] ? w.colonies[0].dug : 0}\nO2 ${w.env.pond.oxygen.toFixed(2)} clar ${w.env.pond.clarity.toFixed(2)} algae ${w.env.pond.algae.toFixed(2)} Tw ${w.env.pond.temp.toFixed(1)} Td ${w.env.desert.temp.toFixed(1)} Tj ${w.env.jungle.temp.toFixed(1)}`;
+};
+game.start();
+window.__ready = true;
+</script>
+</body>
+</html>

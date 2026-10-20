@@ -17,7 +17,12 @@ export class Food {
     this.vx = opts.vx != null ? opts.vx : rrange(-12, 12);
     this.vy = opts.vy || 0;
     this.amount = opts.amount != null ? opts.amount : this.def.amount;
-    this.max = this.def.amount;
+    // a treat can be a smaller portion than a full serving; bites are
+    // measured against what was put down
+    this.max = opts.max != null ? opts.max : this.def.amount;
+    this.shown = this.amount; // eases toward amount so each bite shrinks smoothly
+    this.biteT = 0; // chomp wobble
+    this.biteSide = opts.biteSide || 0; // which side the bites come from
     this.fresh = opts.fresh != null ? opts.fresh : 1;
     this.age = opts.age || 0;
     this.state = opts.state || 'fall';
@@ -42,13 +47,20 @@ export class Food {
     return this.def.tags;
   }
   get scale() {
-    return 0.45 + 0.55 * Math.sqrt(Math.max(0, this.amount / this.max));
+    return 0.5 + 0.5 * Math.sqrt(Math.max(0, this.shown / this.max));
+  }
+  // 0 = untouched .. 4 = down to the last crumb (picks the bitten sprite)
+  get bites() {
+    const e = 1 - this.shown / this.max;
+    return e < 0.04 ? 0 : Math.min(4, 1 + Math.floor(e * 4.4));
   }
 
   update(dt, w) {
     const t = w.terrain;
     this.px = this.x;
     this.py = this.y;
+    this.shown += (this.amount - this.shown) * Math.min(1, dt * 4);
+    if (this.biteT > 0) this.biteT -= dt;
     switch (this.state) {
       case 'fall': {
         this.vy = Math.min(420, this.vy + 520 * dt);
@@ -130,7 +142,15 @@ export class Food {
       }
     }
     if (this.fresh < 0) this.rotSince += dt;
-    if (this.fresh < -0.9 || this.amount <= 0.001) {
+    if (this.amount <= 0.001) {
+      // the last bite: let it shrink away, then sweep up the crumbs
+      if (this.shown <= this.max * 0.08) {
+        w.dust(this.x, this.y, 3);
+        w.removeFood(this);
+      }
+      return;
+    }
+    if (this.fresh < -0.9) {
       // fully broken down into the soil
       const z = w.env.zoneAt(this.x);
       if (w.env.fertility[z] != null) w.env.fertility[z] = Math.min(1.2, w.env.fertility[z] + this.amount * 0.05);
@@ -151,10 +171,12 @@ export class Food {
       s: this.state === 'fall' ? 'rest' : this.state,
       w: this.inWater ? 1 : 0,
       ft: Math.round(this.floatT),
+      m: this.max !== this.def.amount ? +this.max.toFixed(3) : undefined,
+      bs: this.biteSide || undefined,
     };
   }
   static load(o) {
-    return new Food(o.t, o.x, o.y, { id: o.id, amount: o.a, fresh: o.f, age: o.ag, state: o.s, inWater: !!o.w, floatT: o.ft, vx: 0 });
+    return new Food(o.t, o.x, o.y, { id: o.id, amount: o.a, max: o.m, biteSide: o.bs, fresh: o.f, age: o.ag, state: o.s, inWater: !!o.w, floatT: o.ft, vx: 0 });
   }
 }
 

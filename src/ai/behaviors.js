@@ -121,17 +121,25 @@ def('forage', {
     }
     c.pose = 'eat';
     d.t += dt;
-    if (d.t >= 1.1) {
+    if (d.t >= 0.55) {
       d.t = 0;
       const ok = w.eat(c, d.tgt);
       d.bites++;
       const full = c.hunger < 0.03 + (1 - c.traits.greedy) * 0.06;
-      if (!ok || full || d.bites > 16) {
+      // nobody leaves just the last crumb
+      const crumb = d.tgt.kind === 'food' && d.tgt.food.amount > 0.001 && d.tgt.food.amount <= c.appetite * 0.2;
+      if (!ok || (full && !crumb) || d.bites > 32) {
         if (full && c.plump > 1.25) c.emote('food', 1.5);
         return false;
       }
     }
     return true;
+  },
+  // once munching a snack, keep at it until full or it's all gone (a fright
+  // still breaks it off: tapping the glass or a predator raises fear)
+  lock(c) {
+    const d = c.brain.data;
+    return d.phase === 'eat' && d.tgt && d.tgt.kind === 'food' && c.fear < 0.3 && c.brain.t < 30;
   },
   stop(c) {
     if (c.pose === 'eat') c.pose = 'idle';
@@ -162,16 +170,16 @@ def('snack', {
   tick(c, w, dt) {
     const d = c.brain.data;
     const f = d.f;
-    if (!f || f.gone) return false;
+    if (!f || f.gone || f.amount <= 0.001) return false;
     if (!c.arrived) return c.brain.t < 15 && !(c.blocked && c.mode !== 'swim' && c.mode !== 'fly');
     if (c.mode !== 'climb') c.halt();
     c.pose = 'eat';
     d.t = (d.t || 0) + dt;
-    if (d.t > 1.2) {
+    if (d.t > 0.6) {
       d.t = 0;
       d.n = (d.n || 0) + 1;
       w.eat(c, { kind: 'food', food: f });
-      if (d.n >= 2 + Math.round(c.traits.greedy * 3)) return false;
+      if (d.n >= 4 + Math.round(c.traits.greedy * 6)) return false;
     }
     return true;
   },
@@ -749,7 +757,7 @@ def('pollinate', {
       c.pose = c.sp === 'bee' && (c.memory.pollen || 0) > 0 ? 'pollen' : 'idle';
       if (d.t > 2.2) {
         d.t = 0;
-        w.eat(c, { kind: 'plant', plant: d.fl.plant, slot: d.fl.slot });
+        w.eat(c, { kind: 'plant', plant: d.fl.plant, slot: d.fl.slot }, 2);
         if (d.fl.plant.pollinate(d.fl.slot)) w.events.emit('pollinate', { c, plant: d.fl.plant });
         c.memory.pollen = (c.memory.pollen || 0) + 1;
         const v = c.memory.visited || (c.memory.visited = []);

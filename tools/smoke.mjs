@@ -32,12 +32,13 @@ const check = (ok, msg) => {
 };
 
 await pg.goto(url);
-await pg.waitForSelector('text=Full tank', { timeout: 15000 });
+await pg.waitForSelector('text=Start my farm', { timeout: 15000 });
 check(true, 'welcome screen shows');
-await pg.click('text=Full tank');
+await pg.click('text=Start my farm');
 await pg.waitForTimeout(2500);
 const n0 = await pg.evaluate(() => window.bugfarm.game.world.creatures.length);
-check(n0 > 40, `tank is populated (${n0} critters)`);
+const sp0 = await pg.evaluate(() => Object.entries(window.bugfarm.game.world.counts).filter(([, v]) => v).length);
+check(n0 > 15 && sp0 === 6, `a new farm starts with two kinds of critter per zone (${sp0} kinds, ${n0} critters)`);
 
 // feed
 await pg.click('#toolbar >> text=Feed');
@@ -48,16 +49,25 @@ await pg.waitForTimeout(400);
 const f1 = await pg.evaluate(() => window.bugfarm.game.world.foods.length);
 check(f1 === f0 + 1, 'tapping with Feed drops food');
 
-// adopt a gecko in the desert
+// progression: the gecko waits for a later desert level; crickets can move in
 await pg.click('#toolbar >> text=Critters');
-await pg.click('.item >> text=Gecko');
-const g0 = await pg.evaluate(() => window.bugfarm.game.world.count('gecko'));
+check(await pg.isVisible('.item.locked >> text=Gecko'), 'gecko is locked in a new farm');
+await pg.click('.item >> text=Cricket');
+const c0 = await pg.evaluate(() => window.bugfarm.game.world.count('cricket'));
 await pg.evaluate(() => window.bugfarm.game.cam.flyTo(250, 480));
 await pg.waitForTimeout(800);
 await pg.mouse.click(195, 380);
 await pg.waitForTimeout(300);
-const g1 = await pg.evaluate(() => window.bugfarm.game.world.count('gecko'));
-check(g1 === g0 + 1, 'adopting a gecko works');
+const c1 = await pg.evaluate(() => window.bugfarm.game.world.count('cricket'));
+check(c1 === c0 + 1, 'adopting an unlocked critter works');
+
+// the keeper's clipboard: needs, gauges and goals
+await pg.click('button[aria-label="Keeper\'s clipboard"]');
+await pg.waitForTimeout(400);
+check(await pg.isVisible('#sheet .zrow'), 'clipboard shows how each zone is doing');
+await pg.click('#sheet .tabs >> text=Desert');
+await pg.waitForTimeout(300);
+check((await pg.locator('#sheet .goal').count()) === 3, 'clipboard lists the desert goals');
 
 // climate slider
 await pg.click('#toolbar >> text=Climate');
@@ -69,6 +79,10 @@ await pg.evaluate(() => {
 });
 const lamp = await pg.evaluate(() => window.bugfarm.game.world.env.desert.lamp);
 check(lamp === 1, 'heat lamp slider changes the climate');
+await pg.evaluate(() => (window.bugfarm.game.world.env.jungle.water = 0.1));
+await pg.click('#sheet .zonecard[data-z="jungle"] >> text=Refill');
+const water = await pg.evaluate(() => window.bugfarm.game.world.env.jungle.water);
+check(water > 0.99, 'refilling a mister fills its bottle');
 
 // inspect a critter
 await pg.click('#toolbar >> text=Look');
@@ -98,16 +112,18 @@ check(perf.frame < 40, `frames stay smooth at 8× (${perf.frame.toFixed(1)}ms fr
 
 // save & reload
 const before = await pg.evaluate(() => {
-  const { game } = window.bugfarm;
+  const { game, journal } = window.bugfarm;
+  journal.progress.levels.pond = 2;
   window.bugfarm.ui.hooks.save();
   return { n: game.world.creatures.length, day: game.world.env.day, t: game.world.env.time };
 });
 await pg.reload();
 await pg.waitForTimeout(3000);
-const welcome = await pg.isVisible('text=Full tank');
-const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time }));
+const welcome = await pg.isVisible('text=Start my farm');
+const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time, pond: window.bugfarm.journal.progress.levels.pond, shrimp: window.bugfarm.journal.canUse('adopt', 'shrimp') }));
 check(!welcome, 'reload skips the welcome (save found)');
 check(Math.abs(after.n - before.n) <= 3 && after.t >= before.t, `tank restored after reload (${before.n} → ${after.n} critters)`);
+check(after.pond === 2 && after.shrimp, 'farm levels and unlocks survive a reload');
 
 check(errors.length === 0, 'no errors on the page' + (errors.length ? ':\n' + [...new Set(errors)].slice(0, 6).join('\n') : ''));
 await browser.close();

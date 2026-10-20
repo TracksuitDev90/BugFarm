@@ -224,6 +224,35 @@ export const ICONS = {
       line(g, 1.8, -3 + i * 3, 5.5, -3 + i * 3, LW * 0.5, '#a89a80');
     }
   },
+  clip(g) {
+    // the keeper's clipboard: a ticked checklist
+    paint(g, '#c98f4a', LW, () => {
+      g.beginPath();
+      g.roundRect ? g.roundRect(-8, -8.5, 16, 19, 2.5) : g.rect(-8, -8.5, 16, 19);
+    });
+    paint(g, '#fffdf6', LW * 0.7, () => {
+      g.beginPath();
+      g.rect(-6, -5.5, 12, 14);
+    });
+    paint(g, '#9aa0a6', LW * 0.8, () => {
+      g.beginPath();
+      g.rect(-3.5, -10, 7, 4);
+    });
+    for (let i = 0; i < 3; i++) {
+      const y = -2.5 + i * 3.8;
+      if (i < 2) {
+        g.beginPath();
+        g.moveTo(-4.6, y);
+        g.lineTo(-3.4, y + 1.2);
+        g.lineTo(-1.6, y - 1.2);
+        stroke(g, LW * 0.75, '#4f8a3c');
+      } else {
+        circ(g, -3.4, y, 1);
+        stroke(g, LW * 0.5);
+      }
+      line(g, 0, y, 4, y, LW * 0.55, '#a89a80');
+    }
+  },
   gear(g) {
     paint(g, '#c9c2b0', LW, () => {
       g.beginPath();

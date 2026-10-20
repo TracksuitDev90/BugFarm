@@ -54,6 +54,7 @@ function wireWorld() {
   w.gentle = settings.gentle;
   journal.attach(w);
   journal.onUnlock = (d) => ui && ready && ui.discovery(d);
+  journal.progress.onLevel = (z, lv, unlocks) => ui && ready && ui.levelUp(z, lv, unlocks);
   w.events.on('sound', ({ name, x, y, p }) => {
     const cam = game.cam;
     const v = cam.view(20);
@@ -97,8 +98,12 @@ function onFrame(dt) {
   }
 }
 
-function newTank(starter) {
+// mode: 'farm' (grow it zone by zone), 'full' or 'empty' (sandbox)
+function newTank(mode) {
   const g = game;
+  settings.sandbox = mode !== 'farm';
+  journal.sandbox = settings.sandbox;
+  saveSettings(settings);
   const fresh = new g.world.constructor();
   fresh.fx = g.renderer.fx;
   g.world = fresh;
@@ -108,8 +113,8 @@ function newTank(starter) {
   g.renderer.plantCache.clear();
   g.renderer.waterKey = '';
   g.renderer.backdropKey = '';
-  journal.load({});
-  fresh.newGame((Math.random() * 1e9) | 0, starter);
+  journal.reset();
+  fresh.newGame((Math.random() * 1e9) | 0, mode === 'farm' ? 'farm' : mode === 'full');
   g.renderer.applyStyle();
   g.renderer.tr.renderAll();
   ui.world = fresh;

@@ -4,14 +4,15 @@ import { W, H, CELL, GW, INK, ZONE_X } from '../config.js';
 import { TerrainRenderer } from './terrainRender.js';
 import { SpriteCache, bucketFor } from './sprites.js';
 import { Particles } from './particles.js';
-import { CREATURE_ART, PALETTES, drawWorm, drawBrood, drawHalo } from '../art/creatures.js';
+import { CREATURE_ART, PALETTES, WINGS, wingAngle, butterflyLift, drawWingBlade, wingBox, drawButterflyWings, drawWorm, drawBrood, drawHalo } from '../art/creatures.js';
 import { drawFood } from '../art/food.js';
-import { drawPlant } from '../art/plants.js';
+import { drawPlant, drawVine } from '../art/plants.js';
 import { DECOR_ART, decorBox } from '../art/decor.js';
 import { drawIcon } from '../art/icons.js';
 import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops.js';
 import { setMisregistration } from '../art/ink.js';
 import { LAMP_X, MISTER_X } from '../world/environment.js';
+import { zoneBand, zoneStatus } from '../sim/care.js';
 import { angleDiff, clamp, clamp01, lerp } from '../util/math.js';
 import { hash1 } from '../util/rng.js';
 
@@ -44,6 +45,11 @@ const POSES = {
   fruitfly: ['fly'],
 };
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
+// Stick-on strip thermometers on the glass, one per zone.
+export const GAUGE_AT = { desert: [34, 40], pond: [580, 40], jungle: [1492, 40] };
+// Vines trailing from the lid over the jungle: [x, length]. They keep clear
+// of the jungle lamp and mister.
+const VINES = [[1078, 150], [1132, 240], [1186, 120], [1402, 200], [1452, 110], [1528, 260], [1584, 170]];
 
 function artPose(c) {
   let p = c.pose;
@@ -96,6 +102,8 @@ export class Renderer {
     this.patterns = {};
     this.emoteSprites = {};
     this.screenScale = 1;
+    this.paused = false;
+    this.flapT = 0; // wing-beat clock: real time, but stops while paused
     this.setQuality('medium', true);
   }
 
@@ -333,6 +341,7 @@ export class Renderer {
     const t = w.terrain;
     const cam = this.cam;
     this.time += dt;
+    if (!this.paused) this.flapT += dt;
     this.fx.update(dt, t, this.time);
     this.ensureBackdrop();
     this.ensureWater();
@@ -368,6 +377,7 @@ export class Renderer {
     this.setWorld(g);
     for (const d of w.decor) if (!d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     for (const p of w.plants) if (!p.def.aquatic && this.visible(p.x, p.y, 120)) this.drawPlantE(g, p);
+    this.drawVines(g);
     for (const f of w.foods) if ((!f.inWater || f.state === 'float') && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
     for (const c of w.creatures) {
       if (c.sp === 'worm' || !this.visible(c.x, c.y, 40)) continue;
@@ -378,6 +388,7 @@ export class Renderer {
     this.drawWaterSurface(g);
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
+    this.drawGauges(g);
     if (sel && !sel.removed) this.drawSelection(g, sel, alpha);
     if (this.q.reflections) this.drawGlass(g);
     this.drawNight(g, view);
@@ -496,6 +507,17 @@ export class Renderer {
     }
   }
 
+  drawVines(g) {
+    const b = Math.min(this.bucket, 3);
+    VINES.forEach(([x, len], i) => {
+      if (!this.visible(x, len / 2, len / 2 + 30)) return;
+      const s = this.sprites.get('vine|' + i, b, [-24, -6, 24, len + 10], (gg) => drawVine(gg, len, i * 7 + 3));
+      this.put(g, x, 0, Math.sin(this.world.time * 0.5 + i * 1.7) * 0.025, 1, 1);
+      g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+    });
+    this.setWorld(g);
+  }
+
   drawDecorE(g, d) {
     const def = d.def;
     const box = decorBox(def);
@@ -507,11 +529,14 @@ export class Renderer {
 
   drawFoodE(g, f, alpha) {
     const rot = f.rot;
-    const s = this.sprites.get('f|' + f.type + '|' + rot, Math.min(this.bucket, 3), [-10, -12, 10, 3], (gg) => drawFood(gg, f.def, rot));
+    const bites = f.bites;
+    const s = this.sprites.get('f|' + f.type + '|' + rot + '|' + bites, Math.min(this.bucket, 3), [-10, -12, 10, 3], (gg) => drawFood(gg, f.def, rot, 0.7, bites));
     const x = f.px + (f.x - f.px) * alpha;
     const y = f.py + (f.y - f.py) * alpha;
     const sc = f.scale;
-    this.put(g, x, y + 0.5, f.state === 'fall' ? f.angle : 0, sc, sc);
+    // a little squash-and-wobble on every chomp
+    const chomp = f.biteT > 0 ? Math.sin(f.biteT * 40) * f.biteT * 0.3 : 0;
+    this.put(g, x, y + 0.5, f.state === 'fall' ? f.angle : chomp * 0.6, sc * (f.biteSide < 0 ? -1 : 1) * (1 + chomp), sc * (1 - chomp));
     g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
   }
 
@@ -523,14 +548,13 @@ export class Renderer {
     const art = CREATURE_ART[c.sp];
     if (!art) return;
     const pose = artPose(c);
+    // flyers get their wings beaten live, so the body sprite has none
+    const wspec = !c.dead && (pose === 'fly' || pose === 'pollen') ? WINGS[c.sp] : null;
     let frame = 0;
-    const nf = c.sp === 'butterfly' && pose === 'fly' ? 4 : FRAMES[pose] || 1;
+    const nf = wspec ? 1 : FRAMES[pose] || 1;
     if (nf > 1) {
       if (pose === 'walk' || pose === 'carry') frame = Math.floor(c.anim * (c.sp === 'ant' ? 14 : 9)) % nf;
-      else if (pose === 'fly') {
-        const rate = c.sp === 'bee' || c.sp === 'fruitfly' ? 22 : c.sp === 'butterfly' ? 7 : 14;
-        frame = Math.floor(this.time * rate + c.id) % nf;
-      } else if (pose === 'swim') frame = Math.floor(this.time * (c.sp === 'turtle' ? 2.5 : c.sp === 'frog' && c.stage === 'adult' ? 3 : 8) + c.id) % nf;
+      else if (pose === 'swim') frame = Math.floor(this.time * (c.sp === 'turtle' ? 2.5 : c.sp === 'frog' && c.stage === 'adult' ? 3 : 8) + c.id) % nf;
       else if (pose === 'chirp') frame = c.frame % 2;
     }
     // blinking
@@ -540,11 +564,11 @@ export class Renderer {
       closed = bt < 0.13;
     }
     const acc = c.sp === 'ant' && (c.pose === 'dig' || c.carry === 'sand') ? 'hardhat' : c.acc;
-    const key = c.sp + '|' + c.stage + '|' + pose + '|' + frame + '|' + c.palIdx + '|' + (acc || '') + '|' + (closed ? 1 : 0) + '|' + c.accSeed % 7;
+    const key = c.sp + '|' + c.stage + '|' + pose + '|' + frame + '|' + c.palIdx + '|' + (acc || '') + '|' + (closed ? 1 : 0) + '|' + c.accSeed % 7 + (wspec ? '|w' : '');
     const [bw, bh] = art.box(c.stage);
     const bucket = Math.min(this.q.maxBucket, bucketFor(this.k * c.drawScale));
     const spr = this.sprites.get(key, bucket, [-bw, -bh, bw, bh], (gg) =>
-      art.draw(gg, { stage: c.stage, pose, frame, pal: c.pal, acc, accColor: c.accColor, lw: art.lw, closed })
+      art.draw(gg, { stage: c.stage, pose, frame, pal: c.pal, acc, accColor: c.accColor, lw: art.lw, closed, liveWings: !!wspec })
     );
     let x = c.px + (c.x - c.px) * alpha;
     let y = c.py + (c.y - c.py) * alpha;
@@ -561,8 +585,15 @@ export class Renderer {
       g.globalAlpha = clamp01(1 - c.deadT / 4);
       ang = lerp(ang, 0.2 * c.facing, clamp01(c.deadT));
     } else if (c.mode === 'swim' && !c.aquatic && c.paddling) ang += Math.sin(this.time * 10) * 0.2;
+    let ph = 0;
+    if (wspec) {
+      ph = this.flapT * wspec.hz * TAU + c.id * 2.3;
+      y -= Math.sin(ph) * wspec.bob * ds; // each downstroke lifts the body a touch
+    }
     this.put(g, x, y, ang, c.facing * sx, sy);
+    if (wspec) this.drawWings(g, c, wspec, ph, true, bucket);
     g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
+    if (wspec && !wspec.butterfly) this.drawWings(g, c, wspec, ph, false, bucket);
     if (c.carry) this.drawCarry(g, c);
     g.globalAlpha = 1;
     if (c.dead && c.cause !== 'eaten' && c.deadT < 4) this.drawSpirit(g, c, x, y);
@@ -581,6 +612,53 @@ export class Renderer {
       g.strokeStyle = '#e8737a';
       g.stroke();
     }
+  }
+
+  // Wings hinge at the shoulder and are drawn in the critter's own transform.
+  // far = the wing on the other side of the body: lower, smaller, lagging.
+  drawWings(g, c, s, ph, far, bucket) {
+    g.save();
+    if (s.butterfly) {
+      const lw = CREATURE_ART.butterfly.lw;
+      const P = c.pal;
+      const near = this.sprites.get('bw|' + c.palIdx, bucket, [-13, -20, 12, 2], (gg) => drawButterflyWings(gg, P, lw, P.wing));
+      const back = this.sprites.get('bwu|' + c.palIdx, bucket, [-13, -20, 12, 2], (gg) => drawButterflyWings(gg, P, lw, P.under));
+      // the far pair peeks out behind, showing its paler underside
+      for (const [spr, lag, dx, a] of [[back, 0.18, 1.1, 0.85], [near, 0, 0, 1]]) {
+        g.save();
+        g.globalAlpha *= a;
+        g.translate(dx, s.hy);
+        g.scale(1, butterflyLift(ph - lag));
+        g.translate(0, -s.hy);
+        g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
+        g.restore();
+      }
+    } else {
+      g.translate(s.hx + (far ? 0.6 : 0), s.hy + (far ? 0.4 : 0));
+      if (!far && s.blur) {
+        // fast wings blur into a soft fan across their sweep
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.arc(0, 0, s.len * 0.96, s.base - s.amp, s.base + s.amp);
+        g.closePath();
+        g.fillStyle = `rgba(232,244,252,${(s.blur * 0.5).toFixed(3)})`;
+        g.fill();
+      }
+      const spr = this.sprites.get('wg|' + c.sp + (far ? 'f' : ''), bucket, wingBox(s), (gg) => drawWingBlade(gg, s.len, s.wid, CREATURE_ART[c.sp].lw, far));
+      const sc = far ? 0.88 : 1;
+      if (!far && s.blur > 0.4) {
+        // a fading after-image of where the wing just was
+        g.save();
+        g.globalAlpha *= 0.35;
+        g.rotate(wingAngle(s, ph - 0.9));
+        g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
+        g.restore();
+      }
+      g.rotate(wingAngle(s, far ? ph - 0.4 : ph));
+      g.scale(sc, sc);
+      g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
+    }
+    g.restore();
   }
 
   drawCarry(g, c) {
@@ -795,7 +873,32 @@ export class Renderer {
       g.fillStyle = '#9aa0a6';
       g.fill();
       g.stroke();
-      if (m > 0.02) {
+      // its water bottle, showing how much is left
+      const water = env[z].water;
+      const bx = x + 9;
+      g.beginPath();
+      g.roundRect ? g.roundRect(bx, -16, 9, 18, 2.5) : g.rect(bx, -16, 9, 18);
+      g.fillStyle = 'rgba(235,246,252,0.9)';
+      g.fill();
+      if (water > 0.01) {
+        g.fillStyle = '#7cc0e6';
+        g.fillRect(bx + 1, 1 - 16 * water, 7, 16 * water);
+      }
+      g.lineWidth = water < 0.15 && m > 0.02 ? 1.2 + Math.max(0, Math.sin(this.time * 5)) * 0.8 : 1;
+      g.strokeStyle = water < 0.15 && m > 0.02 ? '#e2553f' : INK;
+      g.stroke();
+      g.beginPath();
+      g.moveTo(bx + 2, -18);
+      g.lineTo(bx + 7, -18);
+      g.lineWidth = 2.5;
+      g.strokeStyle = INK;
+      g.stroke();
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x + 4, -2);
+      g.lineTo(bx, -2);
+      g.stroke();
+      if (env.misting(z) > 0.02) {
         g.save();
         g.globalAlpha = 0.18 * m;
         g.beginPath();
@@ -832,10 +935,11 @@ export class Renderer {
       g.arc(990.5, wl - 24, 2.2, 0, TAU);
       g.fillStyle = p.heater ? '#ff5a3c' : '#6a6a6a';
       g.fill();
-      // filter box hanging on the right
+      // filter box hanging on the right (it browns as the sponge clogs)
       g.beginPath();
       g.rect(1018, wl - 46, 36, 30);
-      g.fillStyle = '#e8e2d6';
+      const gunk = 1 - p.filterClean;
+      g.fillStyle = `rgb(${Math.round(lerp(232, 168, gunk))},${Math.round(lerp(226, 148, gunk))},${Math.round(lerp(214, 104, gunk))})`;
       g.fill();
       g.lineWidth = 1.2;
       g.strokeStyle = INK;
@@ -849,7 +953,22 @@ export class Renderer {
       g.fillStyle = INK;
       g.textAlign = 'center';
       g.fillText('FILTER', 1036, wl - 28);
-      if (p.filter > 0.02) {
+      // the fill line on the glass, once the pond has evaporated below it
+      if (wl - p.full > 6 && this.visible(800, p.full, 300)) {
+        g.setLineDash([5, 4]);
+        g.beginPath();
+        g.moveTo(700, p.full);
+        g.lineTo(980, p.full);
+        g.lineWidth = 0.9;
+        g.strokeStyle = 'rgba(40,80,120,0.6)';
+        g.stroke();
+        g.setLineDash([]);
+        g.font = "7px 'Patrick Hand', sans-serif";
+        g.textAlign = 'left';
+        g.fillStyle = 'rgba(40,80,120,0.8)';
+        g.fillText('fill line', 704, p.full - 2.5);
+      }
+      if (this.world.env.filterFlow > 0.02) {
         g.beginPath();
         for (let i = 0; i < 4; i++) {
           const yy = wl - 16 + i * 4;
@@ -857,7 +976,105 @@ export class Renderer {
           g.quadraticCurveTo(1010, yy + 2 + Math.sin(this.time * 8 + i) * 1.5, 1004, wl + 2);
         }
         g.lineWidth = 1.1;
-        g.strokeStyle = `rgba(200,235,250,${0.4 + p.filter * 0.5})`;
+        g.strokeStyle = `rgba(200,235,250,${0.4 + this.world.env.filterFlow * 0.5})`;
+        g.stroke();
+      }
+    }
+  }
+
+  // Strip thermometers stuck on the glass: the green patch is what the zone's
+  // critters find comfy, the red liquid is the air (or water) right now.
+  // Desert and jungle also get a little dampness dial.
+  drawGauges(g) {
+    const w = this.world;
+    this.setWorld(g);
+    if (!this.gaugeT || this.time - this.gaugeT > 0.5) {
+      this.gaugeT = this.time;
+      this.gaugeSt = {};
+      for (const z of Object.keys(GAUGE_AT)) this.gaugeSt[z] = zoneStatus(w, z, zoneBand(w, z));
+    }
+    const Tmin = 0;
+    const Tmax = 45;
+    for (const [z, [x, y]] of Object.entries(GAUGE_AT)) {
+      if (!this.visible(x, y + 30, 40)) continue;
+      const st = this.gaugeSt[z];
+      const top = y;
+      const bot = y + 50;
+      const ty = (T) => bot - clamp01((T - Tmin) / (Tmax - Tmin)) * (bot - top);
+      // card backing
+      g.beginPath();
+      g.roundRect ? g.roundRect(x - 7, top - 5, 14, bot - top + 16, 4) : g.rect(x - 7, top - 5, 14, bot - top + 16);
+      g.fillStyle = 'rgba(255,253,246,0.88)';
+      g.fill();
+      g.lineWidth = 1;
+      g.strokeStyle = st.sev >= 2 ? '#e2553f' : INK;
+      g.stroke();
+      // comfy band
+      const [lo, hi] = st.band.t;
+      g.fillStyle = 'rgba(119,178,85,0.55)';
+      g.fillRect(x - 5.5, ty(hi + 0.5), 11, Math.max(1.5, ty(lo - 0.5) - ty(hi + 0.5)));
+      // ticks every 10 degrees
+      g.beginPath();
+      for (let T = 10; T < Tmax; T += 10) {
+        g.moveTo(x + 2.5, ty(T));
+        g.lineTo(x + 5, ty(T));
+      }
+      g.lineWidth = 0.5;
+      g.strokeStyle = 'rgba(58,42,31,0.6)';
+      g.stroke();
+      // tube, liquid and bulb
+      const col = st.tState === 'hot' ? '#e2453f' : st.tState === 'cold' ? '#4c8fd6' : '#e8603c';
+      g.beginPath();
+      g.roundRect ? g.roundRect(x - 1.8, top, 3.6, bot - top + 4, 1.8) : g.rect(x - 1.8, top, 3.6, bot - top + 4);
+      g.fillStyle = '#fff';
+      g.fill();
+      g.lineWidth = 0.6;
+      g.strokeStyle = INK;
+      g.stroke();
+      g.fillStyle = col;
+      const ly = Math.max(top + 1, ty(st.T));
+      g.fillRect(x - 1, ly, 2, bot + 4 - ly);
+      g.beginPath();
+      g.arc(x, bot + 5, 3.2, 0, TAU);
+      g.fill();
+      g.stroke();
+      // an arrow saying which way to go
+      if (st.tState !== 'ok') {
+        const up = st.tState === 'cold';
+        const ay = up ? top + 2 : bot - 6;
+        const bob = Math.sin(this.time * 4) * 1.2;
+        g.beginPath();
+        g.moveTo(x + 9, ay + (up ? 4 : 0) + bob);
+        g.lineTo(x + 12, ay + (up ? 0 : 4) + bob);
+        g.lineTo(x + 15, ay + (up ? 4 : 0) + bob);
+        g.lineWidth = 1.6;
+        g.strokeStyle = up ? '#4c8fd6' : '#e2453f';
+        g.stroke();
+      }
+      // dampness dial
+      if (st.band.m) {
+        const dx = x;
+        const dy = bot + 18;
+        g.beginPath();
+        g.arc(dx, dy, 6.5, 0, TAU);
+        g.fillStyle = 'rgba(255,253,246,0.9)';
+        g.fill();
+        g.lineWidth = st.mState !== 'ok' ? 1.4 : 0.8;
+        g.strokeStyle = st.mState !== 'ok' ? '#e2553f' : INK;
+        g.stroke();
+        const a0 = Math.PI * 0.75;
+        const span = Math.PI * 1.5;
+        g.beginPath();
+        g.arc(dx, dy, 4.6, a0 + span * st.band.m[0], a0 + span * Math.min(1, st.band.m[1]));
+        g.lineWidth = 2;
+        g.strokeStyle = 'rgba(119,178,85,0.85)';
+        g.stroke();
+        const a = a0 + span * clamp01(st.M);
+        g.beginPath();
+        g.moveTo(dx, dy);
+        g.lineTo(dx + Math.cos(a) * 4.8, dy + Math.sin(a) * 4.8);
+        g.lineWidth = 1;
+        g.strokeStyle = '#2a6fc0';
         g.stroke();
       }
     }

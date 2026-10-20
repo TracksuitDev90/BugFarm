@@ -68,6 +68,7 @@ export class Game {
     const t1 = performance.now();
     this.cam.update(dt);
     const alpha = this.paused ? 1 : Math.min(1, this.acc / SIM_DT);
+    this.renderer.paused = this.paused;
     this.renderer.frame(alpha, dt);
     const t2 = performance.now();
     this.simMs = this.simMs * 0.9 + (t1 - t0) * 0.1;

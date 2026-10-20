@@ -1,5 +1,6 @@
 // Tracks discoveries, unlocks and which species the player has met.
 import { DISCOVERIES, DISC_BY_ID, lockedItems } from '../data/discoveries.js';
+import { Progress } from './progress.js';
 
 export class Journal {
   constructor() {
@@ -13,6 +14,7 @@ export class Journal {
     this.world = null;
     this.checkT = 0;
     this.offs = [];
+    this.progress = new Progress();
   }
 
   attach(world) {
@@ -38,6 +40,7 @@ export class Journal {
     }
     this.offs.push(world.events.on('adopt', (d) => this.meet(d.c.sp)));
     this.offs.push(world.events.on('birth', (d) => d.c && this.meet(d.c.sp)));
+    this.progress.attach(world);
   }
 
   meet(sp) {
@@ -47,6 +50,7 @@ export class Journal {
   update(dt) {
     const w = this.world;
     if (!w) return;
+    this.progress.update(dt);
     this.checkT -= dt;
     if (this.checkT > 0) return;
     this.checkT = 2;
@@ -77,6 +81,24 @@ export class Journal {
     if (this.onUnlock) this.onUnlock(d);
   }
 
+  // Can the keeper use this critter / food / plant / decoration yet?
+  // kind: 'adopt' | 'feed' | 'plant' | 'decor'
+  canUse(kind, id) {
+    if (this.sandbox) return true;
+    if (kind === 'decor' && !this.isDecorUnlocked(id)) return false;
+    return this.progress.canUse(kind, id);
+  }
+  // Why something is locked, as a hint the keeper can act on.
+  lockHint(kind, id) {
+    if (kind === 'decor' && !this.isDecorUnlocked(id)) {
+      const by = this.unlockerOf('decor', id);
+      if (by) return `discover “${by.title}”. Hint: ${by.hint}`;
+    }
+    const u = this.progress.unlockOf(kind, id);
+    if (u) return `reach ${u.zone[0].toUpperCase() + u.zone.slice(1)} level ${u.level}. Check the keeper's clipboard for how.`;
+    return '';
+  }
+
   isDecorUnlocked(id) {
     if (this.sandbox || !this.locked.decor.has(id)) return true;
     return DISCOVERIES.some((d) => d.reward && d.reward.decor === id && this.unlocked[d.id]);
@@ -98,7 +120,7 @@ export class Journal {
   }
 
   serialize() {
-    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met };
+    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize() };
   }
   load(d) {
     if (!d) return;
@@ -106,5 +128,14 @@ export class Journal {
     this.flags = d.flags || {};
     this.counts = d.counts || {};
     this.met = d.met || {};
+    const onLevel = this.progress.onLevel;
+    this.progress = new Progress();
+    this.progress.onLevel = onLevel;
+    this.progress.load(d.progress);
+    if (this.world) this.progress.attach(this.world);
+  }
+  // A brand-new farm: every zone back to level 1.
+  reset() {
+    this.load({ progress: {} });
   }
 }

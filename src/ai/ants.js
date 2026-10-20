@@ -484,11 +484,11 @@ def('antForage', {
       d.t += dt;
       if (d.t > 1.2) {
         const f = d.food;
-        if (!f || f.gone) return false;
+        if (!f || f.gone || f.amount <= 0.001) return false;
         if (c.hunger > 0.4) w.eat(c, { kind: 'food', food: f });
         const amt = Math.min(f.amount, 0.07);
-        f.amount -= amt;
-        if (f.amount <= 0.001) w.removeFood(f);
+        f.amount = Math.max(0, f.amount - amt);
+        w.nibbled(f, c);
         c.carry = 'food';
         c.carryAmt = amt;
         c.carryFood = f.def.colors[0];

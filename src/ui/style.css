@@ -213,6 +213,64 @@ button {
   pointer-events: none;
 }
 
+/* zone temperatures in the clock: coloured by how the critters feel */
+.clock .temps .zt.hot {
+  color: #c8321e;
+}
+.clock .temps .zt.cold {
+  color: #2a6fc0;
+}
+.clock .temps .zt.dry,
+.clock .temps .zt.warn {
+  color: #a86a12;
+}
+
+/* the keeper's clipboard button and its to-do badge */
+.clipbtn {
+  position: relative;
+}
+.clipbtn.pulse {
+  animation: pulse 0.9s ease-in-out 4;
+}
+@keyframes pulse {
+  50% {
+    transform: scale(1.12);
+    background: #fff6c9;
+  }
+}
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: var(--mustard);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: bold;
+}
+.badge.hot {
+  background: var(--red);
+  color: #fff;
+}
+.newdot {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: var(--red);
+}
+.tool {
+  position: relative;
+}
+
 /* ---------- zone chips ---------- */
 #zones {
   position: absolute;
@@ -322,6 +380,7 @@ button {
   scrollbar-width: none;
 }
 .tabs button {
+  white-space: nowrap;
   border: 0;
   background: transparent;
   border-radius: 10px;
@@ -388,6 +447,18 @@ button {
   right: 4px;
   font-size: 11px;
   opacity: 0.7;
+}
+.item .new {
+  position: absolute;
+  top: -7px;
+  left: -5px;
+  font-size: 11px;
+  background: var(--red);
+  color: #fff;
+  border: 1.5px solid var(--ink);
+  border-radius: 7px;
+  padding: 0 4px;
+  transform: rotate(-8deg);
 }
 .item .lock {
   position: absolute;
@@ -552,6 +623,243 @@ input[type='range']::-moz-range-thumb {
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+}
+
+/* comfort gauges: green = comfy range, the pin = right now */
+.gauge {
+  min-width: 0;
+}
+.gauge .track {
+  position: relative;
+  height: 12px;
+  border: 2px solid var(--ink);
+  border-radius: 7px;
+  background: linear-gradient(90deg, #9fd0ef, #fbf3df 45%, #f6b98f);
+}
+.gauge.damp .track {
+  background: linear-gradient(90deg, #f1d59c, #fbf3df 40%, #9fd0ef);
+}
+.gauge .track b {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(119, 178, 85, 0.6);
+  border-left: 1.5px solid #4f8a3c;
+  border-right: 1.5px solid #4f8a3c;
+}
+.gauge .track i {
+  position: absolute;
+  top: -5px;
+  width: 6px;
+  height: 18px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--ink);
+  box-shadow: 0 0 0 1.5px #fff;
+}
+.gauge.hot .track i,
+.gauge.dry .track i,
+.gauge.wet .track i {
+  background: var(--red);
+}
+.gauge.cold .track i {
+  background: var(--blue);
+}
+.gauges {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+.glabel {
+  font-size: 12.5px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.advice {
+  font-size: 14px;
+  line-height: 1.15;
+  margin: 2px 0 4px;
+}
+.advice .good,
+.zadvice .good {
+  color: #3f7a34;
+}
+.advice .bad,
+.zadvice .bad {
+  color: #a86a12;
+}
+.advice .bad.sev2,
+.advice .bad.sev3,
+.zadvice .bad.sev2,
+.zadvice .bad.sev3 {
+  color: #c8321e;
+}
+.zonecard h3 .big.hot {
+  color: #c8321e;
+}
+.zonecard h3 .big.cold {
+  color: #2a6fc0;
+}
+.zonecard.flash {
+  animation: flash 1.2s ease-out 2;
+}
+@keyframes flash {
+  30% {
+    background: #fff6c9;
+    box-shadow: 0 0 0 3px var(--mustard);
+  }
+}
+.equip {
+  display: grid;
+  grid-template-columns: 82px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+  margin-top: 4px;
+}
+.mini-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  margin-left: auto;
+}
+.wx b {
+  font-weight: normal;
+  color: #9a3c2e;
+}
+
+/* clipboard */
+.zrow {
+  display: grid;
+  grid-template-columns: 62px 44px 1fr 36px 1fr;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 4px 2px;
+  border-bottom: 1.5px dashed rgba(58, 42, 31, 0.2);
+}
+.zrow .zname {
+  font-family: 'Chewy', 'Patrick Hand', sans-serif;
+  font-size: 17px;
+}
+.zrow .ztemp {
+  font-size: 15px;
+}
+.zrow .ztemp.hot {
+  color: #c8321e;
+}
+.zrow .ztemp.cold {
+  color: #2a6fc0;
+}
+.zrow .ztemp.dry,
+.zrow .ztemp.wet {
+  color: #a86a12;
+}
+.zrow .zadvice {
+  grid-column: 1 / -1;
+  font-size: 14px;
+  line-height: 1.15;
+}
+.need {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px;
+  margin: 3px 0;
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 1.15;
+  background: #fffaf0;
+  border: 1.5px solid rgba(58, 42, 31, 0.3);
+}
+.need canvas {
+  flex: none;
+}
+.need span {
+  flex: 1;
+}
+.need .btn {
+  flex: none;
+}
+.need.sev0 {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.85;
+}
+.need.sev2,
+.need.sev3 {
+  border: 2px solid var(--ink);
+  background: #fff1dc;
+}
+.need.ok {
+  background: #eef6e0;
+}
+.goal {
+  display: grid;
+  grid-template-columns: 20px 1fr 90px 74px;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+  padding: 3px 0;
+}
+.goal .tick {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  background: #fffaf0;
+}
+.goal.done .tick {
+  background: var(--leaf);
+}
+.goal.done .tick::after {
+  content: '✓';
+  color: #fff;
+  font-size: 14px;
+  line-height: 14px;
+  display: block;
+  text-align: center;
+}
+.goal .gtext small {
+  display: block;
+  font-size: 12.5px;
+  opacity: 0.7;
+  line-height: 1.1;
+}
+.goal.done .gtext small {
+  display: none;
+}
+.goal.done .gtext {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.goal .glab {
+  font-size: 13px;
+  opacity: 0.8;
+  text-align: right;
+}
+.goals .stars {
+  color: #e8a51c;
+  letter-spacing: 1px;
+}
+.unlocks {
+  font-size: 14px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1.5px dashed var(--ink);
+  border-radius: 10px;
+  background: #fff6c9;
+}
+.unlocks b {
+  font-weight: normal;
+  color: #9a3c2e;
+}
+p.small {
+  font-size: 14px;
+  opacity: 0.85;
+  margin: 2px 0 4px;
 }
 
 /* ---------- info card ---------- */
@@ -879,6 +1187,10 @@ input[type='range']::-moz-range-thumb {
   text-align: center;
   line-height: 1.1;
 }
+.welcome-choices .wide {
+  grid-column: 1 / -1;
+  min-height: 72px;
+}
 .welcome-choices small {
   font-size: 13px;
   opacity: 0.9;
@@ -960,6 +1272,30 @@ input[type='range']::-moz-range-thumb {
 }
 @media (max-width: 440px) {
   .clock .temps {
+    display: none;
+  }
+  .hud-right {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .iconbtn {
+    width: 40px;
+    height: 40px;
+  }
+  .sheet-head .title {
+    font-size: 19px;
+  }
+  .zrow {
+    grid-template-columns: 54px 40px 1fr 32px 1fr;
+    gap: 3px 5px;
+  }
+  .zrow .zname {
+    font-size: 15px;
+  }
+  .goal {
+    grid-template-columns: 20px 1fr 54px;
+  }
+  .goal .glab {
     display: none;
   }
   .tool {

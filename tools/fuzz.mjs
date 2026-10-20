@@ -15,7 +15,7 @@ const seed = +(process.argv[3] || 1);
 const R = mulberry32(seed);
 const pick = (a) => a[Math.floor(R() * a.length)];
 const w = new World();
-w.newGame(seed, true);
+w.newGame(seed, seed % 2 ? 'farm' : true);
 let issues = 0;
 const report = (msg) => {
   if (issues++ < 15) console.log('  ! ' + msg);
@@ -24,7 +24,7 @@ const steps = Math.round((days * DAY_LEN) / SIM_DT);
 const actions = {};
 for (let i = 0; i < steps; i++) {
   if (i % 90 === 0) {
-    const a = Math.floor(R() * 10);
+    const a = Math.floor(R() * 11);
     const x = R() * W;
     const y = R() * H;
     try {
@@ -50,6 +50,17 @@ for (let i = 0; i < steps; i++) {
         case 7: w.tapGlass(x, y); break;
         case 8: if (w.creatures.length) w.pet(pick(w.creatures)); break;
         case 9: w.env.lightsMode = pick(['auto', 'auto', 'day', 'night']); break;
+        case 10: {
+          // keeper chores and the weather switch
+          const k = Math.floor(R() * 5);
+          if (k === 0) w.refillMister(pick(['desert', 'jungle']));
+          else if (k === 1) w.rinseFilter();
+          else if (k === 2) w.topUpPond();
+          else if (k === 3) w.env.weatherOn = !w.env.weatherOn;
+          else w.cleanPond();
+          actions.chore = (actions.chore || 0) + 1;
+          break;
+        }
       }
     } catch (e) {
       report('action ' + a + ' threw: ' + (e.stack || e));

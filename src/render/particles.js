@@ -18,7 +18,7 @@ export class Particles {
   }
   add(p) {
     if (this.list.length >= this.max) {
-      if (p.type === 'rain' || p.type === 'dust') return;
+      if (p.type === 'rain' || p.type === 'dust' || p.type === 'mist') return;
       this.list.shift();
     }
     p.t = 0;
@@ -45,6 +45,16 @@ export class Particles {
   sparkle(x, y, n = 5) {
     for (let i = 0; i < n; i++) this.add({ type: 'star', x: x + rrange(-6, 6), y: y + rrange(-6, 6), vx: rrange(-10, 10), vy: -rrange(8, 26), r: rrange(1.4, 2.6), life: rrange(0.7, 1.2), rot: Math.random() * TAU });
   }
+  // Crumbs flicked off a snack mid-bite. floor < 0 means they drift in water.
+  crumbs(x, y, colors, floor) {
+    for (let i = 0; i < 3; i++) {
+      this.add({ type: 'crumb', x: x + rrange(-2, 2), y: y + rrange(-1, 1), vx: rrange(-18, 18), vy: -rrange(10, 28), r: rrange(0.45, 0.9), life: rrange(0.8, 1.2), col: colors[i % colors.length], floor, rot: Math.random() * TAU });
+    }
+  }
+  // A soft puff of ground mist drifting over damp jungle soil.
+  mist(x, y) {
+    this.add({ type: 'mist', x, y, vx: rrange(-5, 5), vy: -rrange(0.5, 2), r: rrange(14, 26), life: rrange(5, 8) });
+  }
   rain(x, power, dt, terrain) {
     const rate = power * 60;
     const zone = x < 800 ? 'desert' : 'jungle';
@@ -70,6 +80,10 @@ export class Particles {
             if (chance(0.3)) this.ripples.push({ x: p.x, t: 0, s: 0.25 });
           }
           break;
+        case 'mist':
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          break;
         case 'dust':
         case 'puff':
           p.x += p.vx * dt;
@@ -77,6 +91,20 @@ export class Particles {
           p.vx *= 1 - dt * 3;
           p.vy *= 1 - dt * 3;
           if (p.type === 'dust') p.vy += 30 * dt;
+          break;
+        case 'crumb':
+          if (p.floor < 0) {
+            p.vx *= 1 - dt * 2;
+            p.vy += (8 - p.vy) * dt * 3;
+          } else {
+            p.vy += 220 * dt;
+          }
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          if (p.floor >= 0 && p.y >= p.floor) {
+            p.y = p.floor;
+            p.vx = p.vy = 0;
+          }
           break;
         case 'drop':
           p.vy += 300 * dt;
@@ -143,6 +171,24 @@ export class Particles {
           g.fillStyle = '#fffaf0';
           g.fill();
           g.lineWidth = lw;
+          g.strokeStyle = INK;
+          g.stroke();
+          break;
+        case 'mist': {
+          g.globalAlpha = Math.sin((p.t / p.life) * Math.PI) * 0.22;
+          g.beginPath();
+          g.ellipse(p.x, p.y, p.r * (1 + p.t * 0.08), p.r * 0.45, 0, 0, TAU);
+          g.fillStyle = '#ffffff';
+          g.fill();
+          break;
+        }
+        case 'crumb':
+          g.globalAlpha = Math.min(1, k * 2.5);
+          g.beginPath();
+          g.ellipse(p.x, p.y - p.r * 0.5, p.r * 1.2, p.r, p.rot, 0, TAU);
+          g.fillStyle = p.col;
+          g.fill();
+          g.lineWidth = 0.3;
           g.strokeStyle = INK;
           g.stroke();
           break;

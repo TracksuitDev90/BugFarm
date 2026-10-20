@@ -802,11 +802,7 @@ function drawLadybug(g, o) {
   if (young) g.scale(0.75, 0.75);
   const fly = o.pose === 'fly';
   legsTripod(g, [-1.4, 0.8, 2.6], 1.2, 3.6, [-1.2, 0, 1.2], o.frame, o.pose === 'walk', lw * 0.7);
-  if (fly) {
-    const a = o.frame % 2 ? -0.95 : -0.35;
-    wing(g, -3, -4.6, 6.2, 2.0, a, lw);
-    wing(g, -2, -4.2, 5.4, 1.8, a + 0.35, lw);
-  }
+  if (fly && !o.liveWings) stillWing(g, 'ladybug', lw, true);
   g.save();
   if (fly) {
     g.translate(3.6, -0.8);
@@ -827,6 +823,7 @@ function drawLadybug(g, o) {
   }
   highlight(g, -1.8, -3.6, 2.2, 0.8, 0.5, -0.3);
   g.restore();
+  if (fly && !o.liveWings) stillWing(g, 'ladybug', lw, false);
   blob(g, 4.6, -0.2, 1.8, 2.0, '#2d2a2a', lw);
   ell(g, 5.0, -1.0, 0.7, 0.55);
   fill(g, '#fff');
@@ -928,14 +925,38 @@ function drawButterfly(g, o) {
     return;
   }
   // adult: wings drawn in side profile; a perched butterfly shows the
-  // pale underside with wings held together, flight flips them up and down.
+  // pale underside with wings held together. In flight the renderer beats
+  // the wings live (o.liveWings); still pictures get them half open.
   const fly = o.pose === 'fly';
-  const sY = fly ? [1, 0.5, -0.62, 0.5][o.frame % 4] : 1;
-  const col = fly ? P.wing : P.under;
-  g.save();
-  g.translate(0, -0.6);
-  g.scale(1, sY);
-  g.translate(0, 0.6);
+  if (!(fly && o.liveWings)) {
+    g.save();
+    g.translate(0, WINGS.butterfly.hy);
+    g.scale(1, fly ? 0.62 : 1);
+    g.translate(0, -WINGS.butterfly.hy);
+    drawButterflyWings(g, P, lw, fly ? P.wing : P.under);
+    g.restore();
+  }
+  // slim fuzzy body
+  blob(g, -1.2, 0.3, 4.6, 1.15, '#5a4636', lw);
+  for (let i = 0; i < 3; i++) line(g, -4.2 + i * 1.6, -0.6, -4.4 + i * 1.6, 1.2, lw * 0.4, 'rgba(255,255,255,0.35)');
+  blob(g, 3.6, -0.2, 1.7, 1.3, '#5a4636', lw);
+  blob(g, 5.9, -0.4, 1.7, 1.6, '#5a4636', lw);
+  antenna(g, 6.6, -1.6, 7.8, -5.5, 10.4, -7.0, lw * 0.5, 0.55);
+  antenna(g, 6.1, -1.8, 6.6, -6, 8.2, -8.0, lw * 0.5, 0.5);
+  if (o.closed) curve(g, 6.0, -0.6, 6.5, -0.1, 7.1, -0.6, lw * 0.6, '#fff');
+  else {
+    circ(g, 6.6, -0.7, 0.75);
+    fill(g, '#fff');
+    circ(g, 6.8, -0.7, 0.4);
+    fill(g, INK);
+  }
+  cheek(g, 6.9, 0.5, 0.5);
+  line(g, 2.6, 0.8, 3.4, 2.0, lw * 0.5);
+  line(g, 3.8, 0.8, 4.8, 2.0, lw * 0.5);
+}
+
+// Both butterfly wings (hind and fore) in body coordinates, hinged along y = -0.6.
+export function drawButterflyWings(g, P, lw, col) {
   // hind wing
   paint(g, col, lw, () => {
     g.beginPath();
@@ -967,24 +988,6 @@ function drawButterfly(g, o) {
   }
   for (const [x2, y2] of [[3.6, -14.6], [7.4, -11.2], [-5.6, -9.4], [-1.6, -13]]) line(g, 1.2, -1.2, x2, y2, lw * 0.4, 'rgba(45,38,34,0.5)');
   highlight(g, 2.2, -12.4, 2.4, 1.0, 0.3, -0.5);
-  g.restore();
-  // slim fuzzy body
-  blob(g, -1.2, 0.3, 4.6, 1.15, '#5a4636', lw);
-  for (let i = 0; i < 3; i++) line(g, -4.2 + i * 1.6, -0.6, -4.4 + i * 1.6, 1.2, lw * 0.4, 'rgba(255,255,255,0.35)');
-  blob(g, 3.6, -0.2, 1.7, 1.3, '#5a4636', lw);
-  blob(g, 5.9, -0.4, 1.7, 1.6, '#5a4636', lw);
-  antenna(g, 6.6, -1.6, 7.8, -5.5, 10.4, -7.0, lw * 0.5, 0.55);
-  antenna(g, 6.1, -1.8, 6.6, -6, 8.2, -8.0, lw * 0.5, 0.5);
-  if (o.closed) curve(g, 6.0, -0.6, 6.5, -0.1, 7.1, -0.6, lw * 0.6, '#fff');
-  else {
-    circ(g, 6.6, -0.7, 0.75);
-    fill(g, '#fff');
-    circ(g, 6.8, -0.7, 0.4);
-    fill(g, INK);
-  }
-  cheek(g, 6.9, 0.5, 0.5);
-  line(g, 2.6, 0.8, 3.4, 2.0, lw * 0.5);
-  line(g, 3.8, 0.8, 4.8, 2.0, lw * 0.5);
 }
 
 // ---------------------------------------------------------------- SNAIL
@@ -1054,9 +1057,7 @@ function drawSnail(g, o) {
 function drawBee(g, o) {
   const P = o.pal;
   const lw = o.lw;
-  const flap = o.frame % 2;
-  const a = flap ? -1.05 : -0.35;
-  wing(g, -1, -5.2, 4.8, 2.3, a, lw);
+  if (!o.liveWings) stillWing(g, 'bee', lw, true);
   for (let i = 0; i < 3; i++) {
     const x = -1.2 + i * 1.6;
     line(g, x, 3.6, x - 0.9, 5.6, lw * 0.7);
@@ -1095,7 +1096,7 @@ function drawBee(g, o) {
   g.fill();
   stroke(g, lw);
   g.restore();
-  wing(g, 0.6, -5.0, 3.8, 1.9, a + 0.3, lw);
+  if (!o.liveWings) stillWing(g, 'bee', lw, false);
   blob(g, 5, 0.6, 2.5, 2.4, P.black, lw);
   antenna(g, 5.2, -1.6, 6.4, -4.6, 7.8, -4.4, lw * 0.6, 0.45);
   eye(g, 5.8, -0.1, 1.05, lw, { closed: o.closed, pupil: 0.55 });
@@ -1109,10 +1110,7 @@ function drawFirefly(g, o) {
   const lw = o.lw;
   const fly = o.pose === 'fly';
   legsTripod(g, [-1, 0.8, 2.4], 1.2, 3.2, [-1, 0, 1], o.frame, o.pose === 'walk', lw * 0.7);
-  if (fly) {
-    const a = o.frame % 2 ? -1.0 : -0.4;
-    wing(g, -2.4, -3.6, 5.4, 1.8, a, lw);
-  }
+  if (fly && !o.liveWings) stillWing(g, 'firefly', lw, true);
   blob(g, -2.6, 0.6, 4.6, 2.4, P.body, lw);
   blob(g, -5.3, 1.0, 2.0, 1.9, P.lantern, lw * 0.8);
   g.save();
@@ -1131,6 +1129,7 @@ function drawFirefly(g, o) {
   });
   curve(g, -6.4, 0.2, -2.6, -1.6, 1.4, -0.4, lw * 0.6, '#e8d36a');
   g.restore();
+  if (fly && !o.liveWings) stillWing(g, 'firefly', lw, false);
   blob(g, 2.6, -0.6, 2.4, 2.0, P.shield, lw);
   ell(g, 2.8, -0.9, 0.8, 0.7);
   fill(g, INK);
@@ -1201,9 +1200,8 @@ function drawPillbug(g, o) {
 // ---------------------------------------------------------------- FRUIT FLY
 function drawFruitfly(g, o) {
   const lw = o.lw;
-  const a = o.frame % 2 ? -0.9 : -0.25;
   for (let i = 0; i < 3; i++) line(g, -0.6 + i * 0.9, 1.0, -0.8 + i * 0.9, 2.2, lw * 0.6);
-  wing(g, -1.2, -1.6, 2.6, 1.1, a, lw);
+  if (!o.liveWings) stillWing(g, 'fruitfly', lw, true);
   blob(g, -0.7, 0.2, 2.2, 1.4, '#d8b072', lw);
   line(g, -1.4, -1.0, -1.6, 1.4, lw * 0.6, 'rgba(90,60,30,0.6)');
   line(g, -2.4, -0.8, -2.6, 1.2, lw * 0.6, 'rgba(90,60,30,0.6)');
@@ -1213,7 +1211,68 @@ function drawFruitfly(g, o) {
   stroke(g, lw * 0.5);
   circ(g, 2.25, -0.55, 0.28);
   fill(g, '#fff');
-  wing(g, -0.6, -1.4, 2.2, 0.9, a + 0.3, lw);
+  if (!o.liveWings) stillWing(g, 'fruitfly', lw, false);
+}
+
+// ---------------------------------------------------------------- WINGS
+// Insect wings hinge at the shoulder (hx, hy) and sweep between
+// base - amp (swept back) and base + amp (raised), angles in radians with the
+// critter facing right. In the tank the renderer beats them every frame from
+// a cached wing sprite (see drawWingBlade), so the motion is smooth instead of
+// snapping between two poses. The far wing sits slightly lower and lags.
+//   hz: beats per second, blur: strength of the motion-blur fan, bob: how far
+//   the body lifts with each downstroke.
+export const WINGS = {
+  ladybug: { hx: 1.4, hy: -3.0, len: 7.4, wid: 2.2, base: -2.4, amp: 0.68, hz: 6.5, blur: 0.22, bob: 0.45 },
+  bee: { hx: 1.9, hy: -2.4, len: 6.2, wid: 2.5, base: -2.2, amp: 0.75, hz: 8, blur: 0.5, bob: 0.35 },
+  firefly: { hx: 0.8, hy: -1.9, len: 6.0, wid: 1.9, base: -2.45, amp: 0.62, hz: 5.5, blur: 0.18, bob: 0.4 },
+  fruitfly: { hx: 0.3, hy: -1.0, len: 3.3, wid: 1.25, base: -2.35, amp: 0.75, hz: 11, blur: 0.55, bob: 0.15 },
+  butterfly: { hx: 0, hy: -0.6, hz: 2.4, bob: 1.5, butterfly: true },
+};
+
+// Wing angle at beat phase ph. The downstroke (rising sine) is a little
+// quicker than the recovery, which reads as a push rather than a wobble.
+export function wingAngle(spec, ph) {
+  return spec.base + spec.amp * Math.sin(ph + 0.35 * Math.sin(ph));
+}
+// Butterfly wings flatten to a sliver as they pass edge-on, then open below.
+export function butterflyLift(ph) {
+  const s = Math.cos(ph + 0.3 * Math.sin(ph));
+  return s >= 0 ? 0.12 + 0.88 * s : 0.12 + 0.7 * s;
+}
+
+// One wing, root at the origin, pointing along +x.
+export function drawWingBlade(g, len, wid, lw, far) {
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.bezierCurveTo(len * 0.18, -wid * 1.2, len * 0.72, -wid * 1.1, len, -wid * 0.2);
+  g.bezierCurveTo(len * 1.04, wid * 0.55, len * 0.5, wid * 0.9, 0, 0);
+  g.closePath();
+  g.fillStyle = far ? 'rgba(178,204,222,0.6)' : 'rgba(222,240,252,0.66)';
+  g.fill();
+  stroke(g, lw * 0.7, far ? 'rgba(58,42,31,0.6)' : INK);
+  g.beginPath();
+  g.moveTo(len * 0.06, -wid * 0.05);
+  g.quadraticCurveTo(len * 0.5, -wid * 0.55, len * 0.9, -wid * 0.3);
+  g.moveTo(len * 0.35, -wid * 0.32);
+  g.quadraticCurveTo(len * 0.6, wid * 0.05, len * 0.8, wid * 0.25);
+  stroke(g, lw * 0.35, 'rgba(58,42,31,0.45)');
+  highlight(g, len * 0.5, -wid * 0.55, len * 0.22, wid * 0.22, 0.6, -0.1);
+}
+// Half-extent box of a wing blade sprite.
+export function wingBox(spec) {
+  return [-1, -spec.wid * 1.5 - 1, spec.len + 1.5, spec.wid * 1.2 + 1];
+}
+
+// A wing frozen mid-beat, for portraits and the gallery.
+function stillWing(g, sp, lw, far) {
+  const s = WINGS[sp];
+  g.save();
+  g.translate(s.hx + (far ? 0.6 : 0), s.hy + (far ? 0.4 : 0));
+  g.rotate(wingAngle(s, far ? 0.1 : 0.35));
+  if (far) g.scale(0.88, 0.88);
+  drawWingBlade(g, s.len, s.wid, lw, far);
+  g.restore();
 }
 
 // ---------------------------------------------------------------- accessory helper
@@ -1236,7 +1295,7 @@ export const CREATURE_ART = {
   turtle: { box: () => [31, 18], lw: 1.1, draw: drawTurtle },
   pondsnail: { box: () => [9, 9], lw: 0.65, draw: drawPondSnail },
   shrimp: { box: () => [17, 9], lw: 0.65, draw: drawShrimp },
-  ladybug: { box: () => [11, 10], lw: 0.7, draw: drawLadybug },
+  ladybug: { box: () => [11, 12], lw: 0.7, draw: drawLadybug },
   aphid: { box: () => [5, 5], lw: 0.45, draw: drawAphid },
   butterfly: { box: (st) => (st === 'adult' ? [14, 20] : st === 'caterpillar' ? [12, 8] : [6, 11]), lw: 0.75, draw: drawButterfly },
   snail: { box: () => [15, 14], lw: 0.85, draw: drawSnail },

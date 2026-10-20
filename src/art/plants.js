@@ -114,6 +114,82 @@ function heartLeaf(g, l, col, lw) {
   g.restore();
 }
 
+// Monstera: a heart-shaped leaf with slits running in from the edges.
+function monsteraLeaf(g, l, col, lw) {
+  g.save();
+  g.translate(l.x, l.y);
+  g.rotate(l.a);
+  const L = l.len;
+  const W = l.wid;
+  const N = 14;
+  const slitAt = l.splits >= 3 ? [4, 7, 10] : l.splits >= 1 ? [7] : [];
+  const edge = (side) => {
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const x = -0.24 * L + 1.38 * L * t;
+      const w = W * Math.pow(Math.sin(Math.PI * (0.06 + 0.94 * t)), 0.7) * (1 - 0.3 * t);
+      pts.push([x, side * w]);
+      if (slitAt.includes(i) && !(l.eaten > 0.3 && side > 0 && i === 10)) {
+        // a narrow cut toward the midrib, angled back to the stalk
+        pts.push([x - L * 0.1, side * w * 0.32]);
+        pts.push([x + L * 0.035, side * w * 1.02]);
+      }
+    }
+    return pts;
+  };
+  const top = edge(-1);
+  const bot = edge(1).reverse();
+  const outline = () => {
+    g.beginPath();
+    g.moveTo(0, 0);
+    for (const p of top) g.lineTo(p[0], p[1]);
+    for (const p of bot) g.lineTo(p[0], p[1]);
+    g.closePath();
+  };
+  paint(g, col, lw, outline);
+  line(g, -0.05 * L, 0, 1.08 * L, 0, lw * 0.6, darker(col, 0.3));
+  for (let i = 1; i <= 4; i++) {
+    const x = (i / 5) * L;
+    curve(g, x, 0, x + L * 0.1, -W * 0.3, x + L * 0.08, -W * 0.62, lw * 0.35, darker(col, 0.25));
+    curve(g, x, 0, x + L * 0.1, W * 0.3, x + L * 0.08, W * 0.62, lw * 0.35, darker(col, 0.25));
+  }
+  // a couple of little window holes near the midrib
+  if (l.splits >= 3) {
+    for (const [hx, hy] of [[0.36, -0.22], [0.58, 0.2]]) {
+      ell(g, hx * L, hy * W, L * 0.05, W * 0.08, 0.3);
+      g.fillStyle = darker(col, 0.55);
+      g.fill();
+      stroke(g, lw * 0.5);
+    }
+  }
+  highlight(g, L * 0.45, -W * 0.38, L * 0.25, W * 0.14, 0.25, 0);
+  g.restore();
+}
+
+// Palm frond: an arching midrib with narrow leaflets hanging off both sides.
+function palmFrond(g, l, col, lw) {
+  const pts = l.pts;
+  const dark = darker(col, 0.18);
+  for (let i = 1; i < pts.length; i++) {
+    const [x, y] = pts[i - 1];
+    const [nx, ny] = pts[i];
+    const a = Math.atan2(ny - y, nx - x);
+    const s = (1 - i / (pts.length + 1)) * l.len * 0.16 + 2.5;
+    for (const side of [-1, 1]) {
+      // leaflets droop: bend them toward straight down
+      let la = a + side * 1.0;
+      la += (Math.PI / 2 - la) * 0.35;
+      const mx = (x + nx) / 2;
+      const my = (y + ny) / 2;
+      blob(g, mx + Math.cos(la) * s * 0.5, my + Math.sin(la) * s * 0.5, s * 0.55, s * 0.14, side > 0 ? col : dark, lw * 0.55, la);
+    }
+  }
+  stemPath(g, pts);
+  stroke(g, lw * 2.4, INK);
+  stroke(g, lw * 1.1, darker(col, 0.05));
+}
+
 function trefoil(g, l, col, lw) {
   for (let k = 0; k < 3; k++) {
     const a = -Math.PI / 2 + (k - 1) * 2.1;
@@ -214,6 +290,34 @@ function flower(g, f, def, lw) {
       }
       break;
     }
+    case 'bract': {
+      // bromeliad: a spike of glossy red bracts tipped with little flowers
+      const n = 5;
+      for (let i = n - 1; i >= 0; i--) {
+        const yy = f.y - i * r * 0.42;
+        const w = r * (1 - i * 0.14);
+        for (const side of [-1, 1]) {
+          g.save();
+          g.translate(f.x, yy);
+          g.rotate(side * (0.7 - i * 0.05));
+          paint(g, i % 2 ? pc : mix(pc, '#ffffff', 0.12), lw * 0.7, () => {
+            g.beginPath();
+            g.moveTo(-w * 0.18, 0);
+            g.quadraticCurveTo(-w * 0.2, -w * 0.6, 0, -w * 0.95);
+            g.quadraticCurveTo(w * 0.2, -w * 0.6, w * 0.18, 0);
+            g.closePath();
+          });
+          g.restore();
+        }
+        if (f.open > 0.5 && i % 2 === 0) {
+          circ(g, f.x + (i % 4 ? 1 : -1) * w * 0.5, yy - w * 0.7, r * 0.13);
+          fill(g, f.pollinated ? '#c98a3a' : cc);
+          stroke(g, lw * 0.4);
+        }
+      }
+      highlight(g, f.x - r * 0.25, f.y - r * 0.9, r * 0.12, r * 0.5, 0.35, 0);
+      break;
+    }
     case 'lotus': {
       for (let i = -2; i <= 2; i++) {
         g.save();
@@ -252,6 +356,20 @@ export function drawPlant(g, p, time) {
   const leafCol = mix(def.leaf || '#77b255', '#b39a5a', wither);
   const stemCol = darker(leafCol, 0.12);
 
+  if (S.extra) {
+    for (const e of S.extra) {
+      if (e.type !== 'trunk') continue;
+      // ringed palm trunk, tapering to the crown
+      const col = mix(def.trunk || '#9a7650', '#b39a5a', wither * 0.5);
+      paint(g, col, lw, () => ribbon(g, e.pts, e.w, e.w * 0.6));
+      for (let i = 1; i < e.pts.length - 1; i++) {
+        const [x, y] = e.pts[i];
+        const w = (e.w * (1 - (i / e.pts.length) * 0.4)) / 2;
+        curve(g, x - w, y + 0.6, x, y - 0.8, x + w, y + 0.6, lw * 0.5, darker(col, 0.3));
+      }
+      highlight(g, e.pts[3][0] - e.w * 0.2, e.pts[3][1], e.w * 0.15, Math.abs(e.pts[6][1] - e.pts[1][1]) * 0.3, 0.25, 0);
+    }
+  }
   for (const s of S.stems) {
     stemPath(g, s.pts);
     stroke(g, s.w + lw * 2, INK);
@@ -281,6 +399,12 @@ export function drawPlant(g, p, time) {
         break;
       case 'fleshy':
         fleshy(g, l, leafCol, lw);
+        break;
+      case 'monstera':
+        monsteraLeaf(g, l, leafCol, lw);
+        break;
+      case 'palmFrond':
+        palmFrond(g, l, leafCol, lw);
         break;
       default:
         ovateLeaf(g, l, leafCol, lw);
@@ -384,6 +508,34 @@ export function drawPlant(g, p, time) {
       fill(g, '#f6e27a');
     }
     blob(g, fr.x, fr.y - r * 0.9, r * 0.6, r * 0.25, '#77b255', lw * 0.6);
+  }
+}
+
+// A trailing vine hanging from the tank lid in the jungle: a leafy clump at
+// the top and heart-shaped leaves alternating down a wandering stem.
+export function drawVine(g, len, seed) {
+  const lw = 0.75;
+  const h = (k) => hash1(seed, k);
+  const sway = (h(1) - 0.5) * 16;
+  const at = (t) => [sway * Math.sin(t * Math.PI * (1 + h(2))) * t, t * len];
+  const pts = [];
+  for (let i = 0; i <= 12; i++) pts.push(at(i / 12));
+  stemPath(g, pts);
+  stroke(g, 2.2 + lw * 2, INK);
+  stroke(g, 2.2, '#5a7a32');
+  const cols = ['#4f8a3c', '#5f9e45', '#3f7a34', '#6fae4a'];
+  const n = Math.floor(len / 11);
+  for (let k = 1; k <= n; k++) {
+    const t = k / (n + 0.5);
+    const [x, y] = at(t);
+    const side = k % 2 ? 1 : -1;
+    const size = (5.5 + h(10 + k) * 3) * (1 - t * 0.35);
+    heartLeaf(g, { x, y, a: Math.PI / 2 + side * (0.9 + h(30 + k) * 0.5), len: size, wid: size * 0.75 }, cols[Math.floor(h(20 + k) * cols.length)], lw);
+  }
+  // the clump where it hangs from the lid
+  for (let k = 0; k < 5; k++) {
+    const a = Math.PI / 2 + (k / 4 - 0.5) * 2.6;
+    heartLeaf(g, { x: 0, y: 2, a, len: 8 + h(40 + k) * 4, wid: 6 }, cols[k % cols.length], lw);
   }
 }
 

@@ -612,7 +612,7 @@ export class UI {
   goZone(z) {
     const cam = this.cam;
     if (z.id === 'all') cam.flyTo(W / 2, H / 2, cam.fitAll);
-    else cam.flyTo(z.x, cam.portrait ? 500 : H / 2 + 30, Math.max(cam.zoom, cam.defaultZoom()));
+    else cam.flyTo(z.x, cam.portrait ? 430 : H / 2 + 30, Math.max(cam.zoom, cam.defaultZoom()));
     cam.follow = null;
   }
 

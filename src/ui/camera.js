@@ -47,7 +47,7 @@ export class Camera {
 
   reset(animate) {
     const z = this.defaultZoom();
-    const tgt = { x: this.portrait ? 300 : W / 2, y: this.portrait ? 500 : H / 2, zoom: z };
+    const tgt = { x: this.portrait ? 300 : W / 2, y: this.portrait ? 430 : H / 2, zoom: z };
     if (animate) this.target = tgt;
     else {
       this.x = tgt.x;

@@ -428,15 +428,15 @@ export class Renderer {
       if (p < 0.05) continue;
       const x = LAMP_X[z];
       const a = 0.08 * p * (0.6 + 0.4 * env.sun);
-      const gr = g.createLinearGradient(0, 10, 0, 480);
+      const gr = g.createLinearGradient(0, 10, 0, 400);
       gr.addColorStop(0, `rgba(255,236,170,${a * 2})`);
       gr.addColorStop(1, 'rgba(255,236,170,0)');
       g.fillStyle = gr;
       g.beginPath();
       g.moveTo(x - 16, 14);
       g.lineTo(x + 16, 14);
-      g.lineTo(x + 150, 480);
-      g.lineTo(x - 150, 480);
+      g.lineTo(x + 130, 400);
+      g.lineTo(x - 130, 400);
       g.closePath();
       g.fill();
     }

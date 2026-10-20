@@ -124,6 +124,22 @@ const steps = {
     await pg.waitForTimeout(1500);
     await shot('jungle');
   },
+  async readme() {
+    await pg.click('text=Full tank');
+    await pg.waitForTimeout(500);
+    await pg.evaluate(() => {
+      const { game } = window.bugfarm;
+      const w = game.world;
+      for (let i = 0; i < 30 * 720 * 1.15; i++) w.step(1 / 30);
+      w.env.time = Math.floor(w.env.time / 720) * 720 + 720 * (13 / 24);
+      for (let i = 0; i < 30 * 30; i++) w.step(1 / 30);
+      game.cam.reset();
+      document.querySelectorAll('.toast').forEach((t) => t.remove());
+    });
+    await pg.waitForTimeout(2500);
+    await pg.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()));
+    await shot('readme');
+  },
   async inspect() {
     await pg.click('text=Full tank');
     await pg.waitForTimeout(800);

@@ -86,9 +86,14 @@ export function paintBackdrop(kind, scale) {
     gr.addColorStop(0, top);
     gr.addColorStop(1, bottom);
     g.fillStyle = gr;
-    g.fillRect(0, 0, W, H);
+    g.fillRect(0, 0, W, H + 80);
   };
 
+  // paint a little higher than the tank middle so the horizon sits just
+  // above the ground line
+  g.fillStyle = '#e9e2c8';
+  g.fillRect(0, 0, W, H);
+  g.translate(0, -80);
   switch (kind) {
     case 'town': {
       sky('#bfe2f2', '#f6efd9');
@@ -288,7 +293,7 @@ export function paintBackdrop(kind, scale) {
   }
   // Glass haze so the backdrop reads as "behind" the tank contents.
   g.fillStyle = 'rgba(240,248,250,0.18)';
-  g.fillRect(0, 0, W, H);
+  g.fillRect(0, 0, W, H + 80);
   return c;
 }
 

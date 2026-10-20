@@ -21,7 +21,7 @@ export class Terrain {
     this.groundTop = new Int16Array(GW); // sculpted ground line: air below this is "tunnel"
     this.top = new Int16Array(GW); // first solid row in each column
     this.waterTop = new Int16Array(GW).fill(-1); // first water row (open surface) per column
-    this.waterLevel = 505;
+    this.waterLevel = 425;
     this.version = 0;
     this.waterVersion = 0;
     this.dirtyChunks = new Set();
@@ -228,10 +228,12 @@ export class Terrain {
     const rng = new RNG(seed);
     this.mat.fill(0);
     this.tunnelCells = 0;
-    const desertY = (cx) => 118 + Math.round((fbm1(cx * 0.045, seed) - 0.5) * 14);
-    const jungleY = (cx) => 112 + Math.round((fbm1(cx * 0.05, seed + 7) - 0.5) * 12);
+    const desertY = (cx) => 98 + Math.round((fbm1(cx * 0.045, seed) - 0.5) * 14);
+    const jungleY = (cx) => 93 + Math.round((fbm1(cx * 0.05, seed + 7) - 0.5) * 12);
     const leftY = desertY(POND_L);
     const rightY = jungleY(POND_R);
+    const sandEdge = new Float32Array(GH);
+    for (let cy = 0; cy < GH; cy++) sandEdge[cy] = (POND_L + POND_R) / 2 + (fbm1(cy * 0.07, seed + 9) - 0.5) * 34 - (cy - 150) * 0.25;
     for (let cx = 0; cx < GW; cx++) {
       let gy;
       let kind;
@@ -250,15 +252,15 @@ export class Terrain {
       }
       this.groundTop[cx] = gy;
       // under the pond: gravel bed, a clay liner, then the desert sand or
-      // jungle soil carries on underneath with a wavy boundary
-      const mid = (POND_L + POND_R) / 2 + (fbm1(cx * 0.1, seed + 9) - 0.5) * 30;
+      // jungle soil carries on underneath with a wavy boundary (one crossing
+      // per row, so no thin slivers)
       for (let cy = gy; cy < GH; cy++) {
         let m;
         if (kind === 0) m = MAT.SAND;
         else if (kind === 2) m = MAT.SOIL;
         else if (cy < gy + 4) m = MAT.GRAVEL;
         else if (cy < gy + 10) m = MAT.CLAY;
-        else m = cx + (cy - gy) * 0.15 < mid ? MAT.SAND : MAT.SOIL;
+        else m = cx < sandEdge[cy] ? MAT.SAND : MAT.SOIL;
         this.mat[cy * GW + cx] = m;
       }
     }

@@ -511,6 +511,9 @@ export class TerrainRenderer {
         if (L === MAT.SAND) sandPath = fp;
         firstLayer = false;
       }
+      // The first layer covers every solid cell, so give the strata a mask of
+      // just the sand when other materials share this chunk.
+      if (sandPath && present.size > 1) sandPath = buildMask(t, i0, j0, (m) => m === MAT.SAND) ? maskPaths(i0, j0, true, false).fill : null;
       // Sand strata (layered ant-farm sand).
       if (sandPath) {
         const st = SAND_STYLES[this.style.sand] || SAND_STYLES.golden;

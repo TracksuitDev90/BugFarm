@@ -3,19 +3,22 @@
 // Tunnels are really dug out of the sand and the sand is carried up to build
 // the mound, just like an ant farm.
 import { CELL, GW, GH, MAT, DAY_LEN, W } from '../config.js';
-import { findPath, nearestWalkable } from '../world/pathfind.js';
+import { findPath, nearestWalkable, smoothPath } from '../world/pathfind.js';
 import { BEHAVIORS, SPECIES_BEHAVIORS } from './behaviors.js';
-import { clamp, clamp01, smoothstep } from '../util/math.js';
+import { clamp, clamp01, smoothstep, angleDiff } from '../util/math.js';
 import { rrange, rint, chance, rpick } from '../util/rng.js';
 
 const TAU = Math.PI * 2;
 
 export class Colony {
-  constructor(id, entrance, chamber) {
+  constructor(id, entrance, chamber, style) {
     this.id = id;
     this.entrance = { ...entrance };
-    this.chamber = { ...chamber };
-    this.chambers = [{ cx: chamber.cx, cy: chamber.cy - 2, rx: 6, ry: 3 }];
+    this.chamber = { cx: chamber.cx, cy: chamber.cy };
+    const ry = chamber.ry || 3;
+    this.chambers = [{ cx: chamber.cx, cy: chamber.cy - (ry - 1), rx: chamber.rx || 6, ry }];
+    // every colony has its own way of digging, so no two nests look alike
+    this.style = style || Colony.randomStyle();
     this.food = 3;
     this.brood = [];
     this.fronts = [];
@@ -31,11 +34,47 @@ export class Colony {
     this.initFronts();
   }
 
+  // How this colony likes to dig: steep shafts or long level galleries,
+  // straight or winding, lots of rooms or few, forking often or rarely.
+  static randomStyle() {
+    const gallery = chance(0.3);
+    return {
+      dip: gallery ? rrange(0.12, 0.4) : rrange(0.45, 1.3),
+      curl: rrange(0.05, 0.16),
+      keep: rrange(0.78, 0.93),
+      branch: rrange(0.025, 0.075),
+      room: rint(12, 28),
+      roomW: rrange(4.5, 8.5),
+      roomH: rrange(1.8, 3.2),
+      lean: rrange(-0.6, 0.6),
+      bore: rrange(1, 1.3),
+    };
+  }
+
+  // A new tunnel setting off at this colony's favourite slope.
+  newTunnel(cx, cy, dir, kind = 'tunnel') {
+    const st = this.style;
+    if (!dir) dir = chance(0.5 + st.lean * 0.35) ? 1 : -1;
+    const dip = clamp(st.dip + rrange(-0.25, 0.25), 0.05, 1.45);
+    return { cx, cy, ang: dir > 0 ? dip : Math.PI - dip, turn: 0, kind, len: 0, fail: 0 };
+  }
+
   initFronts() {
-    this.fronts = [
-      { cx: this.chamber.cx + 5, cy: this.chamber.cy - 1, ang: 0.5, kind: 'tunnel', len: 0, fail: 0 },
-      { cx: this.chamber.cx - 5, cy: this.chamber.cy - 1, ang: Math.PI - 0.6, kind: 'tunnel', len: 0, fail: 0 },
-    ];
+    const ch = this.chambers[0];
+    const n = rint(1, 3);
+    const first = chance(0.5 + this.style.lean * 0.35) ? 1 : -1;
+    this.fronts = [];
+    for (let i = 0; i < n; i++) {
+      const dir = i === 1 ? -first : i === 0 ? first : chance(0.5) ? 1 : -1;
+      this.fronts.push(this.newTunnel(ch.cx + dir * (ch.rx - 1), ch.cy + ch.ry - 2, dir));
+    }
+  }
+
+  // Start a fresh tunnel from one of the rooms.
+  sproutFront() {
+    const c = rpick(this.chambers);
+    const dir = chance(0.5 + this.style.lean * 0.35) ? 1 : -1;
+    this.fronts.push(this.newTunnel(c.cx + dir * Math.max(1, c.rx - 1), c.cy + Math.max(0, c.ry - 1), dir));
   }
 
   canDig(t, x, y, m, allowSurface) {
@@ -70,10 +109,12 @@ export class Colony {
     let removed = 0;
     if (f.kind === 'chamber') {
       for (let k = 0; k < 6 && !removed; k++) {
+        // rooms have a flat floor and a domed roof
         const a = Math.random() * TAU;
         const r = Math.sqrt(Math.random());
         const x = Math.round(f.ox + Math.cos(a) * f.rx * r);
-        const y = Math.round(f.oy + Math.sin(a) * f.ry * r);
+        const sy = Math.sin(a);
+        const y = Math.round(f.oy + (sy < 0 ? sy * f.ry * r : sy * r));
         if (!t.ground(x, y)) continue;
         // must touch existing air so chambers grow from the tunnel
         if (!(t.walkable(x + 1, y) || t.walkable(x - 1, y) || t.walkable(x, y - 1) || t.walkable(x, y + 1))) continue;
@@ -82,17 +123,33 @@ export class Colony {
       f.left -= removed;
       if (f.left <= 0 || f.fail > 6) {
         this.fronts.splice(this.fronts.indexOf(f), 1);
-        this.chambers.push({ cx: f.ox, cy: f.oy, rx: f.rx, ry: f.ry });
+        this.chambers.push({ cx: f.ox, cy: f.oy + 2 - f.ry, rx: f.rx, ry: f.ry });
         if (this.chambers.length > 12) this.chambers.shift();
         w.events.emit('antChamber', { colony: this });
       }
       if (!removed) f.fail++;
     } else {
-      // tunnels wander but prefer to go down and sideways, like real ants
-      let ang = f.ang + rrange(-0.45, 0.45);
-      const down = Math.PI / 2;
-      ang += (down - ang) * 0.08 * (f.kind === 'exit' ? -1 : 1);
-      if (f.kind === 'exit') ang = -Math.PI / 2 + rrange(-0.4, 0.4);
+      // Tunnels bend gently and keep bending the same way for a while (no
+      // jitter), drifting back toward the colony's favourite slope.
+      const st = this.style;
+      if (f.turn == null) f.turn = 0;
+      let ang;
+      if (f.kind === 'exit') {
+        f.turn = f.turn * 0.7 + rrange(-0.12, 0.12);
+        ang = f.ang + f.turn;
+        ang += angleDiff(ang, -Math.PI / 2) * 0.3;
+      } else {
+        f.turn = clamp(f.turn * st.keep + rrange(-1, 1) * st.curl, -0.35, 0.35);
+        const dir = Math.cos(f.ang) >= 0 ? 1 : -1;
+        const pref = dir > 0 ? st.dip : Math.PI - st.dip;
+        ang = f.ang + f.turn + angleDiff(f.ang, pref) * 0.07;
+        // level out near the bottom and turn back from the sides
+        if (f.cy > GH - 16) ang += angleDiff(ang, dir > 0 ? 0.05 : Math.PI - 0.05) * 0.35;
+        if (f.cx < 8) ang += angleDiff(ang, 0.3) * 0.4;
+        if (f.cx > GW - 9) ang += angleDiff(ang, Math.PI - 0.3) * 0.4;
+        // never back up the way it came
+        if (Math.sin(ang) < -0.35) ang += angleDiff(ang, dir > 0 ? 0 : Math.PI) * 0.5;
+      }
       const nx = f.cx + Math.cos(ang) * 1.5;
       const ny = f.cy + Math.sin(ang) * 1.5;
       const ix = Math.round(nx);
@@ -101,7 +158,8 @@ export class Colony {
       if (t.ground(ix, iy) || t.walkable(ix, iy)) {
         // dig a connected capsule from the current tip to the new point
         const ok = (xx, yy, m) => this.canDig(t, xx, yy, m, allowSurface);
-        removed = t.dig(f.cx, f.cy, 1.0, ok) + t.dig((f.cx + nx) / 2, (f.cy + ny) / 2, 1.2, ok) + t.dig(nx, ny, 1.25, ok);
+        const b = st.bore;
+        removed = t.dig(f.cx, f.cy, 1.0 * b, ok) + t.dig((f.cx + nx) / 2, (f.cy + ny) / 2, 1.15 * b, ok) + t.dig(nx, ny, 1.2 * b, ok);
       }
       if (removed || (!t.ground(ix, iy) && t.walkable(ix, iy))) {
         f.cx = nx;
@@ -110,8 +168,11 @@ export class Colony {
         f.len++;
         f.fail = 0;
       } else {
+        // hit a stone (or the pond liner): feel along it, one way then the other
         f.fail++;
-        f.ang += (chance(0.5) ? 1 : -1) * rrange(0.8, 1.6);
+        if (!f.side || f.fail > 3) f.side = f.side ? -f.side : chance(0.5) ? 1 : -1;
+        f.ang = ang + f.side * rrange(0.5, 1.0);
+        f.turn = 0;
       }
       if (f.kind === 'exit' && ny <= t.groundTop[ix] + 1 && removed) {
         // broke through to the surface: new entrance!
@@ -122,20 +183,21 @@ export class Colony {
       }
       if (f.fail > 7) {
         this.fronts.splice(this.fronts.indexOf(f), 1);
-      } else if (f.len > 16 && chance(0.12) && f.kind === 'tunnel') {
-        // open a chamber here
-        this.fronts.push({ kind: 'chamber', ox: Math.round(f.cx), oy: Math.round(f.cy), rx: rint(5, 7), ry: rint(2, 3), left: rint(28, 44), fail: 0 });
+      } else if (f.kind === 'tunnel' && f.len > st.room && chance(0.25)) {
+        // open a room here
+        const rx = Math.round(st.roomW * rrange(0.8, 1.2));
+        const ry = Math.max(2, Math.round(st.roomH * rrange(0.8, 1.2)));
+        this.fronts.push({ kind: 'chamber', ox: Math.round(f.cx), oy: Math.round(f.cy), rx, ry, left: Math.round(rx * ry * rrange(1.4, 1.9)), fail: 0 });
         f.len = 0;
       }
-      if (chance(0.05) && this.fronts.length < 6) {
-        this.fronts.push({ cx: f.cx, cy: f.cy, ang: ang + (chance(0.5) ? 1 : -1) * rrange(0.9, 1.5), kind: 'tunnel', len: 0, fail: 0 });
+      if (f.kind === 'tunnel' && chance(st.branch) && this.fronts.length < 6) {
+        const side = chance(0.5) ? 1 : -1;
+        const nf = this.newTunnel(f.cx, f.cy, Math.cos(ang + side) >= 0 ? 1 : -1);
+        nf.ang = ang + side * rrange(0.7, 1.3);
+        this.fronts.push(nf);
       }
     }
-    if (this.fronts.length === 0) {
-      // start a new branch from a random known chamber
-      const c = rpick(this.chambers);
-      this.fronts.push({ cx: c.cx + (chance(0.5) ? c.rx - 1 : 1 - c.rx), cy: c.cy, ang: chance(0.5) ? 0.4 : Math.PI - 0.4, kind: 'tunnel', len: 0, fail: 0 });
-    }
+    if (this.fronts.length === 0) this.sproutFront();
     this.dug += removed;
     return removed;
   }
@@ -247,7 +309,7 @@ export class Colony {
         const top = t.top[this.entrance.cx] - 1;
         if (t.walkable(this.entrance.cx, top) && findPath(t, this.chamber.cx, this.chamber.cy, this.entrance.cx, top, 9000)) {
           this.entrance.cy = top;
-        } else this.fronts.push({ cx: this.chamber.cx, cy: this.chamber.cy - 3, ang: -Math.PI / 2, kind: 'exit', len: 0, fail: 0 });
+        } else this.fronts.push({ cx: this.chamber.cx, cy: this.chamber.cy - 3, ang: -Math.PI / 2, turn: 0, kind: 'exit', len: 0, fail: 0 });
       }
     }
   }
@@ -266,11 +328,12 @@ export class Colony {
       layT: Math.round(this.layT),
       queenId: this.queenId,
       palIdx: this.palIdx,
+      style: this.style,
     };
   }
 
   static load(d) {
-    const c = new Colony(d.id, d.entrance, d.chamber);
+    const c = new Colony(d.id, d.entrance, d.chamber, d.style);
     c.chambers = d.chambers || c.chambers;
     c.food = d.food;
     c.brood = (d.brood || []).map((b) => ({ stage: b.s, t: b.t, x: b.x, y: b.y, a: 0 }));
@@ -299,6 +362,10 @@ function antTo(c, w, cx, cy) {
   }
   c.path = p;
   c.pathI = 0;
+  c.pts = smoothPath(w.terrain, p, CELL);
+  // start from the next point, not the cell we're already in
+  c.ptI = p.length > 1 ? 1 : 0;
+  c.ptChecked = -1;
   c.arrived = false;
   c.target = { kind: 'cell' };
   return true;
@@ -569,10 +636,7 @@ def('antDig', {
       if (f.fail > 12) {
         const i = col.fronts.indexOf(f);
         if (i >= 0) col.fronts.splice(i, 1);
-        if (!col.fronts.length) {
-          const ch = rpick(col.chambers);
-          col.fronts.push({ cx: ch.cx + (chance(0.5) ? ch.rx - 1 : 1 - ch.rx), cy: ch.cy, ang: chance(0.5) ? 0.4 : Math.PI - 0.4, kind: 'tunnel', len: 0, fail: 0 });
-        }
+        if (!col.fronts.length) col.sproutFront();
       }
     }
   },

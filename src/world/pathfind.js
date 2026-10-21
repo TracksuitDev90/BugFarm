@@ -112,7 +112,9 @@ export function findPath(terrain, sx, sy, tx, ty, maxExpand = 7000) {
       if (d >= 4 && (!terrain.walkable(cx + DX[d], cy) && !terrain.walkable(cx, cy + DY[d]))) continue;
       const ni = ny * GW + nx;
       if (closed[ni] === gen) continue;
-      const ng = gc + COST[d];
+      // ants keep their feet on the floor where they can, rather than
+      // creeping along walls and ceilings
+      const ng = gc + COST[d] * (terrain.solid(nx, ny + 1) ? 1 : 1.3);
       if (stamp[ni] !== gen || ng < g[ni]) {
         stamp[ni] = gen;
         g[ni] = ng;
@@ -141,4 +143,53 @@ export function nearestWalkable(terrain, cx, cy, r) {
     }
   }
   return null;
+}
+
+// Turn a path of cells into a smooth line of points (world units) that
+// still only passes through walkable cells: grid staircases become straight
+// runs and corners become curves, so crawlers glide instead of zigzagging.
+export function smoothPath(terrain, path, CELL) {
+  const n = path.length;
+  const raw = new Float32Array(n * 2);
+  for (let k = 0; k < n; k++) {
+    raw[k * 2] = (path[k] % GW) * CELL + CELL / 2;
+    raw[k * 2 + 1] = Math.floor(path[k] / GW) * CELL + CELL / 2;
+  }
+  if (n < 3) return raw;
+  let a = raw;
+  let b = new Float32Array(n * 2);
+  const W5 = [1, 2, 3, 2, 1];
+  for (let pass = 0; pass < 2; pass++) {
+    b[0] = a[0];
+    b[1] = a[1];
+    b[(n - 1) * 2] = a[(n - 1) * 2];
+    b[(n - 1) * 2 + 1] = a[(n - 1) * 2 + 1];
+    for (let k = 1; k < n - 1; k++) {
+      let sx = 0;
+      let sy = 0;
+      let sw = 0;
+      for (let o = -2; o <= 2; o++) {
+        const j = k + o;
+        if (j < 0 || j >= n) continue;
+        const wgt = W5[o + 2];
+        sx += a[j * 2] * wgt;
+        sy += a[j * 2 + 1] * wgt;
+        sw += wgt;
+      }
+      const x = sx / sw;
+      const y = sy / sw;
+      // only accept the smoothed point if it's still somewhere an ant can be
+      if (terrain.walkable(Math.floor(x / CELL), Math.floor(y / CELL))) {
+        b[k * 2] = x;
+        b[k * 2 + 1] = y;
+      } else {
+        b[k * 2] = a[k * 2];
+        b[k * 2 + 1] = a[k * 2 + 1];
+      }
+    }
+    const tmp = a;
+    a = b;
+    b = tmp === raw ? new Float32Array(n * 2) : tmp;
+  }
+  return a;
 }

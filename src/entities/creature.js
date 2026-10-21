@@ -98,6 +98,11 @@ export class Creature {
     this.phase = Math.random();
     this.freq = rrange(0.9, 1.1);
     this.hopCD = 0;
+    this.landT = 0;
+    this.spd = 0; // current walking speed (eases in and out)
+    this.nx = 0; // which way is "up" for a crawler (away from the ground it's on)
+    this.ny = -1;
+    this.pauseT = 0;
     this.restT = 0;
     this.hungerT = 0;
     this.selected = false;
@@ -320,8 +325,15 @@ export class Creature {
           this.takeOff();
           return;
         }
-        const sp = this.walkSpeed() * this.speedFactor() * (tgt.speedMul || 1);
-        let nx = this.x + dir * sp * dt;
+        const top = this.walkSpeed() * this.speedFactor() * (tgt.speedMul || 1);
+        // ease in from a standstill or a turn, and ease off when nearly there
+        const want = top * Math.min(1, 0.3 + Math.abs(dx) / 18);
+        if (dir !== this.wdir) {
+          this.wdir = dir;
+          this.spd *= 0.2;
+        }
+        this.spd = Math.min(want, this.spd + top * 5 * dt);
+        let nx = this.x + dir * this.spd * dt;
         nx = clamp(nx, 6, W - 6);
         const ns = t.surfaceY(nx);
         const wet = t.waterAt(nx, ns - 2);
@@ -345,6 +357,7 @@ export class Creature {
         }
       }
     }
+    if (!moving) this.spd = 0;
     const gy = this.groundAt(w, this.x);
     this.y = gy;
     const a = Math.atan2(t.surfaceY(this.x + 3) - t.surfaceY(this.x - 3), 6);
@@ -404,6 +417,7 @@ export class Creature {
     const gy = this.groundAt(w, this.x);
     if (this.y >= gy && this.vy > 0) {
       this.y = gy;
+      this.landT = 0.22;
       this.vx = 0;
       this.vy = 0;
       this.mode = this.def.stages[this.def.stageIndex[this.stage]]?.loco === 'crawl' ? 'crawl' : 'walk';
@@ -721,10 +735,19 @@ export class Creature {
   }
 
   moveCrawl(w, dt) {
-    // ants: follow an A* path of cells
+    // ants: glide along a smoothed path, feet on whatever they're walking on
     const t = w.terrain;
     if (this.paddle(w, dt)) return;
-    if (!this.path || this.pathI >= this.path.length) {
+    this.feelSurface(t, dt);
+    const pts = this.pts;
+    if (this.pauseT > 0) {
+      // stopped to touch antennae with a nestmate
+      this.pauseT -= dt;
+      this.moving = false;
+      this.spd = 0;
+      return;
+    }
+    if (!this.path || !pts || this.ptI * 2 >= pts.length) {
       // settle on a walkable cell
       const cx = Math.floor(this.x / CELL);
       const cy = Math.floor(this.y / CELL);
@@ -733,54 +756,128 @@ export class Creature {
         else if (!t.solid(cx, cy + 1)) this.y += 90 * dt; // nothing to hold: fall
       }
       this.moving = false;
+      this.spd = 0;
       if (this.target && !this.path) this.arrived = false;
       return;
     }
-    const sp = this.walkSpeed() * this.speedFactor();
-    let step = sp * dt;
-    let lastDx = 0;
-    let lastDy = 0;
-    // walk along the path, possibly several cells per tick (coarse catch-up steps)
-    while (step > 0 && this.path && this.pathI < this.path.length) {
-      const idx = this.path[this.pathI];
-      const tx = (idx % GW) * CELL + CELL / 2;
-      const ty = Math.floor(idx / GW) * CELL + CELL / 2;
-      if (!t.walkable(idx % GW, Math.floor(idx / GW))) {
-        this.path = null;
-        this.repath = true;
-        return;
+    // ease into a scurry; ants walk in little pulses
+    const top = this.walkSpeed() * this.speedFactor();
+    const want = top * (0.84 + 0.16 * Math.sin(this.anim * 7 + this.id));
+    this.spd = Math.min(want, this.spd + top * 6 * dt);
+    let step = this.spd * dt;
+    let mvx = 0;
+    let mvy = 0;
+    const n = pts.length >> 1;
+    while (step > 0 && this.ptI < n) {
+      const tx = pts[this.ptI * 2];
+      const ty = pts[this.ptI * 2 + 1];
+      if (this.ptChecked !== this.ptI) {
+        // the ground may have been dug or filled since the path was planned
+        this.ptChecked = this.ptI;
+        if (!t.walkable(Math.floor(tx / CELL), Math.floor(ty / CELL))) {
+          this.path = null;
+          this.pts = null;
+          this.repath = true;
+          return;
+        }
       }
       const dx = tx - this.x;
       const dy = ty - this.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.01) {
-        lastDx = dx;
-        lastDy = dy;
-      }
       if (d <= step) {
         this.x = tx;
         this.y = ty;
+        mvx += dx;
+        mvy += dy;
         step -= d;
-        this.pathI++;
-        if (this.carry === 'food' && w.colony(this.colonyId)) w.colony(this.colonyId).mark(idx);
-        if (this.pathI >= this.path.length) {
+        this.ptI++;
+        if (this.ptI >= n) {
           this.path = null;
+          this.pts = null;
           this.arrived = true;
         }
       } else {
         this.x += (dx / d) * step;
         this.y += (dy / d) * step;
+        mvx += (dx / d) * step;
+        mvy += (dy / d) * step;
         step = 0;
       }
     }
-    if (lastDx || lastDy) {
-      const a = Math.atan2(lastDy, lastDx);
-      this.facing = lastDx >= 0 ? 1 : -1;
-      let want = this.facing > 0 ? a : a - Math.PI;
-      want = angleDiff(0, want);
-      this.angle += angleDiff(this.angle, want) * Math.min(1, dt * 10);
+    // food carriers leave a scent trail home
+    if (this.carry === 'food') {
+      const idx = Math.floor(this.y / CELL) * GW + Math.floor(this.x / CELL);
+      if (idx !== this.lastCell) {
+        this.lastCell = idx;
+        const col = w.colony(this.colonyId);
+        if (col) col.mark(idx);
+      }
+    }
+    if (mvx || mvy) {
+      // face the way we're going, along the surface we're standing on
+      const a = Math.atan2(this.nx, -this.ny);
+      const dot = (mvx * Math.cos(a) + mvy * Math.sin(a)) / (Math.hypot(mvx, mvy) || 1);
+      if (dot > 0.3) this.facing = 1;
+      else if (dot < -0.3) this.facing = -1;
     }
     this.moving = true;
+    this.greet(w, dt);
+  }
+
+  // Which way is "up" for a crawler: away from the ground around it, with a
+  // nudge toward real up. Ants stand on floors, cling to walls and walk
+  // upside down along ceilings, and the body turns smoothly between them.
+  feelSurface(t, dt) {
+    const fx = this.x / CELL - 0.5;
+    const fy = this.y / CELL - 0.5;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    let gx = 0;
+    let gy = 0;
+    let any = false;
+    for (let j = iy - 1; j <= iy + 2; j++) {
+      for (let i = ix - 1; i <= ix + 2; i++) {
+        if (!t.ground(i, j)) continue;
+        const dx = i - fx;
+        const dy = j - fy;
+        const d = Math.hypot(dx, dy) || 0.01;
+        const wgt = 1 - d / 2.4;
+        if (wgt <= 0) continue;
+        gx -= (dx / d) * wgt;
+        gy -= (dy / d) * wgt;
+        any = true;
+      }
+    }
+    if (any) {
+      gy -= 0.35;
+      const L = Math.hypot(gx, gy) || 1;
+      const k = Math.min(1, dt * 9);
+      this.nx += (gx / L - this.nx) * k;
+      this.ny += (gy / L - this.ny) * k;
+      const L2 = Math.hypot(this.nx, this.ny) || 1;
+      this.nx /= L2;
+      this.ny /= L2;
+    }
+    this.angle += angleDiff(this.angle, Math.atan2(this.nx, -this.ny)) * Math.min(1, dt * 10);
+  }
+
+  // Two nestmates passing each other often stop for a moment, face to
+  // face, to touch antennae and swap news (and smells).
+  greet(w, dt) {
+    if (this.sp !== 'ant' || this.carry === 'sand') return;
+    if ((this.greetT = (this.greetT || 0) - dt) > 0) return;
+    this.greetT = 0.45;
+    if ((this.greetCD || 0) > w.time || !chance(0.45)) return;
+    const o = w.hashC.nearest(this.x, this.y, 8, (o) => o !== this && o.sp === 'ant' && o.colonyId === this.colonyId && !o.dead && o.mode === 'crawl' && o.moving && o.carry !== 'sand' && (o.greetCD || 0) <= w.time);
+    if (!o) return;
+    const p = rrange(0.35, 0.9);
+    this.pauseT = p;
+    o.pauseT = p;
+    this.greetCD = o.greetCD = w.time + rrange(6, 12);
+    const a = Math.atan2(this.nx, -this.ny);
+    const along = (o.x - this.x) * Math.cos(a) + (o.y - this.y) * Math.sin(a);
+    this.facing = along >= 0 ? 1 : -1;
+    o.facing = -this.facing;
   }
 
   // Caught by water (a flood, or a tunnel dug into the pond): float up to

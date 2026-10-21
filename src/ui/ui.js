@@ -1138,6 +1138,9 @@ export class UI {
   }
 
   haptic(ms) {
+    // (browsers refuse, noisily, before the first real tap)
+    const ua = navigator.userActivation;
+    if (ua && !ua.hasBeenActive) return;
     if (navigator.vibrate) {
       try {
         navigator.vibrate(ms);

@@ -350,38 +350,45 @@ export class Terrain {
     this.version++;
   }
 
-  // Dig the starter ant nest: an entrance, a winding tunnel and a chamber.
-  carveStarterNest(entranceCx) {
+  // Dig the starter ant nest: an entrance, a winding tunnel and the queen's
+  // room. It's different every time: the tunnel's bends, depth and lean,
+  // and the size of the room.
+  carveStarterNest(entranceCx, rand = Math.random) {
     const safe = (x, y, m) => m === MAT.SAND;
     // Little mound first so the entrance sits on a hill.
     for (let i = 0; i < 26; i++) this.deposit(entranceCx + ((i % 2) * 2 - 1) * ((i * 7) % 4), MAT.SAND, 4);
     const gy = this.top[entranceCx];
-    const pts = [
-      [entranceCx, gy],
-      [entranceCx + 1, gy + 6],
-      [entranceCx - 1, gy + 12],
-      [entranceCx + 2, gy + 18],
-      [entranceCx + 6, gy + 24],
-      [entranceCx + 10, gy + 28],
-    ];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [x0, y0] = pts[i];
-      const [x1, y1] = pts[i + 1];
-      const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        this.dig(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 1.2, safe);
+    const lean = rand() < 0.5 ? -1 : 1;
+    const want = Math.PI / 2 - lean * (0.2 + rand() * 0.5);
+    let x = entranceCx;
+    let y = gy;
+    let ang = Math.PI / 2 + (rand() * 2 - 1) * 0.3;
+    let turn = 0;
+    const steps = 13 + Math.floor(rand() * 11);
+    for (let i = 0; i < steps; i++) {
+      turn = turn * 0.82 + (rand() * 2 - 1) * 0.16;
+      ang += turn + (want - ang) * 0.1;
+      ang = clamp(ang, 0.35, Math.PI - 0.35);
+      const nx = clamp(x + Math.cos(ang) * 1.6, 12, POND_L - 30);
+      const ny = y + Math.sin(ang) * 1.6;
+      this.dig((x + nx) / 2, (y + ny) / 2, 1.2, safe);
+      this.dig(nx, ny, 1.25, safe);
+      x = nx;
+      y = ny;
+    }
+    // the queen's room: flat floor, domed roof
+    const rx = 5 + Math.floor(rand() * 3);
+    const ry = 2 + (rand() < 0.6 ? 1 : 0);
+    const ccx = Math.round(clamp(x + lean * (rx - 2), rx + 4, POND_L - 30));
+    const floor = Math.round(y) + 1;
+    for (let yy = -ry; yy <= 0; yy++) {
+      for (let xx = -rx; xx <= rx; xx++) {
+        if ((xx * xx) / (rx * rx) + (yy * yy) / ((ry + 0.5) * (ry + 0.5)) <= 1) this.dig(ccx + xx, floor + yy, 0.5, safe);
       }
     }
-    // Queen's chamber
-    const ccx = entranceCx + 13;
-    const ccy = gy + 30;
-    for (let y = -3; y <= 2; y++) {
-      for (let x = -6; x <= 6; x++) {
-        if ((x * x) / 36 + (y * y) / 9 <= 1) this.dig(ccx + x, ccy + y, 0.5, safe);
-      }
-    }
-    return { entrance: { cx: entranceCx, cy: gy - 1 }, chamber: { cx: ccx, cy: ccy + 2 } };
+    // join the tunnel's end to the room in case the room sits to one side
+    for (let k = 0; k <= 4; k++) this.dig(x + ((ccx - x) * k) / 4, y + ((floor - 1 - y) * k) / 4, 1.1, safe);
+    return { entrance: { cx: entranceCx, cy: gy - 1 }, chamber: { cx: ccx, cy: floor, rx, ry } };
   }
 
   // Flood-fill the pond basin up to a level into `out` (1 = water). Returns

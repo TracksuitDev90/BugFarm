@@ -45,6 +45,8 @@ const POSES = {
   fruitfly: ['fly'],
 };
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
+// How much each walker bobs with its footsteps (snails glide instead).
+const STEP_BOB = { cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
 // Stick-on strip thermometers on the glass, one per zone.
 export const GAUGE_AT = { desert: [34, 40], pond: [580, 40], jungle: [1492, 40] };
 // Vines trailing from the lid over the jungle: [x, length]. They keep clear
@@ -315,6 +317,7 @@ export class Renderer {
     const t = w.terrain;
     const cam = this.cam;
     this.time += dt;
+    this.dt = dt;
     if (!this.paused) this.flapT += dt;
     this.fx.update(dt, t, this.time);
     this.ensureBackdrop();
@@ -547,12 +550,46 @@ export class Renderer {
     let x = c.px + (c.x - c.px) * alpha;
     let y = c.py + (c.y - c.py) * alpha;
     let ang = c.pangle + angleDiff(c.pangle, c.angle) * alpha;
-    if (c.mode === 'crawl' && this.world.terrain.solidAt(x, y + CELL)) y -= 1.8;
     const ds = c.drawScale;
+    if (c.mode === 'crawl') {
+      // stand on the surface: lift the body off the floor, wall or ceiling
+      const off = c.foot - 2.2;
+      x += c.nx * off;
+      y += c.ny * off;
+      if (c.pose === 'dig' && !this.paused) {
+        // shovelling: a quick rock back and forth
+        const j = Math.sin(this.time * 22 + c.id) * 0.7;
+        x += Math.cos(ang) * c.facing * j;
+        y += Math.sin(ang) * c.facing * j;
+      }
+    }
+    // turning round is a quick swivel, not an instant flip
+    if (c.vf == null || c.dead) c.vf = c.facing;
+    else if (!this.paused) c.vf += (c.facing - c.vf) * Math.min(1, (this.dt || 0.016) * 13);
+    const vf = Math.abs(c.vf) < 0.18 ? (c.vf < 0 ? -0.18 : 0.18) : c.vf;
     let sx = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.55 : 1 - (1 - c.plump) * 0.3);
     let sy = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.3 : 1 - (1 - c.plump) * 0.15);
     if (c.pose === 'eat') sy *= 1 + Math.sin(this.time * 18 + c.id) * 0.035;
     if (c.pose === 'sleep' && !c.dead) sy *= 1 + Math.sin(this.time * 2 + c.id) * 0.025;
+    else if (!c.moving && !c.dead && c.mode !== 'fly' && c.mode !== 'swim') sy *= 1 + Math.sin(this.time * 2.6 + c.id) * 0.012; // breathing
+    if (c.moving && (c.mode === 'walk' || c.mode === 'crawl') && STEP_BOB[c.sp]) {
+      // a little lift on every step
+      const b = Math.abs(Math.sin(c.anim * (c.sp === 'ant' ? 22 : 14))) * STEP_BOB[c.sp] * ds;
+      x += c.mode === 'crawl' ? c.nx * b : 0;
+      y += c.mode === 'crawl' ? c.ny * b : -b;
+    } else if (c.moving && (c.sp === 'snail' || c.sp === 'pondsnail')) sx *= 1 + Math.sin(c.anim * 5 + c.id) * 0.04; // a snail's slow stretch
+    if (c.mode === 'air') {
+      // stretch while leaping
+      const k = Math.min(0.16, Math.abs(c.vy) / 900);
+      sy *= 1 + k;
+      sx *= 1 - k * 0.6;
+    } else if (c.landT > 0) {
+      // ...and squash on landing
+      const k = (c.landT / 0.22) * 0.18;
+      sy *= 1 - k;
+      sx *= 1 + k * 0.8;
+      y += k * c.foot * 0.6;
+    }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
     if (c.stage === 'chrysalis') ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
     if (c.dead) {
@@ -564,7 +601,7 @@ export class Renderer {
       ph = this.flapT * wspec.hz * TAU + c.id * 2.3;
       y -= Math.sin(ph) * wspec.bob * ds; // each downstroke lifts the body a touch
     }
-    this.put(g, x, y, ang, c.facing * sx, sy);
+    this.put(g, x, y, ang, vf * sx, sy);
     if (wspec) this.drawWings(g, c, wspec, ph, true, bucket);
     g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
     if (wspec && !wspec.butterfly) this.drawWings(g, c, wspec, ph, false, bucket);

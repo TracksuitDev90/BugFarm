@@ -65,8 +65,8 @@ export class World {
     if (!starter) return;
     const farm = starter === 'farm';
     const t = this.terrain;
-    // ant colony
-    this.foundColony(50);
+    // ant colony (its nest starts somewhere new every time)
+    this.foundColony(rint(26, 82));
     // plants
     const plant = (type, x, growth = rrange(0.55, 0.95)) => this.addPlant(type, x, null, { growth });
     for (const [type, x] of [
@@ -1138,6 +1138,7 @@ export class World {
       if (!c.dead) c.updateLife(this, dt);
       // animation
       c.anim += dt * (c.moving ? 1 : 0.4);
+      if (c.landT > 0) c.landT -= dt;
       if (c.emoteT > 0) c.emoteT -= dt;
       if (c.tongue) {
         c.tongue.t -= dt;

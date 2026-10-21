@@ -217,12 +217,22 @@ export class UI {
     this.moving = null;
     this.r.ghost = null;
     this.hooks.setDragMode(id === 'shape' ? 'tool' : 'pan');
+    // shaping uses a slim dock instead of the big sheet, so the tank stays
+    // in view under your thumb
+    this.sheet.classList.toggle('compact', id === 'shape');
+    this.sheet.classList.remove('painting');
     if (id === 'look') {
       this.sheet.classList.add('hidden');
     } else {
       this.renderSheet();
       this.sheet.classList.remove('hidden');
     }
+    if (id === 'shape' && (this.settings.shapeDemo || 0) < 2) {
+      // show once or twice how it works: a brush ring sweeping a stroke
+      this.settings.shapeDemo = (this.settings.shapeDemo || 0) + 1;
+      this.hooks.saveSettings();
+      this.demo = { t: 0 };
+    } else this.demo = null;
     this.clipBtn.classList.toggle('on', id === 'clip');
     this.card.classList.toggle('withsheet', id !== 'look');
     // the tray has shown its NEW badges; next time they're old news
@@ -233,6 +243,11 @@ export class UI {
   renderSheet() {
     const s = this.sheet;
     s.innerHTML = '';
+    if (this.tool === 'shape') {
+      this.hint = el('div', { class: 'hint' });
+      this.buildShapeDock(s);
+      return;
+    }
     const head = el('div', { class: 'sheet-head' });
     const body = el('div', { class: 'sheet-body' });
     const close = el('button', { class: 'card-close', 'aria-label': 'Close', onclick: () => this.setTool('look') }, '×');
@@ -287,9 +302,6 @@ export class UI {
       case 'decor':
         if (this.tab.decor === 'style') this.buildStyle(body);
         else this.buildDecor(body);
-        break;
-      case 'shape':
-        this.buildShape(body);
         break;
       case 'climate':
         this.buildClimate(body);
@@ -469,36 +481,65 @@ export class UI {
     }
   }
 
-  buildShape(body) {
+  // The shaping dock: what to paint with, how big a brush, and the pond's
+  // water level tucked behind a button. It fades aside while you paint.
+  buildShapeDock(s) {
     const tools = [
-      ['sand', 'Add sand', '#e8c483'],
-      ['soil', 'Add soil', '#7d5538'],
-      ['rock', 'Add rock', '#a7a39a'],
-      ['gravel', 'Add gravel', '#cfc3ad'],
-      ['dig', 'Dig away', '#5e3f29'],
+      ['sand', 'Sand', '#e8c483'],
+      ['soil', 'Soil', '#7d5538'],
+      ['rock', 'Rock', '#a7a39a'],
+      ['gravel', 'Gravel', '#cfc3ad'],
+      ['dig', 'Dig', null],
     ];
-    const row = el('div', { class: 'swatches' });
+    const sizes = [['Small brush', 12, 8], ['Medium brush', 24, 13], ['Big brush', 42, 19]];
+    const status = el('div', { class: 'dock-status', 'aria-live': 'polite' });
+    const say = () => {
+      const t = tools.find((x) => x[0] === this.choice.shape) || tools[0];
+      status.textContent = (this.choice.shape === 'dig' ? 'Drag to dig' : `Drag to paint ${t[1].toLowerCase()}`) + ' · two fingers to move';
+    };
+    const chips = el('div', { class: 'dock-chips', role: 'radiogroup', 'aria-label': 'Paint with' });
     for (const [id, name, col] of tools) {
-      row.append(el('button', { class: 'swatch' + (this.choice.shape === id ? ' on' : ''), onclick: () => {
+      const b = el('button', { class: 'chip' + (this.choice.shape === id ? ' on' : ''), role: 'radio', 'aria-checked': String(this.choice.shape === id), 'aria-label': name, title: name, onclick: () => {
         this.choice.shape = id;
-        this.renderSheet();
-      } }, el('i', { style: `background:${col}` }), name));
+        for (const c of chips.children) {
+          c.classList.toggle('on', c === b);
+          c.setAttribute('aria-checked', String(c === b));
+        }
+        say();
+        this.sound.play('pop', 0.4);
+      } }, col ? el('i', { style: `background:${col}` }) : iconCanvas('shovel', 24), el('span', {}, name));
+      chips.append(b);
     }
-    body.append(row);
-    const out = el('output', {}, String(this.brush));
-    const range = el('input', { type: 'range', min: 8, max: 60, value: this.brush, 'aria-label': 'Brush size', oninput: (e) => {
-      this.brush = +e.target.value;
-      out.textContent = this.brush;
-    } });
-    body.append(el('div', { class: 'slider' }, el('span', {}, 'Brush size'), range, out));
-    body.append(el('h4', {}, 'Pond water level'));
-    body.append(
-      el('div', { class: 'row' },
-        el('button', { class: 'btn small blue', onclick: () => this.water(-12) }, 'Fill up'),
-        el('button', { class: 'btn small', onclick: () => this.water(12) }, 'Drain a little'))
-    );
-    body.append(this.hint);
-    this.hint.textContent = 'Drag on the tank to paint. Use two fingers to move around while shaping.';
+    // brushes snap to three sizes; anything in between still works
+    let near = sizes[0];
+    for (const z of sizes) if (Math.abs(z[1] - this.brush) < Math.abs(near[1] - this.brush)) near = z;
+    this.brush = near[1];
+    const sizeBox = el('div', { class: 'dock-sizes', role: 'radiogroup', 'aria-label': 'Brush size' });
+    for (const z of sizes) {
+      const [name, v, dot] = z;
+      const b = el('button', { class: 'size' + (z === near ? ' on' : ''), role: 'radio', 'aria-checked': String(z === near), 'aria-label': name, title: name, onclick: () => {
+        this.brush = v;
+        for (const c of sizeBox.children) {
+          c.classList.toggle('on', c === b);
+          c.setAttribute('aria-checked', String(c === b));
+        }
+        this.sound.play('pop', 0.35);
+      } }, el('i', { style: `width:${dot}px;height:${dot}px` }));
+      sizeBox.append(b);
+    }
+    const extra = el('div', { class: 'dock-extra' + (this.pondOpen ? '' : ' hidden') },
+      el('span', {}, 'Pond water'),
+      el('button', { class: 'btn small blue', onclick: () => this.water(-12) }, 'Fill up'),
+      el('button', { class: 'btn small', onclick: () => this.water(12) }, 'Drain a little'));
+    const pond = el('button', { class: 'btn small pondbtn' + (this.pondOpen ? ' on' : ''), 'aria-expanded': String(!!this.pondOpen), onclick: () => {
+      this.pondOpen = !this.pondOpen;
+      extra.classList.toggle('hidden', !this.pondOpen);
+      pond.classList.toggle('on', this.pondOpen);
+      pond.setAttribute('aria-expanded', String(this.pondOpen));
+    } }, iconCanvas('drop', 18), 'Pond');
+    const close = el('button', { class: 'card-close', 'aria-label': 'Close', onclick: () => this.setTool('look') }, '×');
+    s.append(el('div', { class: 'dock-top' }, status, pond, close), el('div', { class: 'dock-row' }, chips, sizeBox), extra);
+    say();
   }
 
   water(dy) {
@@ -1100,27 +1141,67 @@ export class UI {
     this.sound.play('pop', 0.3, 1 + Math.random() * 0.3);
   }
 
+  // A finger (or the mouse) went down on the tank.
+  press(wx, wy, type) {
+    this.pointerType = type;
+    this.demo = null;
+    if (this.tool === 'shape') this.ring(wx, wy, false);
+  }
+  // Every finger is off the glass: let the brush ring fade away on touch.
+  lift(type) {
+    if (this.tool === 'shape' && type !== 'mouse' && this.r.ghost && this.r.ghost.kind === 'brush') this.r.ghost.fade = 1;
+  }
+  ring(wx, wy, painting) {
+    const fills = { sand: 'rgba(232,196,131,0.38)', soil: 'rgba(125,85,56,0.38)', rock: 'rgba(167,163,154,0.42)', gravel: 'rgba(207,195,173,0.42)', dig: 'rgba(60,36,20,0.16)' };
+    this.r.ghost = { kind: 'brush', x: wx, y: wy, r: this.brush, painting, fill: fills[this.choice.shape], touch: this.pointerType !== 'mouse' };
+  }
+
   dragStart(wx, wy) {
     this.lastPaint = null;
+    this.demo = null;
+    if (this.tool !== 'shape') return;
+    clearTimeout(this.dockT);
+    this.sheet.classList.add('painting');
     this.paint(wx, wy);
   }
+  // Fill in the gap since the last dab, so quick swipes paint a solid stroke.
   dragMove(wx, wy) {
-    if (this.lastPaint && Math.hypot(wx - this.lastPaint[0], wy - this.lastPaint[1]) < this.brush * 0.35) return;
-    this.paint(wx, wy);
+    if (this.tool !== 'shape') return;
+    const lp = this.lastPaint;
+    if (!lp) {
+      this.paint(wx, wy);
+      return;
+    }
+    const d = Math.hypot(wx - lp[0], wy - lp[1]);
+    const step = Math.max(2, this.brush * 0.3);
+    if (d < step) {
+      this.ring(wx, wy, true);
+      return;
+    }
+    const n = Math.min(48, Math.ceil(d / step));
+    for (let i = 1; i <= n; i++) this.paint(lp[0] + ((wx - lp[0]) * i) / n, lp[1] + ((wy - lp[1]) * i) / n);
   }
   dragEnd() {
     this.lastPaint = null;
     this.hooks.terrainChanged();
+    if (this.tool !== 'shape') return;
+    if (this.r.ghost && this.r.ghost.kind === 'brush') this.r.ghost.painting = false;
+    clearTimeout(this.dockT);
+    this.dockT = setTimeout(() => this.sheet.classList.remove('painting'), 380);
   }
   paint(wx, wy) {
     if (this.tool !== 'shape') return;
     this.lastPaint = [wx, wy];
     const n = this.world.sculpt(wx, wy, this.brush, this.choice.shape);
     if (n) {
-      this.world.dust(wx, wy, 2);
-      if (Math.random() < 0.3) this.sound.play('tap', 0.4);
+      if (Math.random() < 0.35) this.world.dust(wx, wy, 2);
+      const now = performance.now();
+      if (!this._tapT || now - this._tapT > 110) {
+        this._tapT = now;
+        this.sound.play('tap', 0.35);
+      }
     }
-    this.r.ghost = { kind: 'brush', x: wx, y: wy, r: this.brush };
+    this.ring(wx, wy, true);
   }
 
   hover(wx, wy) {
@@ -1128,8 +1209,10 @@ export class UI {
       this.r.ghost = null;
       return;
     }
-    if (this.tool === 'shape') this.r.ghost = { kind: 'brush', x: wx, y: wy, r: this.brush };
-    else if (this.tool === 'decor' && (this.choice.decor || this.moving)) {
+    if (this.tool === 'shape') {
+      this.pointerType = 'mouse';
+      this.ring(wx, wy, false);
+    } else if (this.tool === 'decor' && (this.choice.decor || this.moving)) {
       const def = DECOR[this.moving ? this.moving.type : this.choice.decor];
       const y = def.place === 'top' ? 0 : this.world.terrain.surfaceY(wx);
       const ok = this.world.canPlace('decor', def.id, wx, y).ok;
@@ -1400,6 +1483,29 @@ export class UI {
 
   // ------------------------------------------------------------------ HUD
   update(dt) {
+    const gh = this.r.ghost;
+    if (gh && gh.fade) {
+      gh.fade -= dt * 2.5;
+      gh.alpha = Math.max(0, gh.fade);
+      if (gh.fade <= 0) this.r.ghost = null;
+    }
+    if (this.demo && this.tool === 'shape') {
+      // a ghost brush sweeps a little S across the middle of the view
+      const d = this.demo;
+      d.t += dt;
+      const k = Math.min(1, d.t / 2.2);
+      const v = this.cam.view(0);
+      const cx = (v.x0 + v.x1) / 2;
+      const cy = v.y0 + (v.y1 - v.y0) * 0.42;
+      const span = (v.x1 - v.x0) * 0.22;
+      this.ring(cx - span + span * 2 * k, cy + Math.sin(k * Math.PI * 2) * span * 0.25, k > 0.12 && k < 0.88);
+      this.r.ghost.demo = true;
+      this.r.ghost.alpha = Math.min(1, d.t * 3, (2.2 - d.t) * 3);
+      if (d.t >= 2.2) {
+        this.demo = null;
+        this.r.ghost = null;
+      }
+    }
     this.hudT -= dt;
     if (this.hudT <= 0) {
       this.hudT = 0.25;

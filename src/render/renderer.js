@@ -1341,14 +1341,53 @@ export class Renderer {
     this.setWorld(g);
     g.globalAlpha = 0.55;
     if (gh.kind === 'brush') {
-      g.globalAlpha = 1;
+      // The brush ring: tinted with what you're painting, a white halo so
+      // it reads on any ground, marching dashes while you aim and a solid,
+      // gently pulsing ring while you paint.
+      const z = Math.max(0.35, this.cam.zoom);
+      const a = gh.alpha == null ? 1 : gh.alpha;
+      const r = gh.r * (gh.painting ? 1 + Math.sin(this.time * 12) * 0.03 : 1);
+      g.globalAlpha = a;
       g.beginPath();
-      g.arc(gh.x, gh.y, gh.r, 0, TAU);
-      g.setLineDash([5, 4]);
-      g.lineWidth = 1.5 / Math.max(0.5, this.cam.zoom);
-      g.strokeStyle = gh.ok === false ? '#e2453f' : '#ffffff';
+      g.arc(gh.x, gh.y, r, 0, TAU);
+      g.fillStyle = gh.fill || 'rgba(255,255,255,0.18)';
+      g.fill();
+      g.lineWidth = 4 / z;
+      g.strokeStyle = 'rgba(255,253,246,0.92)';
+      g.stroke();
+      if (!gh.painting) {
+        g.setLineDash([7 / z, 5 / z]);
+        g.lineDashOffset = (-this.time * 16) / z;
+      }
+      g.lineWidth = 1.7 / z;
+      g.strokeStyle = gh.ok === false ? '#e2453f' : INK;
       g.stroke();
       g.setLineDash([]);
+      g.beginPath();
+      g.arc(gh.x, gh.y, 2 / z, 0, TAU);
+      g.fillStyle = INK;
+      g.fill();
+      if (gh.touch && !gh.demo) {
+        // a fingertip hides the middle of the ring, so a little flag on a
+        // stalk stands up above it to show where the brush is
+        const lift = r + 30 / z;
+        g.beginPath();
+        g.moveTo(gh.x, gh.y - r);
+        g.lineTo(gh.x, gh.y - lift + 7 / z);
+        g.lineWidth = 3.4 / z;
+        g.strokeStyle = 'rgba(255,253,246,0.92)';
+        g.stroke();
+        g.lineWidth = 1.5 / z;
+        g.strokeStyle = INK;
+        g.stroke();
+        g.beginPath();
+        g.arc(gh.x, gh.y - lift, 7 / z, 0, TAU);
+        g.fillStyle = (gh.fill || 'rgba(255,255,255,0.4)').replace(/[\d.]+\)$/, '1)');
+        g.fill();
+        g.lineWidth = 1.6 / z;
+        g.stroke();
+      }
+      g.globalAlpha = 1;
     } else if (gh.kind === 'decor') {
       const box = decorBox(gh.def);
       const s = this.sprites.get('d|' + gh.def.id, Math.min(this.bucket, 3), box, (gg) => DECOR_ART[gh.def.id](gg, 0));

@@ -49,9 +49,10 @@ export class Input {
       }
       this.state = 'press';
       this.pressT = performance.now();
+      this.pointerType = e.pointerType;
       this.samples.length = 0;
       this.holdFired = false;
-      this.h.press && this.h.press(...this.cam.toWorld(x, y), x, y);
+      this.h.press && this.h.press(...this.cam.toWorld(x, y), x, y, e.pointerType);
     } else if (this.pointers.size === 2) {
       if (this.state === 'tooldrag') this.h.dragEnd && this.h.dragEnd();
       this.state = 'pinch';
@@ -83,7 +84,8 @@ export class Input {
       return;
     }
     if (this.state === 'press') {
-      if (Math.hypot(x - p.sx, y - p.sy) > 9) {
+      // tools respond to a much smaller nudge than panning does
+      if (Math.hypot(x - p.sx, y - p.sy) > (this.dragMode === 'tool' ? 4 : 9)) {
         if (this.dragMode === 'tool') {
           this.state = 'tooldrag';
           this.h.dragStart && this.h.dragStart(...this.cam.toWorld(p.sx, p.sy));
@@ -129,7 +131,10 @@ export class Input {
       this.h.dragEnd && this.h.dragEnd();
     }
     if (this.state === 'press' || this.state === 'hold') this.h.release && this.h.release();
-    if (this.pointers.size === 0) this.state = 'idle';
+    if (this.pointers.size === 0) {
+      this.state = 'idle';
+      this.h.lift && this.h.lift(e.pointerType);
+    }
     else if (this.state === 'pinch' && this.pointers.size === 1) {
       const q = [...this.pointers.values()][0];
       q.sx = q.x;
@@ -142,7 +147,10 @@ export class Input {
   cancel(e) {
     this.pointers.delete(e.pointerId);
     if (this.state === 'tooldrag') this.h.dragEnd && this.h.dragEnd();
-    if (this.pointers.size === 0) this.state = 'idle';
+    if (this.pointers.size === 0) {
+      this.state = 'idle';
+      this.h.lift && this.h.lift(e.pointerType);
+    }
   }
 
   // Called every frame: fires hold events while a finger rests in place.
@@ -151,6 +159,13 @@ export class Input {
     const p = [...this.pointers.values()][0];
     if (!p) return;
     const held = performance.now() - this.pressT;
+    // a finger resting on the tank with a tool starts painting right away
+    // (a brief wait leaves room for a second finger to make it a pinch)
+    if (this.dragMode === 'tool' && this.state === 'press' && this.pointers.size === 1 && held > 90) {
+      this.state = 'tooldrag';
+      this.h.dragStart && this.h.dragStart(...this.cam.toWorld(p.x, p.y));
+      return;
+    }
     if (held > 420) {
       this.state = 'hold';
       this.holdFired = true;

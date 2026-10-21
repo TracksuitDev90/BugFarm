@@ -179,7 +179,11 @@ async function boot() {
   input = new Input(canvas, game.cam, {
     tap: (x, y, sx, sy, dbl) => ui.tap(x, y, sx, sy, dbl),
     hold: (x, y, held) => ui.hold(x, y, held),
-    press: () => sound.unlock(),
+    press: (x, y, sx, sy, type) => {
+      sound.unlock();
+      ui.press(x, y, type);
+    },
+    lift: (type) => ui.lift(type),
     dragStart: (x, y) => ui.dragStart(x, y),
     dragMove: (x, y) => ui.dragMove(x, y),
     dragEnd: () => ui.dragEnd(),

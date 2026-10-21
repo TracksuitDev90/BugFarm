@@ -22,6 +22,11 @@ happens.
 
 The art takes after Richard Scarry: ink outlines, washes of colour,
 rosy cheeks, little hats, and houses made from teapots, boots and apples.
+Everything inside the glass is painted like a picture-book page: watercolour
+washes that bloom and pool at their edges, ink stippling in the sand, pencil
+hatching in the tunnels, a bold ink line, all on cold-press paper. Sunlight
+falls through the glass in soft shafts with dust drifting in them, dappled
+light comes down through the jungle canopy, and rays sway under the pond.
 Nobody is scary, and nothing dies horribly. When a critter's time is up it
 floats away under a little halo and a forget-me-not grows where it rested.
 
@@ -35,7 +40,7 @@ remember.
 
 | Zone | Who lives there | What to watch for |
 | --- | --- | --- |
-| Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and chambers and pile the sand into a mound. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
+| Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
 | Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish school together. The turtle climbs out to bask on the rocks. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
 | Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads, with vines trailing from the lid. Ants farm aphids for honeydew and ladybugs hunt them. Bees pollinate flowers so they set seed. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
 
@@ -82,7 +87,7 @@ None of that comes as a pop-up. Instead:
 | **Critters** | Adopt new critters and choose where they live. |
 | **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
 | **Decor** | 26 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car and a castle. Many of them do something useful: shelters give shade and warmth, bubblers add oxygen, lamp posts glow at night, the bee house lets bees breed, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
-| **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself. You can also raise or lower the pond. |
+| **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
 | **Climate** | Set each zone's heat lamp and mister, the pond heater and filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
 | **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 39 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
 | **Clipboard** | The button at the top right. What needs doing now, how each zone is doing, and the goals for its next level. Tapping a thermometer on the glass opens it too. |
@@ -106,6 +111,9 @@ the tools and `Esc` closes panels.
   Warm water holds less air.
 - **Rainy day.** The earthworms come up to the surface.
 - **Leave fruit to rot.** Fruit flies appear.
+- **Dig a drain.** Dig a tunnel from the bottom of the pond into the sand.
+  The water pours down it and fills the tunnel from the bottom up, and the
+  pond level drops. A small puddle cut off from the pond soaks away.
 - **Add a predator.** The gecko eats crickets, frogs catch flies, and ladybugs
   eat aphids. The world stays mostly peaceful, but the food chain is real.
 
@@ -151,7 +159,7 @@ repository, go to **Settings → Pages → Source** once and choose
 ```
 src/
   config.js            world size, grid, caps
-  world/               terrain grid (sand/soil/rock/gravel/clay, water flood fill),
+  world/               terrain grid (sand/soil/rock/gravel/clay), flowing water,
                        environment (zone climate, pond chemistry, day/night),
                        spatial hash, A* pathfinding, the World itself
   entities/            Creature (needs, life stages, movement), Plant, Food, Decor
@@ -159,8 +167,10 @@ src/
                        ant colony (castes, brood, digging, scent trails, aphid herding)
   data/                species, foods, plants, decor, names, discoveries,
                        progression (what each zone level unlocks)
-  art/                 procedural ink-and-watercolour drawing of everything
-  render/              sprite cache, chunked terrain renderer, particles, frame
+  art/                 procedural ink-and-watercolour drawing of everything,
+                       paper grain and watercolour washes
+  render/              sprite cache, chunked terrain and water, light shafts,
+                       particles, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal
   sim/                 away catch-up, journal, care (comfy ranges and the
                        to-do list), progress (zone levels and goals)
@@ -173,13 +183,23 @@ src/
   estivate and so on) against its current needs, and runs the best one.
   Ants have their own colony-level task allocation on top of that. Species and
   life stages are mostly data in `src/data/species.js`.
+- **Water.** Every cell holds an amount of water. Water falls into room
+  below it and spreads sideways, and within one connected body it moves
+  from the top to the lowest opening, which is enough for draining, filling
+  tunnels from the bottom and levelling out both sides of a U-bend. The sim
+  goes to sleep once the water is still, so a calm pond costs nothing.
+- **Movement.** Ants follow smoothed paths and feel which way the ground
+  is, so they stand on floors, cling to walls and walk along ceilings.
+  Walkers ease in and out of moving, every critter swivels to turn round,
+  and hops stretch and land with a squash.
 - **Simulation and rendering are separate.** `src/world` and `src/entities`
   never touch the DOM, so the whole tank runs headless in Node for the tests and
   for the catch-up after you've been away.
-- **Rendering on a budget.** The terrain is drawn in 32-cell chunks with
-  smoothed marching squares and redrawn only where it changes. The room,
-  backdrop, terrain and frame are cached into a single background image.
-  Critters are drawn once per pose and size bucket into a sprite cache.
+- **Rendering on a budget.** The terrain and the water are drawn in
+  32-cell chunks with smoothed marching squares and redrawn only where they
+  change. The room, backdrop, light shafts, terrain and frame are cached
+  into a single background image. Critters are drawn once per pose and size
+  bucket into a sprite cache, painted finish included.
 - **Saving.** The save is compact JSON (about 36 KB, with run-length-encoded
   terrain) in `localStorage`, with a backup copy. Settings can export and
   import saves as files.

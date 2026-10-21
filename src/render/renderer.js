@@ -97,7 +97,6 @@ export class Renderer {
     this.ghost = null;
     this.backdrop = null;
     this.backdropKey = '';
-    this.water = null;
     this.waterKey = '';
     this.bg = null;
     this.bgKey = '';

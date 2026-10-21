@@ -44,7 +44,6 @@ export class World {
     this.history = [];
     this.histT = 0;
     this.log = [];
-    this.waterTimer = 0;
     this.lastHour = this.env.hour;
     this.plantTick = 0;
     this.seed = 1;

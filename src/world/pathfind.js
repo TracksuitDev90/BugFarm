@@ -112,7 +112,9 @@ export function findPath(terrain, sx, sy, tx, ty, maxExpand = 7000) {
       if (d >= 4 && (!terrain.walkable(cx + DX[d], cy) && !terrain.walkable(cx, cy + DY[d]))) continue;
       const ni = ny * GW + nx;
       if (closed[ni] === gen) continue;
-      const ng = gc + COST[d];
+      // ants keep their feet on the floor where they can, rather than
+      // creeping along walls and ceilings
+      const ng = gc + COST[d] * (terrain.solid(nx, ny + 1) ? 1 : 1.2);
       if (stamp[ni] !== gen || ng < g[ni]) {
         stamp[ni] = gen;
         g[ni] = ng;
@@ -128,7 +130,9 @@ export function findPath(terrain, sx, sy, tx, ty, maxExpand = 7000) {
 function heur(x, y, tx, ty) {
   const dx = Math.abs(x - tx);
   const dy = Math.abs(y - ty);
-  return (dx > dy ? dx + 0.414 * dy : dy + 0.414 * dx) * 1.05;
+  // (a little over the true distance: paths come out nearly as good and the
+  // search looks at far fewer cells, which matters with lots of ants)
+  return (dx > dy ? dx + 0.414 * dy : dy + 0.414 * dx) * 1.15;
 }
 
 export function nearestWalkable(terrain, cx, cy, r) {
@@ -141,4 +145,44 @@ export function nearestWalkable(terrain, cx, cy, r) {
     }
   }
   return null;
+}
+
+// Turn a path of cells into a smooth line of points (world units) that
+// still only passes through walkable cells: grid staircases become straight
+// runs and corners become curves, so crawlers glide instead of zigzagging.
+const W7 = [1, 2, 3, 4, 3, 2, 1];
+export function smoothPath(terrain, path, CELL) {
+  const n = path.length;
+  const out = new Float32Array(n * 2);
+  const half = CELL / 2;
+  for (let k = 0; k < n; k++) {
+    const cx = path[k] % GW;
+    const cy = (path[k] / GW) | 0;
+    let sx = 0;
+    let sy = 0;
+    let sw = 0;
+    if (k > 0 && k < n - 1) {
+      for (let o = -3; o <= 3; o++) {
+        const j = k + o;
+        if (j < 0 || j >= n) continue;
+        const wgt = W7[o + 3];
+        sx += (path[j] % GW) * wgt;
+        sy += ((path[j] / GW) | 0) * wgt;
+        sw += wgt;
+      }
+    }
+    if (sw) {
+      const x = (sx / sw) * CELL + half;
+      const y = (sy / sw) * CELL + half;
+      // only use the smoothed point if it's still somewhere an ant can be
+      if (terrain.walkable(Math.floor(x / CELL), Math.floor(y / CELL))) {
+        out[k * 2] = x;
+        out[k * 2 + 1] = y;
+        continue;
+      }
+    }
+    out[k * 2] = cx * CELL + half;
+    out[k * 2 + 1] = cy * CELL + half;
+  }
+  return out;
 }

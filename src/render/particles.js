@@ -10,6 +10,7 @@ export class Particles {
     this.max = max;
     this.list = [];
     this.ripples = [];
+    this.pours = [];
     this.rainAcc = { desert: 0, jungle: 0 };
   }
   setMax(n) {
@@ -23,6 +24,11 @@ export class Particles {
     }
     p.t = 0;
     this.list.push(p);
+  }
+  // A ribbon of water poured in from the lid, splashing where it lands.
+  pour(x, y) {
+    this.pours.push({ x, y, t: 0, life: 1.4 });
+    if (this.pours.length > 3) this.pours.shift();
   }
   bubble(x, y) {
     this.add({ type: 'bubble', x, y, vx: 0, vy: -rrange(14, 26), r: rrange(0.9, 2.2), life: 8, ph: Math.random() * TAU });
@@ -132,6 +138,16 @@ export class Particles {
       if (alive) L[j++] = p;
     }
     L.length = j;
+    for (let i = this.pours.length - 1; i >= 0; i--) {
+      const p = this.pours[i];
+      p.t += dt;
+      if (p.t > p.life) {
+        this.pours.splice(i, 1);
+        continue;
+      }
+      if (chance(dt * 14)) this.splash(p.x + rrange(-2, 2), p.y, 0.35);
+      if (chance(dt * 6)) this.bubble(p.x + rrange(-6, 6), p.y + rrange(6, 30));
+    }
     for (let i = this.ripples.length - 1; i >= 0; i--) {
       this.ripples[i].t += dt;
       if (this.ripples[i].t > 1.6) this.ripples.splice(i, 1);
@@ -139,6 +155,30 @@ export class Particles {
   }
   draw(g, view, zoom) {
     const lw = 0.6;
+    for (const p of this.pours) {
+      // the stream thins out as the pour finishes
+      const k = Math.min(1, p.t * 6, (p.life - p.t) * 3);
+      const top = Math.max(4, p.y - (p.y - 4) * Math.min(1, p.t * 3));
+      const bot = p.t > p.life - 0.35 ? p.y - (p.y - 4) * ((p.t - (p.life - 0.35)) / 0.35) : p.y;
+      if (bot <= top + 2) continue;
+      const wd = 2.6 * k;
+      g.beginPath();
+      for (let y = top; y <= bot; y += 6) g.lineTo(p.x - wd + Math.sin(y * 0.15 + p.t * 20) * 0.6, y);
+      for (let y = bot; y >= top; y -= 6) g.lineTo(p.x + wd + Math.sin(y * 0.15 + p.t * 20 + 1) * 0.6, y);
+      g.closePath();
+      g.globalAlpha = 0.85;
+      g.fillStyle = '#a9d8f2';
+      g.fill();
+      g.lineWidth = 0.6;
+      g.strokeStyle = INK;
+      g.stroke();
+      g.beginPath();
+      g.moveTo(p.x - wd * 0.3, top + 4);
+      g.lineTo(p.x - wd * 0.3, bot - 3);
+      g.lineWidth = 0.7;
+      g.strokeStyle = 'rgba(255,255,255,0.9)';
+      g.stroke();
+    }
     for (const p of this.list) {
       if (p.x < view.x0 || p.x > view.x1 || p.y < view.y0 || p.y > view.y1) continue;
       const k = 1 - p.t / p.life;

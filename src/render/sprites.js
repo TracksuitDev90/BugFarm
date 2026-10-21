@@ -1,3 +1,5 @@
+import { finishSprite } from '../art/paper.js';
+
 // Caches procedurally drawn art into small canvases at a few resolution
 // "buckets" so per-frame drawing is just drawImage. A per-frame budget keeps
 // zooming from causing a hitch: if over budget, an existing lower-res
@@ -47,6 +49,8 @@ export class SpriteCache {
     g.lineJoin = 'round';
     try {
       draw(g);
+      // painted light, shade and paper grain (see-through wings stay clear)
+      if (!key.startsWith('wg|') && !key.startsWith('bw')) finishSprite(g, box);
     } catch (e) {
       console.warn('sprite draw failed', key, e);
     }

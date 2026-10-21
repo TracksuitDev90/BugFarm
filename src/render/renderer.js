@@ -11,6 +11,8 @@ import { DECOR_ART, decorBox } from '../art/decor.js';
 import { drawIcon } from '../art/icons.js';
 import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops.js';
 import { setMisregistration } from '../art/ink.js';
+import { finishSprite, grainTile } from '../art/paper.js';
+import { LightRays } from './light.js';
 import { LAMP_X, MISTER_X } from '../world/environment.js';
 import { zoneBand, zoneStatus } from '../sim/care.js';
 import { angleDiff, clamp, clamp01, lerp } from '../util/math.js';
@@ -18,9 +20,9 @@ import { hash1 } from '../util/rng.js';
 
 const TAU = Math.PI * 2;
 const QUALITY = {
-  low: { dprCap: 1, terrainS: 1, backdrop: 0.4, particles: 110, rays: false, reflections: false, budget: 6, maxBucket: 2 },
-  medium: { dprCap: 2, terrainS: 1.5, backdrop: 0.6, particles: 220, rays: true, reflections: true, budget: 10, maxBucket: 4 },
-  high: { dprCap: 3, terrainS: 2, backdrop: 0.8, particles: 320, rays: true, reflections: true, budget: 16, maxBucket: 4 },
+  low: { dprCap: 1, terrainS: 1, backdrop: 0.4, particles: 110, rays: false, liveRays: false, reflections: false, budget: 6, maxBucket: 2 },
+  medium: { dprCap: 2, terrainS: 1.5, backdrop: 0.6, particles: 220, rays: true, liveRays: false, reflections: true, budget: 10, maxBucket: 4 },
+  high: { dprCap: 3, terrainS: 2, backdrop: 0.8, particles: 320, rays: true, liveRays: true, reflections: true, budget: 16, maxBucket: 4 },
 };
 
 // Which art poses exist per species (others fall back to idle).
@@ -45,6 +47,8 @@ const POSES = {
   fruitfly: ['fly'],
 };
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
+// How much each walker bobs with its footsteps (snails glide instead).
+const STEP_BOB = { cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
 // Stick-on strip thermometers on the glass, one per zone.
 export const GAUGE_AT = { desert: [34, 40], pond: [580, 40], jungle: [1492, 40] };
 // Vines trailing from the lid over the jungle: [x, length]. They keep clear
@@ -82,6 +86,7 @@ export class Renderer {
     this.sprites = new SpriteCache(900);
     this.plantCache = new Map();
     this.fx = new Particles(220);
+    this.light = new LightRays();
     world.fx = this.fx;
     this.q = QUALITY.medium;
     this.qualityName = 'medium';
@@ -92,7 +97,6 @@ export class Renderer {
     this.ghost = null;
     this.backdrop = null;
     this.backdropKey = '';
-    this.water = null;
     this.waterKey = '';
     this.bg = null;
     this.bgKey = '';
@@ -161,74 +165,48 @@ export class Renderer {
     this.backdrop = paintBackdrop(this.world.style.backdrop, this.q.backdrop);
   }
 
+  // Water colour follows the pond's health and the chosen tint; the water
+  // itself is painted in chunks by the terrain renderer as it flows.
   ensureWater() {
     const t = this.world.terrain;
     const p = this.world.env.pond;
     const tint = this.world.style.water || 'clear';
-    const key = t.waterVersion + '|' + Math.round(p.clarity * 10) + '|' + Math.round(p.algae * 10) + '|' + tint;
-    if (key === this.waterKey) return;
-    this.waterKey = key;
-    // bounding box of water cells
-    let x0 = GW;
-    let x1 = -1;
-    let y0 = 1e9;
-    let y1 = -1;
-    const GHn = t.water.length / GW;
-    for (let cx = 0; cx < GW; cx++) {
-      for (let cy = 0; cy < GHn; cy++) {
-        if (t.water[cy * GW + cx] !== 1) continue;
-        if (cx < x0) x0 = cx;
-        if (cx > x1) x1 = cx;
-        if (cy < y0) y0 = cy;
-        if (cy > y1) y1 = cy;
-      }
-    }
-    if (x1 < 0) {
-      this.water = null;
-      return;
-    }
-    x0 = Math.max(0, x0 - 2);
-    y0 = Math.max(0, y0 - 2);
-    x1 = Math.min(GW - 1, x1 + 2);
-    y1 = Math.min(GHn - 1, y1 + 2);
-    const wx = x0 * CELL;
-    const wy = y0 * CELL;
-    const ww = (x1 - x0 + 1) * CELL;
-    const wh = (y1 - y0 + 1) * CELL;
-    const c = document.createElement('canvas');
-    c.width = ww;
-    c.height = wh;
-    const g = c.getContext('2d');
-    g.translate(-wx, -wy);
-    const base = {
-      clear: [[150, 212, 238], [52, 112, 168]],
-      teal: [[136, 216, 206], [34, 118, 132]],
-      green: [[166, 212, 160], [56, 112, 84]],
-      blue: [[126, 184, 242], [36, 74, 160]],
-    }[tint] || [[150, 212, 238], [52, 112, 168]];
     const murk = 1 - p.clarity;
     const algae = Math.min(1, p.algae * 1.5);
-    const mixc = (col) => {
-      const r = lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7);
-      const gg = lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7);
-      const b = lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7);
-      return `rgb(${Math.round(r)},${Math.round(gg)},${Math.round(b)})`;
-    };
-    const grad = g.createLinearGradient(0, t.waterLevel, 0, H);
-    grad.addColorStop(0, mixc(base[0]));
-    grad.addColorStop(1, mixc(base[1]));
-    this.tr.paintWater(g, x0, y0, x1, y1, grad);
-    this.water = c;
-    this.waterRect = [wx, wy, ww, wh];
-    this.waterAlpha = 0.42 + murk * 0.4;
+    const key = Math.round(p.clarity * 10) + '|' + Math.round(p.algae * 10) + '|' + tint + '|' + Math.round(t.waterLevel / 24);
+    if (key !== this.waterKey) {
+      this.waterKey = key;
+      const base = {
+        clear: [[168, 222, 240], [110, 182, 220], [60, 122, 176]],
+        teal: [[152, 224, 210], [92, 180, 184], [38, 120, 134]],
+        green: [[180, 220, 168], [124, 176, 128], [58, 114, 86]],
+        blue: [[140, 196, 244], [90, 146, 222], [40, 80, 164]],
+      }[tint] || [[168, 222, 240], [110, 182, 220], [60, 122, 176]];
+      const mixc = (col, a = 1) => {
+        const r = lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7);
+        const gg = lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7);
+        const b = lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7);
+        return `rgba(${Math.round(r)},${Math.round(gg)},${Math.round(b)},${a})`;
+      };
+      const deep = base[2];
+      this.tr.setWaterLook({
+        key,
+        top: t.waterLevel,
+        c0: mixc(base[0]),
+        c1: mixc(base[1]),
+        c2: mixc(base[2]),
+        pool: mixc([deep[0] * 0.7, deep[1] * 0.75, deep[2] * 0.85], 0.22),
+        bloomLight: 'rgba(255,255,255,0.16)',
+        bloomDark: mixc(deep, 0.16),
+      });
+      this.waterAlpha = 0.5 + murk * 0.36;
+    }
+    this.tr.updateWater(this.view, this.q.budget > 8 ? 3 : 2);
   }
 
   drawWater(g) {
-    if (!this.water) return;
-    const [x, y, w, h] = this.waterRect;
-    g.globalAlpha = this.waterAlpha;
-    g.drawImage(this.water, x, y, w, h);
-    g.globalAlpha = 1;
+    this.tr.drawWater(g, this.view, this.waterAlpha || 0.5, this.k, this.ox, this.oy);
+    this.setWorld(g);
   }
 
   // ------------------------------------------------------------------ static background cache
@@ -250,7 +228,9 @@ export class Renderer {
     this.bgM = [mx, my];
     const env = this.world.env;
     const st = this.world.style;
-    const key = [this.k.toFixed(5), this.backdropKey, st.frame, st.wallpaper, Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
+    // (still pond rays are baked in, so the pond's level and clarity count)
+    const rayKey = this.q.rays ? (this.q.liveRays ? 'L' : Math.round(this.world.terrain.waterLevel / 8) + ':' + Math.round(env.pond.clarity * 5)) : 0;
+    const key = [this.k.toFixed(5), this.backdropKey, rayKey, st.frame, st.wallpaper, Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
     let dx = this.ox - this.bgOx;
     let dy = this.oy - this.bgOy;
     if (key !== this.bgKey || !(Math.abs(dx) < mx - 2 && Math.abs(dy) < my - 2)) {
@@ -286,7 +266,26 @@ export class Renderer {
     this.drawRoom(g, view);
     g.drawImage(this.backdrop, 0, 0, W, H);
     this.drawLampCones(g);
+    if (this.q.rays) {
+      this.light.bake(g, [k, ox, oy], this.world, !this.q.liveRays);
+      g.setTransform(k, 0, 0, k, ox, oy);
+    }
     this.tr.draw(g, view);
+    // the whole scene inside the glass is painted on watercolour paper
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.clip();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (!this.patterns.grain || this.patterns.grainCtx !== g) {
+      this.patterns.grain = g.createPattern(grainTile(), 'repeat');
+      this.patterns.grainCtx = g;
+    }
+    g.fillStyle = this.patterns.grain;
+    g.fillRect(0, 0, this.bg.width, this.bg.height);
+    g.restore();
+    if (this.q.reflections) this.light.glare(g, [k, ox, oy]);
+    g.setTransform(k, 0, 0, k, ox, oy);
     this.drawFrame(g, view);
     if (chunks) g.restore();
   }
@@ -341,12 +340,13 @@ export class Renderer {
     const t = w.terrain;
     const cam = this.cam;
     this.time += dt;
+    this.dt = dt;
     if (!this.paused) this.flapT += dt;
     this.fx.update(dt, t, this.time);
     this.ensureBackdrop();
-    this.ensureWater();
     const view = cam.view(40);
     this.view = view;
+    this.ensureWater();
     this.sprites.frame(this.q.budget);
     const chunks = this.tr.update(view, 3);
     const px = cam.zoom * this.dpr;
@@ -386,11 +386,11 @@ export class Renderer {
     this.setWorld(g);
     for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     this.drawWaterSurface(g);
+    this.light.draw(this, g, w, this.time, { rays: this.q.rays, liveWater: this.q.liveRays });
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
     this.drawGauges(g);
     if (sel && !sel.removed) this.drawSelection(g, sel, alpha);
-    if (this.q.reflections) this.drawGlass(g);
     this.drawNight(g, view);
     if (this.lens !== 'none') this.drawLens(g, view, dt);
     if (this.ghost) this.drawGhost(g);
@@ -432,46 +432,17 @@ export class Renderer {
     }
   }
 
+  // (painted into the cached background, so beams use its offset)
   drawLampCones(g) {
     const env = this.world.env;
+    const m = [this.k, this.bgOx + this.bgM[0], this.bgOy + this.bgM[1]];
     for (const z of ['desert', 'pond', 'jungle']) {
       const p = env[z].lamp;
       if (p < 0.05) continue;
-      const x = LAMP_X[z];
-      const a = 0.08 * p * (0.6 + 0.4 * env.sun);
-      const gr = g.createLinearGradient(0, 10, 0, 400);
-      gr.addColorStop(0, `rgba(255,236,170,${a * 2})`);
-      gr.addColorStop(1, 'rgba(255,236,170,0)');
-      g.fillStyle = gr;
-      g.beginPath();
-      g.moveTo(x - 16, 14);
-      g.lineTo(x + 16, 14);
-      g.lineTo(x + 130, 400);
-      g.lineTo(x - 130, 400);
-      g.closePath();
-      g.fill();
+      this.light.lampCone(m, g, LAMP_X[z], p, env.sun);
     }
-  }
-
-  drawRays(g) {
-    const t = this.world.terrain;
-    const wl = t.waterLevel;
-    const tm = this.time;
-    g.save();
-    g.globalAlpha = 0.07 * (0.3 + 0.7 * this.world.env.sun) * this.world.env.pond.clarity;
-    g.fillStyle = '#ffffff';
-    for (let i = 0; i < 5; i++) {
-      const x = 600 + i * 95 + Math.sin(tm * 0.25 + i * 1.7) * 30;
-      const wdt = 18 + Math.sin(tm * 0.4 + i) * 8;
-      g.beginPath();
-      g.moveTo(x, wl);
-      g.lineTo(x + wdt, wl);
-      g.lineTo(x + wdt + 60, wl + 300);
-      g.lineTo(x + 40, wl + 300);
-      g.closePath();
-      g.fill();
-    }
-    g.restore();
+    g.globalAlpha = 1;
+    g.setTransform(m[0], 0, 0, m[0], m[1], m[2]);
   }
 
   // ------------------------------------------------------------------ entities
@@ -494,6 +465,7 @@ export class Renderer {
         gg.lineCap = 'round';
         gg.lineJoin = 'round';
         drawPlant(gg, p, this.time);
+        finishSprite(gg, S.box);
         e = { canvas: c, ver: p.shapeVersion, b, x0, y0, w: x1 - x0, h: y1 - y0 };
         this.plantCache.set(p, e);
       }
@@ -573,12 +545,46 @@ export class Renderer {
     let x = c.px + (c.x - c.px) * alpha;
     let y = c.py + (c.y - c.py) * alpha;
     let ang = c.pangle + angleDiff(c.pangle, c.angle) * alpha;
-    if (c.mode === 'crawl' && this.world.terrain.solidAt(x, y + CELL)) y -= 1.8;
     const ds = c.drawScale;
+    if (c.mode === 'crawl') {
+      // stand on the surface: lift the body off the floor, wall or ceiling
+      const off = c.foot - 2.2;
+      x += c.nx * off;
+      y += c.ny * off;
+      if (c.pose === 'dig' && !this.paused) {
+        // shovelling: a quick rock back and forth
+        const j = Math.sin(this.time * 22 + c.id) * 0.7;
+        x += Math.cos(ang) * c.facing * j;
+        y += Math.sin(ang) * c.facing * j;
+      }
+    }
+    // turning round is a quick swivel, not an instant flip
+    if (c.vf == null || c.dead) c.vf = c.facing;
+    else if (!this.paused) c.vf += (c.facing - c.vf) * Math.min(1, (this.dt || 0.016) * 13);
+    const vf = Math.abs(c.vf) < 0.18 ? (c.vf < 0 ? -0.18 : 0.18) : c.vf;
     let sx = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.55 : 1 - (1 - c.plump) * 0.3);
     let sy = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.3 : 1 - (1 - c.plump) * 0.15);
     if (c.pose === 'eat') sy *= 1 + Math.sin(this.time * 18 + c.id) * 0.035;
     if (c.pose === 'sleep' && !c.dead) sy *= 1 + Math.sin(this.time * 2 + c.id) * 0.025;
+    else if (!c.moving && !c.dead && c.mode !== 'fly' && c.mode !== 'swim') sy *= 1 + Math.sin(this.time * 2.6 + c.id) * 0.012; // breathing
+    if (c.moving && (c.mode === 'walk' || c.mode === 'crawl') && STEP_BOB[c.sp]) {
+      // a little lift on every step
+      const b = Math.abs(Math.sin(c.anim * (c.sp === 'ant' ? 22 : 14))) * STEP_BOB[c.sp] * ds;
+      x += c.mode === 'crawl' ? c.nx * b : 0;
+      y += c.mode === 'crawl' ? c.ny * b : -b;
+    } else if (c.moving && (c.sp === 'snail' || c.sp === 'pondsnail')) sx *= 1 + Math.sin(c.anim * 5 + c.id) * 0.04; // a snail's slow stretch
+    if (c.mode === 'air') {
+      // stretch while leaping
+      const k = Math.min(0.16, Math.abs(c.vy) / 900);
+      sy *= 1 + k;
+      sx *= 1 - k * 0.6;
+    } else if (c.landT > 0) {
+      // ...and squash on landing
+      const k = (c.landT / 0.22) * 0.18;
+      sy *= 1 - k;
+      sx *= 1 + k * 0.8;
+      y += k * c.foot * 0.6;
+    }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
     if (c.stage === 'chrysalis') ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
     if (c.dead) {
@@ -590,7 +596,7 @@ export class Renderer {
       ph = this.flapT * wspec.hz * TAU + c.id * 2.3;
       y -= Math.sin(ph) * wspec.bob * ds; // each downstroke lifts the body a touch
     }
-    this.put(g, x, y, ang, c.facing * sx, sy);
+    this.put(g, x, y, ang, vf * sx, sy);
     if (wspec) this.drawWings(g, c, wspec, ph, true, bucket);
     g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
     if (wspec && !wspec.butterfly) this.drawWings(g, c, wspec, ph, false, bucket);
@@ -763,13 +769,13 @@ export class Renderer {
     }
   }
 
+  // Every open water surface gets a wavy, inked line with a bright band
+  // under it. Ripples from splashes run along the pond's surface.
   drawWaterSurface(g) {
     const t = this.world.terrain;
-    const wl = t.waterLevel;
-    const row = Math.ceil(wl / CELL);
     const tm = this.time;
     const ripples = this.fx.ripples;
-    const wave = (x) => {
+    const wave = (x, y0) => {
       let y = Math.sin(x * 0.05 + tm * 1.8) * 1.1 + Math.sin(x * 0.11 - tm * 1.2) * 0.6;
       for (const r of ripples) {
         const d = Math.abs(x - r.x);
@@ -777,39 +783,43 @@ export class Renderer {
         const k = d - front;
         if (k > -14 && k < 14) y += Math.cos(k * 0.35) * (1 - r.t / 1.6) * 2.2 * r.s;
       }
-      return wl + y;
+      return y0 + y;
     };
     this.setWorld(g);
-    let start = -1;
-    for (let cx = 0; cx <= GW; cx++) {
-      const open = cx < GW && t.waterTop[cx] === row;
-      if (open && start < 0) start = cx;
-      if (!open && start >= 0) {
-        const x0 = start * CELL;
-        const x1 = cx * CELL;
-        if (x1 > this.view.x0 && x0 < this.view.x1) {
-          g.beginPath();
-          g.moveTo(x0, wave(x0));
-          for (let x = x0 + 6; x < x1; x += 6) g.lineTo(x, wave(x));
-          g.lineTo(x1, wave(x1));
-          g.lineTo(x1, wl + 5);
-          g.lineTo(x0, wl + 5);
-          g.closePath();
-          g.fillStyle = 'rgba(255,255,255,0.2)';
-          g.fill();
-          g.beginPath();
-          g.moveTo(x0, wave(x0));
-          for (let x = x0 + 6; x < x1; x += 6) g.lineTo(x, wave(x));
-          g.lineTo(x1, wave(x1));
-          g.lineWidth = 1.6;
-          g.strokeStyle = 'rgba(255,255,255,0.85)';
-          g.stroke();
-          g.lineWidth = 0.7;
-          g.strokeStyle = 'rgba(40,80,120,0.55)';
-          g.stroke();
-        }
-        start = -1;
-      }
+    const v = this.view;
+    for (const seg of t.surfSegs) {
+      const n = seg.ys.length;
+      const x0 = seg.cx * CELL;
+      const x1 = (seg.cx + n) * CELL;
+      if (x1 < v.x0 || x0 > v.x1) continue;
+      // surface height along the segment, smoothed between columns
+      const yAt = (x) => {
+        const f = clamp((x - x0) / CELL - 0.5, 0, n - 1);
+        const i = Math.floor(f);
+        const j = Math.min(n - 1, i + 1);
+        return seg.ys[i] + (seg.ys[j] - seg.ys[i]) * (f - i);
+      };
+      const calm = n < 4 ? 0.35 : 1;
+      const pts = [];
+      for (let x = x0; x < x1; x += 6) pts.push(x, wave(x, yAt(x)) * calm + yAt(x) * (1 - calm));
+      pts.push(x1, wave(x1, yAt(x1)) * calm + yAt(x1) * (1 - calm));
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+      g.lineTo(x1, yAt(x1) + 5);
+      g.lineTo(x0, yAt(x0) + 5);
+      g.closePath();
+      g.fillStyle = 'rgba(255,255,255,0.22)';
+      g.fill();
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+      g.lineWidth = 1.7;
+      g.strokeStyle = 'rgba(255,255,255,0.9)';
+      g.stroke();
+      g.lineWidth = 0.8;
+      g.strokeStyle = 'rgba(36,70,110,0.6)';
+      g.stroke();
     }
   }
 
@@ -1106,30 +1116,6 @@ export class Renderer {
     g.setLineDash([]);
   }
 
-  drawGlass(g) {
-    this.setWorld(g);
-    g.save();
-    g.beginPath();
-    g.rect(0, 0, W, H);
-    g.clip();
-    g.fillStyle = 'rgba(255,255,255,0.07)';
-    const band = (x, w) => {
-      g.beginPath();
-      g.moveTo(x, 0);
-      g.lineTo(x + w, 0);
-      g.lineTo(x + w - 260, H);
-      g.lineTo(x - 260, H);
-      g.closePath();
-      g.fill();
-    };
-    band(230, 70);
-    band(330, 18);
-    band(1240, 50);
-    g.fillStyle = 'rgba(255,255,255,0.12)';
-    band(1305, 10);
-    g.restore();
-  }
-
   drawFrame(g, view) {
     const style = this.world.style.frame || 'wood';
     const col = { wood: '#b77d4b', red: '#d9483b', blue: '#4c8fd6', green: '#6fae4a', yellow: '#f0bf45' }[style] || '#b77d4b';
@@ -1334,14 +1320,53 @@ export class Renderer {
     this.setWorld(g);
     g.globalAlpha = 0.55;
     if (gh.kind === 'brush') {
-      g.globalAlpha = 1;
+      // The brush ring: tinted with what you're painting, a white halo so
+      // it reads on any ground, marching dashes while you aim and a solid,
+      // gently pulsing ring while you paint.
+      const z = Math.max(0.35, this.cam.zoom);
+      const a = gh.alpha == null ? 1 : gh.alpha;
+      const r = gh.r * (gh.painting ? 1 + Math.sin(this.time * 12) * 0.03 : 1);
+      g.globalAlpha = a;
       g.beginPath();
-      g.arc(gh.x, gh.y, gh.r, 0, TAU);
-      g.setLineDash([5, 4]);
-      g.lineWidth = 1.5 / Math.max(0.5, this.cam.zoom);
-      g.strokeStyle = gh.ok === false ? '#e2453f' : '#ffffff';
+      g.arc(gh.x, gh.y, r, 0, TAU);
+      g.fillStyle = gh.fill || 'rgba(255,255,255,0.18)';
+      g.fill();
+      g.lineWidth = 4 / z;
+      g.strokeStyle = 'rgba(255,253,246,0.92)';
+      g.stroke();
+      if (!gh.painting) {
+        g.setLineDash([7 / z, 5 / z]);
+        g.lineDashOffset = (-this.time * 16) / z;
+      }
+      g.lineWidth = 1.7 / z;
+      g.strokeStyle = gh.ok === false ? '#e2453f' : INK;
       g.stroke();
       g.setLineDash([]);
+      g.beginPath();
+      g.arc(gh.x, gh.y, 2 / z, 0, TAU);
+      g.fillStyle = INK;
+      g.fill();
+      if (gh.touch && !gh.demo) {
+        // a fingertip hides the middle of the ring, so a little flag on a
+        // stalk stands up above it to show where the brush is
+        const lift = r + 30 / z;
+        g.beginPath();
+        g.moveTo(gh.x, gh.y - r);
+        g.lineTo(gh.x, gh.y - lift + 7 / z);
+        g.lineWidth = 3.4 / z;
+        g.strokeStyle = 'rgba(255,253,246,0.92)';
+        g.stroke();
+        g.lineWidth = 1.5 / z;
+        g.strokeStyle = INK;
+        g.stroke();
+        g.beginPath();
+        g.arc(gh.x, gh.y - lift, 7 / z, 0, TAU);
+        g.fillStyle = (gh.fill || 'rgba(255,255,255,0.4)').replace(/[\d.]+\)$/, '1)');
+        g.fill();
+        g.lineWidth = 1.6 / z;
+        g.stroke();
+      }
+      g.globalAlpha = 1;
     } else if (gh.kind === 'decor') {
       const box = decorBox(gh.def);
       const s = this.sprites.get('d|' + gh.def.id, Math.min(this.bucket, 3), box, (gg) => DECOR_ART[gh.def.id](gg, 0));

@@ -1196,6 +1196,134 @@ p.small {
   opacity: 0.9;
 }
 
+/* ---------- shaping dock: a slim strip instead of the big sheet ---------- */
+#sheet.compact {
+  width: auto;
+  max-width: calc(100% - 12px);
+  padding: 4px 6px 6px;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+/* while a finger is painting, the dock steps aside so it's never in the way */
+#sheet.compact.painting {
+  opacity: 0.18;
+  transform: translate(-50%, 18px);
+  pointer-events: none;
+}
+.dock-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 4px 6px;
+}
+.dock-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dock-top .card-close {
+  margin-left: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+.pondbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 9px 2px 5px;
+  min-height: 30px;
+  font-size: 14px;
+  box-shadow: none;
+}
+.pondbtn.on {
+  background: var(--sky);
+}
+.dock-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dock-row::-webkit-scrollbar {
+  display: none;
+}
+.dock-chips,
+.dock-sizes {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.chip {
+  border: 2px solid var(--ink);
+  background: #fffaf0;
+  border-radius: 12px 14px 11px 13px;
+  width: 44px;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.chip i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  display: block;
+}
+.chip.on {
+  background: var(--mustard);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+.dock-sizes {
+  padding-left: 6px;
+  border-left: 2px dashed rgba(58, 42, 31, 0.25);
+}
+.size {
+  width: 32px;
+  height: 52px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+.size i {
+  display: block;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.size.on {
+  border-color: var(--ink);
+  background: var(--paper2);
+}
+.dock-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 2px;
+  flex-wrap: wrap;
+  border-top: 2px dashed rgba(58, 42, 31, 0.2);
+  margin-top: 6px;
+  font-size: 15px;
+}
+.dock-extra.hidden {
+  display: none;
+}
+
 /* ---------- landscape phones: compact chrome ---------- */
 @media (max-height: 500px) {
   :root {
@@ -1214,6 +1342,12 @@ p.small {
     width: min(540px, 57vw);
     max-height: calc(100vh - var(--tb) - 62px - var(--top));
     animation: rise-y 0.18s ease-out;
+  }
+  #sheet.compact {
+    width: auto;
+  }
+  #sheet.compact.painting {
+    transform: translateY(18px);
   }
   .sheet-head .title {
     font-size: 18px;

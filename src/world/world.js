@@ -44,7 +44,6 @@ export class World {
     this.history = [];
     this.histT = 0;
     this.log = [];
-    this.waterTimer = 0;
     this.lastHour = this.env.hour;
     this.plantTick = 0;
     this.seed = 1;
@@ -65,8 +64,8 @@ export class World {
     if (!starter) return;
     const farm = starter === 'farm';
     const t = this.terrain;
-    // ant colony
-    this.foundColony(50);
+    // ant colony (its nest starts somewhere new every time)
+    this.foundColony(rint(26, 82));
     // plants
     const plant = (type, x, growth = rrange(0.55, 0.95)) => this.addPlant(type, x, null, { growth });
     for (const [type, x] of [
@@ -278,7 +277,6 @@ export class World {
       for (let xx = Math.floor(cx - rx); xx <= cx + rx; xx++) {
         if (xx >= 0 && xx < GW && t.top[xx] < t.groundTop[xx]) t.setGroundTop(xx, t.top[xx]);
       }
-      t.settleWater();
       return { stamped: true };
     }
     if (y == null) y = def.place === 'top' ? 0 : t.surfaceY(x);
@@ -363,6 +361,11 @@ export class World {
   // ------------------------------------------------------------------ fx/sound hooks (no-ops in away-sim)
   splash(x, y, s) {
     if (this.fx) this.fx.splash(x, y, s);
+  }
+  // a stream of water pouring in from the top of the tank
+  pour(x, y) {
+    if (this.fx && this.fx.pour) this.fx.pour(x, y);
+    else this.splash(x, y, 1);
   }
   bubble(x, y) {
     if (this.fx) this.fx.bubble(x, y);
@@ -899,7 +902,6 @@ export class World {
     }
     if (n) {
       this.sculpted = true;
-      t.settleWater();
       // keep decor sitting on the ground
       for (const d of this.decor) if (d.def.place !== 'top') d.y = t.surfaceY(d.x);
       for (const p of this.plants) {
@@ -910,6 +912,30 @@ export class World {
       }
     }
     return n;
+  }
+
+  // Pour water in (or bail it out) until the pond would sit at level y.
+  // The water then flows and settles on its own. Returns false if the
+  // pond would overflow its banks at that level.
+  pourToLevel(y) {
+    const t = this.terrain;
+    let target = t.pondVolumeAt(y);
+    let tries = 0;
+    while (!target.ok && y < t.waterLevel && tries++ < 60) {
+      y += CELL;
+      target = t.pondVolumeAt(y);
+    }
+    if (!target.ok) return false;
+    const now = t.pondVolumeAt(t.waterLevel).n;
+    const dv = target.n - now;
+    if (dv > 0) t.addWater(dv);
+    else if (dv < 0) t.removeWater(-dv);
+    return true;
+  }
+  // The water moved: keep things that sit on it in step.
+  waterMoved() {
+    const wl = this.terrain.waterLevel;
+    for (const p of this.plants) if (p.def.place === 'surface') p.waterY = wl;
   }
 
   setWaterLevel(y) {
@@ -966,10 +992,10 @@ export class World {
     const t = this.terrain;
     const p = this.env.pond;
     p.evap = 0;
-    // fill back to the line, or as close as the banks allow
-    for (let y = p.full; y < t.waterLevel; y += CELL) if (this.setWaterLevel(y)) break;
+    // pour back up to the line, or as close as the banks allow
+    this.pourToLevel(p.full);
     this.env.lowWater = 0;
-    this.splash(810, t.waterLevel, 1);
+    this.pour(810, t.waterLevel);
     this.events.emit('chore', { kind: 'topup', zone: 'pond' });
   }
   // Warm water and lamps slowly evaporate the pond below its line.
@@ -981,9 +1007,12 @@ export class World {
     this.env.lowWater = clamp01((drop - 12) / 36);
     if (drop >= 48 || drop < -8) return;
     p.evap += (dt * (0.6 + Math.max(0, p.temp - 18) * 0.08 + p.lamp * 0.5) * CELL) / (DAY_LEN * 0.6);
-    if (p.evap >= CELL) {
-      p.evap -= CELL;
-      this.setWaterLevel(t.waterLevel + CELL);
+    if (p.evap >= CELL * 0.25) {
+      // a quarter of a row off the top of the pond at a time
+      let cols = 0;
+      for (let cx = POND_L; cx <= POND_R; cx++) if (t.waterTop[cx] >= 0) cols++;
+      t.removeWater((cols * p.evap) / CELL);
+      p.evap = 0;
     }
   }
 
@@ -1031,13 +1060,8 @@ export class World {
     env.bioLoad = 0;
     env.grazers = 0;
 
-    if (t.waterDirty) {
-      this.waterTimer += dt;
-      if (this.waterTimer > 0.4) {
-        this.waterTimer = 0;
-        t.settleWater();
-      }
-    }
+    // flowing water (asleep, and free, whenever it's still)
+    if (t.stepWater(dt)) this.waterMoved(dt);
     const rv = t.version + ':' + t.waterVersion;
     if (rv !== this.regionVer && (!this.regionT || this.time - this.regionT > 0.5)) {
       this.regionT = this.time;
@@ -1113,6 +1137,7 @@ export class World {
       if (!c.dead) c.updateLife(this, dt);
       // animation
       c.anim += dt * (c.moving ? 1 : 0.4);
+      if (c.landT > 0) c.landT -= dt;
       if (c.emoteT > 0) c.emoteT -= dt;
       if (c.tongue) {
         c.tongue.t -= dt;

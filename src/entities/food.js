@@ -74,7 +74,7 @@ export class Food {
         if (t.waterAt(this.x, this.y)) {
           this.inWater = true;
           this.state = this.floatT > 0 ? 'float' : 'sink';
-          w.splash(this.x, t.waterLevel, 0.5);
+          w.splash(this.x, t.waterSurfY(this.x), 0.5);
           w.sound('plop', this.x, this.y);
           w.addNovelty(this.x, this.y + 20, 0.8);
           this.vy = 0;
@@ -93,7 +93,7 @@ export class Food {
         break;
       }
       case 'float': {
-        this.y = t.waterLevel + 1 + Math.sin(w.time * 1.5 + this.id) * 0.8;
+        this.y = t.waterSurfY(this.x) + 1 + Math.sin(w.time * 1.5 + this.id) * 0.8;
         this.x += Math.sin(w.time * 0.3 + this.id) * 3 * dt;
         this.floatT -= dt;
         if (!t.waterAt(this.x, this.y + 2) || this.floatT <= 0) this.state = t.waterAt(this.x, this.y + 2) ? 'sink' : 'fall';

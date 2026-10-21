@@ -5,6 +5,7 @@ import { CELL, GW, GH, MAT, INK, W, H, ZONE_X } from '../config.js';
 import { CHUNK, CHW, CHH } from '../world/terrain.js';
 import { hash2, noise1 } from '../util/rng.js';
 import { ell, circ, fill, stroke } from '../art/ink.js';
+import { blooms, poolEdge } from '../art/paper.js';
 
 const TEX = 64; // texture tile size in world units
 
@@ -144,6 +145,41 @@ function makeTexture(kind, style, S, seed) {
       g.lineTo(x + (r() - 0.5) * 7, y + (r() - 0.5) * 7);
       g.lineTo(x + (r() - 0.5) * 9, y + (r() - 0.5) * 9);
       stroke(g, 0.35, 'rgba(58,42,31,0.5)');
+    }
+  }
+  // a picture-book stipple of ink dots and tiny dashes in sand and soil
+  if (kind === 'sand' || kind === 'soil') {
+    const dots = kind === 'sand' ? 22 : 30;
+    for (let i = 0; i < dots; i++) {
+      const x = r() * TEX;
+      const y = r() * TEX;
+      g.beginPath();
+      g.arc(x, y, 0.22 + r() * 0.22, 0, Math.PI * 2);
+      g.fillStyle = kind === 'sand' ? 'rgba(120,80,40,0.55)' : 'rgba(40,24,14,0.6)';
+      g.fill();
+    }
+    for (let i = 0; i < (kind === 'sand' ? 4 : 6); i++) {
+      const x = r() * (TEX - 8) + 4;
+      const y = r() * (TEX - 8) + 4;
+      const a = (r() - 0.5) * 0.8;
+      g.beginPath();
+      g.moveTo(x - Math.cos(a) * 1.4, y - Math.sin(a) * 1.4);
+      g.quadraticCurveTo(x, y - 0.6, x + Math.cos(a) * 1.4, y + Math.sin(a) * 1.4);
+      stroke(g, 0.32, kind === 'sand' ? 'rgba(110,72,36,0.55)' : 'rgba(30,18,10,0.6)');
+    }
+  }
+  if (kind === 'tunnel') {
+    // pencil hatching, in little clusters, for the shadowy inside of tunnels
+    for (let i = 0; i < 9; i++) {
+      const x = r() * (TEX - 10) + 5;
+      const y = r() * (TEX - 10) + 5;
+      const n = 3 + Math.floor(r() * 3);
+      for (let k = 0; k < n; k++) {
+        g.beginPath();
+        g.moveTo(x + k * 1.3 - 1.8, y + 1.8);
+        g.lineTo(x + k * 1.3 + 1.8, y - 1.8);
+        stroke(g, 0.32, 'rgba(26,14,6,0.38)');
+      }
     }
   }
   if (kind === 'sand') {
@@ -310,6 +346,8 @@ export class TerrainRenderer {
     this.S = 1.5;
     this.pad = 2;
     this.chunks = new Array(CHW * CHH).fill(null);
+    this.wchunks = new Array(CHW * CHH);
+    this.waterLook = null;
     this.style = { sand: 'golden', soil: 'loam', gravel: 'natural' };
     this.patterns = null;
   }
@@ -319,6 +357,7 @@ export class TerrainRenderer {
     this.version = (this.version || 0) + 1;
     this.S = S;
     this.chunks.fill(null);
+    if (this.waterLook) this.waterLook = { ...this.waterLook, key: '' };
     this.buildPatterns();
     this.terrain.markAllDirty();
   }
@@ -398,25 +437,131 @@ export class TerrainRenderer {
     this.version = (this.version || 0) + 1;
   }
 
-  // Smooth-edged water mask painted into a canvas (opaque colours; the
-  // renderer draws it with transparency). Edges match the terrain contour.
-  paintWater(g, x0c, y0c, x1c, y1c, fillStyle) {
+  // ------------------------------------------------------------------ water
+  // The water is painted into its own chunks (like the ground), so when it
+  // flows only the chunks it moved through are repainted. `look` sets the
+  // colours; changing it repaints every water chunk over a few frames.
+  setWaterLook(look) {
+    if (this.waterLook && this.waterLook.key === look.key) return;
+    this.waterLook = look;
     const t = this.terrain;
-    for (let ky = Math.floor(y0c / CHUNK); ky <= Math.floor(y1c / CHUNK); ky++) {
-      for (let kx = Math.floor(x0c / CHUNK); kx <= Math.floor(x1c / CHUNK); kx++) {
-        const i0 = kx * CHUNK;
-        const j0 = ky * CHUNK;
-        if (!buildMaskXY(i0, j0, (i, j) => t.water[j * GW + i] === 1)) continue;
-        const { fill: fp } = maskPaths(i0, j0, true, false);
-        g.save();
-        g.beginPath();
-        g.rect(i0 * CELL, j0 * CELL, CHUNK * CELL, CHUNK * CELL);
-        g.clip();
-        g.fillStyle = fillStyle;
-        g.fill(fp);
-        g.restore();
+    for (let k = 0; k < CHW * CHH; k++) if (this.wchunks[k] !== undefined || this.hasWater(k)) t.waterChunks.add(k);
+  }
+
+  hasWater(k) {
+    const t = this.terrain;
+    const i0 = (k % CHW) * CHUNK;
+    const j0 = ((k / CHW) | 0) * CHUNK;
+    for (let j = Math.max(0, j0 - 2); j < Math.min(GH, j0 + CHUNK + 2); j++) {
+      const row = j * GW;
+      for (let i = Math.max(0, i0 - 2); i < Math.min(GW, i0 + CHUNK + 2); i++) if (t.water[row + i]) return true;
+    }
+    return false;
+  }
+
+  // Repaint up to `budget` changed water chunks, visible ones first.
+  updateWater(view, budget = 3) {
+    const dirty = this.terrain.waterChunks;
+    if (!dirty.size || !this.waterLook) return 0;
+    let n = 0;
+    const span = CHUNK * CELL;
+    for (const pass of [0, 1]) {
+      for (const k of dirty) {
+        if (pass === 0 && view) {
+          const x = (k % CHW) * span;
+          const y = ((k / CHW) | 0) * span;
+          if (x + span < view.x0 || x > view.x1 || y + span < view.y0 || y > view.y1) continue;
+        }
+        this.paintWaterChunk(k);
+        dirty.delete(k);
+        if (++n >= budget) return n;
       }
     }
+    return n;
+  }
+
+  paintWaterChunk(k) {
+    const t = this.terrain;
+    const look = this.waterLook;
+    const kx = k % CHW;
+    const ky = (k / CHW) | 0;
+    const i0 = kx * CHUNK;
+    const j0 = ky * CHUNK;
+    const kind = buildMaskXY(i0, j0, (i, j) => t.water[j * GW + i] === 1);
+    if (!kind) {
+      this.wchunks[k] = undefined;
+      return;
+    }
+    // (no overlap between water chunks: they're see-through, so an overlap
+    // would show as a darker seam)
+    const S = Math.min(this.S, 1.5);
+    const size = CHUNK * CELL;
+    const wx = i0 * CELL;
+    const wy = j0 * CELL;
+    const px = Math.ceil(size * S);
+    let ch = this.wchunks[k];
+    if (!ch || ch.S !== S) {
+      const c = makeCanvas(px, px);
+      ch = { canvas: c, ctx: c.getContext('2d'), x: wx, y: wy, size, S };
+      this.wchunks[k] = ch;
+    }
+    const g = ch.ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, px, px);
+    g.setTransform(S, 0, 0, S, -wx * S, -wy * S);
+    const { fill: fp, edge } = maskPaths(i0, j0, true, true);
+    // a wash that deepens with depth
+    const grad = g.createLinearGradient(0, look.top, 0, H);
+    grad.addColorStop(0, look.c0);
+    grad.addColorStop(0.45, look.c1);
+    grad.addColorStop(1, look.c2);
+    g.fillStyle = grad;
+    g.fill(fp);
+    g.save();
+    g.clip(fp);
+    // pigment pooling where the wash meets the banks
+    poolEdge(g, edge, look.pool, 9);
+    // soft blooms of lighter and deeper colour, continuous across chunks
+    blooms(g, wx, wy, wx + size, wy + size, 72, 26, 60, look.bloomLight, look.bloomDark, 77);
+    // a few hand-drawn ripple strokes
+    for (let n = 0; n < 5; n++) {
+      const h = hash2(kx * 7 + n, ky, 41);
+      const x = wx + hash2(kx, ky * 5 + n, 42) * size;
+      const y = wy + hash2(kx * 3 + n, ky, 43) * size;
+      if (!t.water[Math.floor(y / CELL) * GW + Math.floor(x / CELL)]) continue;
+      const len = 10 + h * 16;
+      g.beginPath();
+      g.moveTo(x - len / 2, y);
+      g.quadraticCurveTo(x, y - 1.6, x + len / 2, y);
+      g.lineWidth = 0.9;
+      g.strokeStyle = 'rgba(255,255,255,0.32)';
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // k, ox, oy: the world-to-device transform. Chunks are placed on whole
+  // device pixels so neighbours meet exactly, with no seam or gap.
+  drawWater(ctx, view, alpha, k, ox, oy) {
+    const span = CHUNK * CELL;
+    const kx0 = Math.max(0, Math.floor(view.x0 / span));
+    const kx1 = Math.min(CHW - 1, Math.floor(view.x1 / span));
+    const ky0 = Math.max(0, Math.floor(view.y0 / span));
+    const ky1 = Math.min(CHH - 1, Math.floor(view.y1 / span));
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    for (let ky = ky0; ky <= ky1; ky++) {
+      const ya = Math.round(k * ky * span + oy);
+      const yb = Math.round(k * (ky + 1) * span + oy);
+      for (let kx = kx0; kx <= kx1; kx++) {
+        const ch = this.wchunks[ky * CHW + kx];
+        if (!ch) continue;
+        const xa = Math.round(k * kx * span + ox);
+        const xb = Math.round(k * (kx + 1) * span + ox);
+        ctx.drawImage(ch.canvas, xa, ya, xb - xa, yb - ya);
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   renderChunk(k) {
@@ -501,6 +646,7 @@ export class TerrainRenderer {
       }
       let firstLayer = true;
       let sandPath = null;
+      let solidPath = null;
       for (const L of LAYERS) {
         if (!present.has(L)) continue;
         const ord = ORDER[L];
@@ -510,6 +656,7 @@ export class TerrainRenderer {
         g.fillStyle = this.patterns[L];
         g.fill(fp);
         if (L === MAT.SAND) sandPath = fp;
+        if (firstLayer) solidPath = fp;
         firstLayer = false;
       }
       // The first layer covers every solid cell, so give the strata a mask of
@@ -539,9 +686,36 @@ export class TerrainRenderer {
         g.restore();
       }
 
+      // Watercolour: soft blooms of lighter and deeper pigment across the
+      // ground (seamless from chunk to chunk)...
+      // (pale paper shows through a sandy wash; dark soil gets deeper pools)
+      if (solidPath) {
+        const sandOnly = present.has(MAT.SAND) && present.size > 1 ? sandPath : null;
+        if (present.has(MAT.SAND) && (present.size === 1 || sandOnly)) {
+          g.save();
+          g.clip(sandOnly || solidPath);
+          blooms(g, xL, yT, xR, yB, 96, 34, 80, 'rgba(255,248,226,0.16)', 'rgba(150,92,40,0.08)', 31);
+          g.restore();
+        }
+        const darkPath = !present.has(MAT.SAND) ? solidPath : present.size > 1 && buildMask(t, i0, j0, (m) => m !== 0 && m !== MAT.SAND) ? maskPaths(i0, j0, true, false).fill : null;
+        if (darkPath) {
+          g.save();
+          g.clip(darkPath);
+          blooms(g, xL, yT, xR, yB, 110, 40, 90, 'rgba(255,236,200,0.045)', 'rgba(36,20,8,0.13)', 32);
+          g.restore();
+        }
+      }
+
       // 3) Edges: soft shadow inside tunnels, then crisp ink.
       buildMask(t, i0, j0, (m) => m !== 0);
       const { edge } = maskPaths(i0, j0, false, true);
+      // ...and pigment pooled along the edge of the wash, inside the ground
+      if (solidPath) {
+        g.save();
+        g.clip(solidPath);
+        poolEdge(g, edge, 'rgba(98,54,22,0.15)', 8);
+        g.restore();
+      }
       if (below) {
         g.save();
         g.clip(below);
@@ -551,15 +725,23 @@ export class TerrainRenderer {
         g.stroke(edge);
         g.restore();
       }
-      g.lineWidth = 1.25;
+      // a confident ink line, with a faint pencil line wandering beside it
+      g.lineWidth = 1.6;
       g.lineCap = 'round';
+      g.lineJoin = 'round';
       g.strokeStyle = INK;
       g.stroke(edge);
+      g.save();
+      g.translate(0.55, 0.45);
+      g.lineWidth = 0.45;
+      g.strokeStyle = 'rgba(58,42,31,0.35)';
+      g.stroke(edge);
+      g.restore();
 
       if (present.has(MAT.ROCK)) {
         buildMask(t, i0, j0, (m) => m === MAT.ROCK);
         const { edge: re } = maskPaths(i0, j0, false, true);
-        g.lineWidth = 1.1;
+        g.lineWidth = 1.35;
         g.strokeStyle = INK;
         g.stroke(re);
       }

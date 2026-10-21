@@ -1,6 +1,7 @@
 import { W, H, CELL, GW, GH, MAT, OOB, ZONE_X } from '../config.js';
 import { RNG, fbm1 } from '../util/rng.js';
 import { clamp } from '../util/math.js';
+import { WaterSim } from './water.js';
 
 export const CHUNK = 32; // cells per chunk side
 export const CHW = Math.ceil(GW / CHUNK);
@@ -17,17 +18,25 @@ const N8Y = [-1, -1, -1, 0, 0, 1, 1, 1];
 export class Terrain {
   constructor() {
     this.mat = new Uint8Array(GW * GH);
-    this.water = new Uint8Array(GW * GH);
+    this.water = new Uint8Array(GW * GH); // 1 where a cell is mostly water (derived from the flowing sim)
     this.groundTop = new Int16Array(GW); // sculpted ground line: air below this is "tunnel"
     this.top = new Int16Array(GW); // first solid row in each column
-    this.waterTop = new Int16Array(GW).fill(-1); // first water row (open surface) per column
-    this.waterLevel = 425;
+    this.waterTop = new Int16Array(GW).fill(-1); // topmost open water surface row per column
+    this.surfY = new Float32Array(GW).fill(-1); // ...and its height in world units
+    this.surfSegs = []; // every open water surface, as polylines (for drawing)
+    this.waterLevel = 425; // the pond's surface
     this.version = 0;
     this.waterVersion = 0;
     this.dirtyChunks = new Set();
+    this.waterChunks = new Set(); // chunks whose water outline changed
     this.waterDirty = false;
     this.tunnelCells = 0;
     this._q = new Int32Array(GW * GH);
+    this.wsim = new WaterSim(this);
+    this.wsim.seepL = POND_L - 3;
+    this.wsim.seepR = POND_R + 3;
+    this.deriveT = 0;
+    this.dbox = [0, 0, GW - 1, GH - 1];
   }
 
   idx(cx, cy) {
@@ -82,8 +91,7 @@ export class Terrain {
   }
   // Water surface y at column if the column has open water, else -1.
   waterSurfaceAt(x) {
-    const wt = this.waterTop[this.colOf(x)];
-    return wt >= 0 ? this.waterLevel : -1;
+    return this.surfY[this.colOf(x)];
   }
 
   // Crawlers (ants) can stand in an air cell that touches real ground.
@@ -144,10 +152,12 @@ export class Terrain {
     this.mat[i] = m;
     this.version++;
     this.markDirty(cx, cy);
+    const ws = this.wsim;
+    if (m !== 0 && ws.mass[i] > 0) ws.displace(cx, cy);
+    else if (ws.x1 >= ws.x0 && cx >= ws.x0 - 2 && cx <= ws.x1 + 2 && cy >= ws.y0 - 2 && cy <= ws.y1 + 2) ws.wake(cx, cy);
     const oldTop = this.top[cx];
     this.computeTop(cx);
     if (this.top[cx] !== oldTop) this.markColumnDirty(cx, oldTop - 4, this.top[cx] + 4);
-    if (cx >= POND_L - 20 && cx <= POND_R + 20) this.waterDirty = true;
     if (m === 0 && cy > this.groundTop[cx]) this.tunnelCells++;
     else if (old === 0 && cy > this.groundTop[cx]) this.tunnelCells = Math.max(0, this.tunnelCells - 1);
     return true;
@@ -340,48 +350,55 @@ export class Terrain {
     this.version++;
   }
 
-  // Dig the starter ant nest: an entrance, a winding tunnel and a chamber.
-  carveStarterNest(entranceCx) {
+  // Dig the starter ant nest: an entrance, a winding tunnel and the queen's
+  // room. It's different every time: the tunnel's bends, depth and lean,
+  // and the size of the room.
+  carveStarterNest(entranceCx, rand = Math.random) {
     const safe = (x, y, m) => m === MAT.SAND;
     // Little mound first so the entrance sits on a hill.
     for (let i = 0; i < 26; i++) this.deposit(entranceCx + ((i % 2) * 2 - 1) * ((i * 7) % 4), MAT.SAND, 4);
     const gy = this.top[entranceCx];
-    const pts = [
-      [entranceCx, gy],
-      [entranceCx + 1, gy + 6],
-      [entranceCx - 1, gy + 12],
-      [entranceCx + 2, gy + 18],
-      [entranceCx + 6, gy + 24],
-      [entranceCx + 10, gy + 28],
-    ];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [x0, y0] = pts[i];
-      const [x1, y1] = pts[i + 1];
-      const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        this.dig(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 1.2, safe);
+    const lean = rand() < 0.5 ? -1 : 1;
+    const want = Math.PI / 2 - lean * (0.2 + rand() * 0.5);
+    let x = entranceCx;
+    let y = gy;
+    let ang = Math.PI / 2 + (rand() * 2 - 1) * 0.3;
+    let turn = 0;
+    const steps = 13 + Math.floor(rand() * 11);
+    for (let i = 0; i < steps; i++) {
+      turn = turn * 0.82 + (rand() * 2 - 1) * 0.16;
+      ang += turn + (want - ang) * 0.1;
+      ang = clamp(ang, 0.35, Math.PI - 0.35);
+      const nx = clamp(x + Math.cos(ang) * 1.6, 12, POND_L - 30);
+      const ny = y + Math.sin(ang) * 1.6;
+      this.dig((x + nx) / 2, (y + ny) / 2, 1.2, safe);
+      this.dig(nx, ny, 1.25, safe);
+      x = nx;
+      y = ny;
+    }
+    // the queen's room: flat floor, domed roof
+    const rx = 5 + Math.floor(rand() * 3);
+    const ry = 2 + (rand() < 0.6 ? 1 : 0);
+    const ccx = Math.round(clamp(x + lean * (rx - 2), rx + 4, POND_L - 30));
+    const floor = Math.round(y) + 1;
+    for (let yy = -ry; yy <= 0; yy++) {
+      for (let xx = -rx; xx <= rx; xx++) {
+        if ((xx * xx) / (rx * rx) + (yy * yy) / ((ry + 0.5) * (ry + 0.5)) <= 1) this.dig(ccx + xx, floor + yy, 0.5, safe);
       }
     }
-    // Queen's chamber
-    const ccx = entranceCx + 13;
-    const ccy = gy + 30;
-    for (let y = -3; y <= 2; y++) {
-      for (let x = -6; x <= 6; x++) {
-        if ((x * x) / 36 + (y * y) / 9 <= 1) this.dig(ccx + x, ccy + y, 0.5, safe);
-      }
-    }
-    return { entrance: { cx: entranceCx, cy: gy - 1 }, chamber: { cx: ccx, cy: ccy + 2 } };
+    // join the tunnel's end to the room in case the room sits to one side
+    for (let k = 0; k <= 4; k++) this.dig(x + ((ccx - x) * k) / 4, y + ((floor - 1 - y) * k) / 4, 1.1, safe);
+    return { entrance: { cx: entranceCx, cy: gy - 1 }, chamber: { cx: ccx, cy: floor, rx, ry } };
   }
 
-  // Flood-fill water from the pond basin. Returns false if water would spill
-  // outside the pond (caller should then lower the water level).
-  recomputeWater() {
-    const w = this.water;
+  // Flood-fill the pond basin up to a level into `out` (1 = water). Returns
+  // how many cells it covers and whether it stays inside the pond.
+  floodAt(level, out) {
+    const w = out;
     const m = this.mat;
     const q = this._q;
     w.fill(0);
-    const wl = Math.ceil(this.waterLevel / CELL);
+    const wl = Math.ceil(level / CELL);
     let head = 0;
     let tail = 0;
     for (let cx = POND_L; cx <= POND_R; cx++) {
@@ -428,14 +445,30 @@ export class Terrain {
       }
     }
     let ok = true;
-    for (let cx = 0; cx < GW; cx++) {
-      this.waterTop[cx] = -1;
-      if (wl < GH && w[wl * GW + cx]) this.waterTop[cx] = wl;
-      if (this.waterTop[cx] >= 0 && (cx < POND_L - 14 || cx > POND_R + 14)) ok = false;
+    if (wl < GH) {
+      for (let cx = 0; cx < GW; cx++) {
+        if (w[wl * GW + cx] && (cx < POND_L - 14 || cx > POND_R + 14)) {
+          ok = false;
+          break;
+        }
+      }
     }
+    return { n: tail, ok };
+  }
+
+  // Instantly fill the pond basin to `waterLevel` (new tanks, old saves,
+  // and the test tools). Any other water is cleared. Returns false if the
+  // water would spill outside the pond.
+  recomputeWater() {
+    const scratch = this._flood || (this._flood = new Uint8Array(GW * GH));
+    const r = this.floodAt(this.waterLevel, scratch);
+    const mass = this.wsim.mass;
+    for (let i = 0; i < mass.length; i++) mass[i] = scratch[i];
+    this.wsim.refit();
+    this.wsim.awake = false;
+    this.deriveWater(true);
     this.waterDirty = false;
-    this.waterVersion++;
-    return ok;
+    return r.ok;
   }
 
   setWaterLevel(y) {
@@ -450,10 +483,172 @@ export class Terrain {
     return true;
   }
 
-  // After terrain edits the pond may overflow; lower water until it fits.
+  // Instant fill that backs off until nothing spills (used for old saves).
   settleWater() {
     let guard = 0;
     while (!this.recomputeWater() && guard++ < 200) this.waterLevel += CELL;
+  }
+
+  // How many cells of water the pond holds when filled to `level`, and
+  // whether that would spill over the banks.
+  pondVolumeAt(level) {
+    const scratch = this._flood || (this._flood = new Uint8Array(GW * GH));
+    return this.floodAt(level, scratch);
+  }
+
+  // Run the flowing water. Returns true if anything visible changed.
+  stepWater(dt) {
+    const ws = this.wsim;
+    const was = ws.awake;
+    if (!was && !this.waterDirty) return false;
+    this.waterDirty = false;
+    ws.step(dt);
+    this.deriveT -= dt;
+    // binary water, outlines and surfaces follow the flow a few times a second
+    if (this.deriveT <= 0 || !ws.awake) {
+      this.deriveT = 0.12;
+      return this.deriveWater(false);
+    }
+    return false;
+  }
+
+  // Pour in or take out water (cells' worth) at the pond.
+  addWater(v, cxa = POND_L, cxb = POND_R) {
+    const n = this.wsim.add(v, cxa, cxb);
+    this.deriveWater(false);
+    return n;
+  }
+  removeWater(v, cxa = POND_L - 14, cxb = POND_R + 14) {
+    const n = this.wsim.remove(v, Math.max(0, cxa), Math.min(GW - 1, cxb));
+    this.deriveWater(false);
+    return n;
+  }
+
+  // Turn water amounts into the yes/no water grid everything else reads,
+  // plus each column's surface and the pond's level.
+  deriveWater(full) {
+    const ws = this.wsim;
+    const mass = ws.mass;
+    const wat = this.water;
+    const db = this.dbox;
+    let x0;
+    let x1;
+    let y0;
+    let y1;
+    if (full) {
+      x0 = 0;
+      y0 = 0;
+      x1 = GW - 1;
+      y1 = GH - 1;
+    } else {
+      // everywhere that held water last time, plus where it may be now
+      x0 = Math.min(db[0], ws.x0);
+      y0 = Math.min(db[1], ws.y0);
+      x1 = Math.max(db[2], ws.x1);
+      y1 = Math.max(db[3], ws.y1);
+    }
+    let changed = false;
+    let bx0 = GW;
+    let bx1 = -1;
+    let by0 = GH;
+    let by1 = -1;
+    for (let cy = y0; cy <= y1; cy++) {
+      const row = cy * GW;
+      for (let cx = x0; cx <= x1; cx++) {
+        const i = row + cx;
+        const v = mass[i] >= 0.5 && this.mat[i] === 0 ? 1 : 0;
+        if (v) {
+          if (cx < bx0) bx0 = cx;
+          if (cx > bx1) bx1 = cx;
+          if (cy < by0) by0 = cy;
+          if (cy > by1) by1 = cy;
+        }
+        if (wat[i] !== v) {
+          wat[i] = v;
+          changed = true;
+          this.markWaterDirty(cx, cy);
+        }
+      }
+    }
+    if (bx1 >= 0) {
+      db[0] = Math.max(0, bx0 - 1);
+      db[1] = Math.max(0, by0 - 1);
+      db[2] = Math.min(GW - 1, bx1 + 1);
+      db[3] = Math.min(GH - 1, by1 + 1);
+    } else {
+      db[0] = GW;
+      db[1] = GH;
+      db[2] = -1;
+      db[3] = -1;
+    }
+    this.findSurfaces(bx0, bx1, by0, by1);
+    if (changed || full) this.waterVersion++;
+    return changed;
+  }
+
+  markWaterDirty(cx, cy) {
+    const a = Math.floor((cx - 3) / CHUNK);
+    const b = Math.floor((cx + 3) / CHUNK);
+    const c = Math.floor((cy - 3) / CHUNK);
+    const d = Math.floor((cy + 3) / CHUNK);
+    for (let ky = Math.max(0, c); ky <= Math.min(CHH - 1, d); ky++) {
+      for (let kx = Math.max(0, a); kx <= Math.min(CHW - 1, b); kx++) this.waterChunks.add(ky * CHW + kx);
+    }
+  }
+
+  // Open water surfaces: water cells with air above them.
+  findSurfaces(x0, x1, y0, y1) {
+    const wat = this.water;
+    const mat = this.mat;
+    const mass = this.wsim.mass;
+    this.waterTop.fill(-1);
+    this.surfY.fill(-1);
+    const segs = [];
+    let active = [];
+    if (x1 >= x0) {
+      for (let cx = x0; cx <= x1; cx++) {
+        const next = [];
+        for (let cy = Math.max(1, y0); cy <= y1; cy++) {
+          const i = cy * GW + cx;
+          if (!wat[i] || wat[i - GW] || mat[i - GW] !== 0) continue;
+          const y = (cy + 1 - Math.min(1, mass[i]) - Math.min(0.5, mass[i - GW])) * CELL;
+          if (this.waterTop[cx] < 0) {
+            this.waterTop[cx] = cy;
+            this.surfY[cx] = y;
+          }
+          let seg = null;
+          for (let k = 0; k < active.length; k++) {
+            const s = active[k];
+            if (s && Math.abs(s.ys[s.ys.length - 1] - y) <= CELL * 1.6) {
+              seg = s;
+              active[k] = null;
+              break;
+            }
+          }
+          if (!seg) {
+            seg = { cx: cx, ys: [] };
+            segs.push(seg);
+          }
+          seg.ys.push(y);
+          next.push(seg);
+        }
+        active = next;
+      }
+    }
+    this.surfSegs = segs;
+    // the pond's level: the middle surface height across the pond
+    const ys = [];
+    for (let cx = POND_L; cx <= POND_R; cx++) if (this.surfY[cx] >= 0) ys.push(this.surfY[cx]);
+    if (ys.length) {
+      ys.sort((a, b) => a - b);
+      this.waterLevel = Math.round(ys[ys.length >> 1] * 10) / 10;
+    }
+  }
+
+  // Surface height of the water in this column (or the pond's, if none).
+  waterSurfY(x) {
+    const s = this.surfY[this.colOf(x)];
+    return s >= 0 ? s : this.waterLevel;
   }
 
   pondFloorY(x) {
@@ -479,6 +674,7 @@ export class Terrain {
       runs: runs.join(','),
       groundTop: Array.from(this.groundTop).join(','),
       waterLevel: this.waterLevel,
+      water: this.wsim.serialize(),
     };
   }
 
@@ -499,7 +695,10 @@ export class Terrain {
     for (let cx = 0; cx < GW; cx++) {
       for (let cy = this.groundTop[cx] + 1; cy < GH; cy++) if (this.mat[cy * GW + cx] === 0) this.tunnelCells++;
     }
-    this.settleWater();
+    if (data.water) {
+      this.wsim.load(data.water);
+      this.deriveWater(true);
+    } else this.settleWater();
     this.markAllDirty();
     this.version++;
   }

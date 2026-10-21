@@ -10,6 +10,16 @@ import { rrange, rint, chance } from '../util/rng.js';
 import { nearestWalkable } from '../world/pathfind.js';
 
 const GRAV = 620;
+// the eight neighbours a crawler feels for ground, and how much each counts
+const PROBE_X = [1, -1, 0, 0, 1, 1, -1, -1];
+const PROBE_Y = [0, 0, 1, -1, 1, -1, 1, -1];
+const PROBE_W = [1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5];
+let greeter = null;
+let greetNow = 0;
+function canGreet(o) {
+  const c = greeter;
+  return o !== c && o.sp === 'ant' && o.colonyId === c.colonyId && !o.dead && o.mode === 'crawl' && o.moving && o.carry !== 'sand' && (o.greetCD || 0) <= greetNow;
+}
 let ID = 1;
 export function setNextId(n) {
   ID = Math.max(ID, n);
@@ -100,9 +110,40 @@ export class Creature {
     this.hopCD = 0;
     this.landT = 0;
     this.spd = 0; // current walking speed (eases in and out)
+    this.wdir = 0;
     this.nx = 0; // which way is "up" for a crawler (away from the ground it's on)
     this.ny = -1;
     this.pauseT = 0;
+    this.vf = this.facing; // facing as drawn (it swivels toward the real one)
+    // Everything the brain, senses and movement set later starts here too,
+    // so every critter has the same shape and the JavaScript engine can keep
+    // property access fast.
+    this.moving = false;
+    this.paddling = false;
+    this.dryT = 0;
+    this.pts = null; // crawler's smoothed path, and progress along it
+    this.ptI = 0;
+    this.ptChecked = -1;
+    this.repath = false;
+    this.antGoal = null;
+    this.lastCell = -1;
+    this.feelK = 0;
+    this.greetT = 0;
+    this.greetCD = 0;
+    this.threat = null;
+    this.huddling = false;
+    this.tongue = null;
+    this.dormant = false;
+    this.school = null;
+    this.shelterBonus = 0;
+    this.tempDisc = 0;
+    this.moistDisc = 0;
+    this.airDisc = 0;
+    this.discomfort = 0;
+    this.act = 1;
+    this.tf = 1;
+    this.mf = 1;
+    this.oxy = 1;
     this.restT = 0;
     this.hungerT = 0;
     this.selected = false;
@@ -738,7 +779,9 @@ export class Creature {
     // ants: glide along a smoothed path, feet on whatever they're walking on
     const t = w.terrain;
     if (this.paddle(w, dt)) return;
-    this.feelSurface(t, dt);
+    // (every other step is plenty while walking; resting ants, every fourth)
+    this.feelK = (this.feelK || 0) + 1;
+    if (this.feelK % (this.moving ? 2 : 4) === 0) this.feelSurface(t, this.moving ? dt * 2 : dt * 4);
     const pts = this.pts;
     if (this.pauseT > 0) {
       // stopped to touch antennae with a nestmate
@@ -828,25 +871,16 @@ export class Creature {
   // nudge toward real up. Ants stand on floors, cling to walls and walk
   // upside down along ceilings, and the body turns smoothly between them.
   feelSurface(t, dt) {
-    const fx = this.x / CELL - 0.5;
-    const fy = this.y / CELL - 0.5;
-    const ix = Math.floor(fx);
-    const iy = Math.floor(fy);
+    const cx = Math.floor(this.x / CELL);
+    const cy = Math.floor(this.y / CELL);
     let gx = 0;
     let gy = 0;
     let any = false;
-    for (let j = iy - 1; j <= iy + 2; j++) {
-      for (let i = ix - 1; i <= ix + 2; i++) {
-        if (!t.ground(i, j)) continue;
-        const dx = i - fx;
-        const dy = j - fy;
-        const d = Math.hypot(dx, dy) || 0.01;
-        const wgt = 1 - d / 2.4;
-        if (wgt <= 0) continue;
-        gx -= (dx / d) * wgt;
-        gy -= (dy / d) * wgt;
-        any = true;
-      }
+    for (let k = 0; k < 8; k++) {
+      if (!t.ground(cx + PROBE_X[k], cy + PROBE_Y[k])) continue;
+      gx -= PROBE_X[k] * PROBE_W[k];
+      gy -= PROBE_Y[k] * PROBE_W[k];
+      any = true;
     }
     if (any) {
       gy -= 0.35;
@@ -866,9 +900,12 @@ export class Creature {
   greet(w, dt) {
     if (this.sp !== 'ant' || this.carry === 'sand') return;
     if ((this.greetT = (this.greetT || 0) - dt) > 0) return;
-    this.greetT = 0.45;
-    if ((this.greetCD || 0) > w.time || !chance(0.45)) return;
-    const o = w.hashC.nearest(this.x, this.y, 8, (o) => o !== this && o.sp === 'ant' && o.colonyId === this.colonyId && !o.dead && o.mode === 'crawl' && o.moving && o.carry !== 'sand' && (o.greetCD || 0) <= w.time);
+    this.greetT = 0.9;
+    if ((this.greetCD || 0) > w.time || !chance(0.7)) return;
+    greeter = this;
+    greetNow = w.time;
+    const o = w.hashC.nearest(this.x, this.y, 8, canGreet);
+    greeter = null;
     if (!o) return;
     const p = rrange(0.35, 0.9);
     this.pauseT = p;
@@ -890,7 +927,7 @@ export class Creature {
     const wet = t.isWater(cx, cy);
     const onWater = !wet && t.isWater(cx, cy + 1) && !t.walkable(cx, cy);
     if (!wet && !onWater) {
-      this.memory.shore = null;
+      if (this.memory.shore) this.memory.shore = null;
       return false;
     }
     this.path = null;

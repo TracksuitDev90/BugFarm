@@ -20,9 +20,9 @@ import { hash1 } from '../util/rng.js';
 
 const TAU = Math.PI * 2;
 const QUALITY = {
-  low: { dprCap: 1, terrainS: 1, backdrop: 0.4, particles: 110, rays: false, reflections: false, budget: 6, maxBucket: 2 },
-  medium: { dprCap: 2, terrainS: 1.5, backdrop: 0.6, particles: 220, rays: true, reflections: true, budget: 10, maxBucket: 4 },
-  high: { dprCap: 3, terrainS: 2, backdrop: 0.8, particles: 320, rays: true, reflections: true, budget: 16, maxBucket: 4 },
+  low: { dprCap: 1, terrainS: 1, backdrop: 0.4, particles: 110, rays: false, liveRays: false, reflections: false, budget: 6, maxBucket: 2 },
+  medium: { dprCap: 2, terrainS: 1.5, backdrop: 0.6, particles: 220, rays: true, liveRays: false, reflections: true, budget: 10, maxBucket: 4 },
+  high: { dprCap: 3, terrainS: 2, backdrop: 0.8, particles: 320, rays: true, liveRays: true, reflections: true, budget: 16, maxBucket: 4 },
 };
 
 // Which art poses exist per species (others fall back to idle).
@@ -229,7 +229,9 @@ export class Renderer {
     this.bgM = [mx, my];
     const env = this.world.env;
     const st = this.world.style;
-    const key = [this.k.toFixed(5), this.backdropKey, st.frame, st.wallpaper, Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
+    // (still pond rays are baked in, so the pond's level and clarity count)
+    const rayKey = this.q.rays ? (this.q.liveRays ? 'L' : Math.round(this.world.terrain.waterLevel / 8) + ':' + Math.round(env.pond.clarity * 5)) : 0;
+    const key = [this.k.toFixed(5), this.backdropKey, rayKey, st.frame, st.wallpaper, Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
     let dx = this.ox - this.bgOx;
     let dy = this.oy - this.bgOy;
     if (key !== this.bgKey || !(Math.abs(dx) < mx - 2 && Math.abs(dy) < my - 2)) {
@@ -265,6 +267,10 @@ export class Renderer {
     this.drawRoom(g, view);
     g.drawImage(this.backdrop, 0, 0, W, H);
     this.drawLampCones(g);
+    if (this.q.rays) {
+      this.light.bake(g, [k, ox, oy], this.world, !this.q.liveRays);
+      g.setTransform(k, 0, 0, k, ox, oy);
+    }
     this.tr.draw(g, view);
     // the whole scene inside the glass is painted on watercolour paper
     g.save();
@@ -279,6 +285,8 @@ export class Renderer {
     g.fillStyle = this.patterns.grain;
     g.fillRect(0, 0, this.bg.width, this.bg.height);
     g.restore();
+    if (this.q.reflections) this.light.glare(g, [k, ox, oy]);
+    g.setTransform(k, 0, 0, k, ox, oy);
     this.drawFrame(g, view);
     if (chunks) g.restore();
   }
@@ -379,12 +387,11 @@ export class Renderer {
     this.setWorld(g);
     for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     this.drawWaterSurface(g);
-    if (this.q.rays) this.light.draw(this, g, w, this.time);
+    this.light.draw(this, g, w, this.time, { rays: this.q.rays, liveWater: this.q.liveRays });
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
     this.drawGauges(g);
     if (sel && !sel.removed) this.drawSelection(g, sel, alpha);
-    if (this.q.reflections) this.drawGlass(g);
     this.drawNight(g, view);
     if (this.lens !== 'none') this.drawLens(g, view, dt);
     if (this.ghost) this.drawGhost(g);
@@ -429,18 +436,14 @@ export class Renderer {
   // (painted into the cached background, so beams use its offset)
   drawLampCones(g) {
     const env = this.world.env;
-    const [ox, oy] = [this.ox, this.oy];
-    this.ox = this.bgOx + this.bgM[0];
-    this.oy = this.bgOy + this.bgM[1];
+    const m = [this.k, this.bgOx + this.bgM[0], this.bgOy + this.bgM[1]];
     for (const z of ['desert', 'pond', 'jungle']) {
       const p = env[z].lamp;
       if (p < 0.05) continue;
-      this.light.lampCone(this, g, LAMP_X[z], p, env.sun);
+      this.light.lampCone(m, g, LAMP_X[z], p, env.sun);
     }
     g.globalAlpha = 1;
-    g.setTransform(this.k, 0, 0, this.k, this.ox, this.oy);
-    this.ox = ox;
-    this.oy = oy;
+    g.setTransform(m[0], 0, 0, m[0], m[1], m[2]);
   }
 
   // ------------------------------------------------------------------ entities
@@ -1112,29 +1115,6 @@ export class Renderer {
     g.strokeStyle = '#f6d64a';
     g.stroke();
     g.setLineDash([]);
-  }
-
-  // Glare on the front glass: a couple of faint, soft-edged streaks.
-  drawGlass(g) {
-    this.setWorld(g);
-    g.save();
-    g.beginPath();
-    g.rect(0, 0, W, H);
-    g.clip();
-    const streak = (x, w, a) => {
-      const gr = g.createLinearGradient(x, 0, x + w, 0);
-      gr.addColorStop(0, 'rgba(255,255,255,0)');
-      gr.addColorStop(0.5, `rgba(255,255,255,${a})`);
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.setTransform(this.k, 0, 0, this.k, this.ox, this.oy);
-      g.transform(1, 0, -0.18, 1, 0, 0);
-      g.fillStyle = gr;
-      g.fillRect(x, 0, w, H);
-    };
-    streak(36, 60, 0.07);
-    streak(108, 14, 0.06);
-    streak(W - 120, 40, 0.045);
-    g.restore();
   }
 
   drawFrame(g, view) {

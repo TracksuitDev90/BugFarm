@@ -1,11 +1,10 @@
 // Shafts of light. Each beam is a small soft-edged texture (bright in the
 // middle, feathered at the sides, fading as it falls) stretched along its
 // path and added onto the scene, so beams glow rather than sit on top like
-// flat panes. Beams breathe slowly, dust motes drift and twinkle inside
-// them, and they stop at the ground: sunlight through the glass over the
-// desert and pond, dappled shafts through the jungle canopy, rippling rays
-// under the water, and a soft cone under each heat lamp.
-import { W, H, GW, CELL } from '../config.js';
+// flat panes: sunlight through the glass over the desert and pond, dappled
+// shafts through the jungle canopy, a soft cone under each heat lamp, rays
+// swaying under the water, and dust motes twinkling in the sunbeams.
+import { W, H } from '../config.js';
 import { hash1 } from '../util/rng.js';
 import { clamp01 } from '../util/math.js';
 
@@ -55,104 +54,133 @@ export class LightRays {
     return c;
   }
 
-  // Everything above the ground (water included): light stops at the dirt.
-  airPath(t) {
-    const key = t.version;
-    if (key === this.airKey && this.air) return this.air;
-    if (this.air && t.version - this.airVer < 40 && performance.now() - this.airT < 400) return this.air;
-    this.airKey = key;
-    this.airVer = t.version;
-    this.airT = performance.now();
-    const p = new Path2D();
-    p.moveTo(0, 0);
-    p.lineTo(W, 0);
-    for (let cx = GW - 1; cx >= 0; cx -= 2) p.lineTo(cx * CELL + CELL / 2, t.surfaceY(cx * CELL + CELL / 2));
-    p.lineTo(0, t.surfaceY(0));
-    p.closePath();
-    this.air = p;
-    return p;
-  }
-
-  // Draw one beam: from (x, y) heading `ang` from straight down.
-  beam(r, g, tex, x, y, ang, w, len, alpha) {
+  // Draw one beam: from (x, y) heading `ang` from straight down. `m` is
+  // the world-to-canvas transform [k, ox, oy] to draw with.
+  beam(m, g, tex, x, y, ang, w, len, alpha) {
     if (alpha < 0.004) return;
-    r.put(g, x, y, ang, w / TW, len / TH);
+    const [k, ox, oy] = m;
+    const c = Math.cos(ang);
+    const s = Math.sin(ang);
+    const sx = w / TW;
+    const sy = len / TH;
+    g.setTransform(k * c * sx, k * s * sx, -k * s * sy, k * c * sy, k * x + ox, k * y + oy);
     g.globalAlpha = alpha;
     g.drawImage(tex, -TW / 2, 0);
   }
 
   // Warm cones under the heat lamps, for the cached background.
-  lampCone(r, g, x, power, sun) {
+  lampCone(m, g, x, power, sun) {
     const tex = this.texture('255,226,150');
     const a = 0.32 * power * (0.55 + 0.45 * sun);
-    for (const [ang, wd, k] of [[0, 120, 1], [-0.22, 70, 0.55], [0.22, 70, 0.55], [-0.4, 46, 0.3], [0.4, 46, 0.3]]) this.beam(r, g, tex, x, 10, ang, wd, 430, a * k);
+    for (const [ang, wd, k] of [[0, 120, 1], [-0.22, 70, 0.55], [0.22, 70, 0.55], [-0.4, 46, 0.3], [0.4, 46, 0.3]]) this.beam(m, g, tex, x, 10, ang, wd, 430, a * k);
     g.globalAlpha = 1;
   }
 
-  draw(r, g, w, time) {
-    const env = w.env;
-    const t = w.terrain;
-    const sun = env.sun;
-    if (sun < 0.04) return;
-    r.setWorld(g);
+  // The big shafts of sunlight and canopy light barely move, so they're
+  // painted into the cached background, behind the ground (which hides
+  // them below the surface for free). They brighten and fade with the day
+  // as the background is refreshed. m: [scale, offset x, offset y].
+  // `water`: also paint still rays into the pond (seen through the water)
+  // when there's no budget for live ones.
+  bake(g, m, w, water) {
+    const day = clamp01((w.env.sun - 0.04) / 0.6);
+    if (day <= 0) return;
     g.save();
-    g.clip(this.airPath(t));
     g.globalCompositeOperation = 'lighter';
     const sunTex = this.texture('255,244,214');
     const leafTex = this.texture('236,250,190');
-    const day = clamp01((sun - 0.04) / 0.6);
-    // sunlight through the glass
-    SUN.forEach(([x, wd, k], i) => {
-      const breathe = 0.72 + 0.28 * Math.sin(time * 0.23 + i * 1.9) * Math.sin(time * 0.11 + i);
-      const drift = Math.sin(time * 0.05 + i * 2.3) * 14;
-      this.beam(r, g, sunTex, x + drift, -10, SUN_TILT, wd * 1.15, 760, 0.12 * k * breathe * day);
-    });
-    // dappled light under the canopy: leaves stirring overhead make it flicker
-    CANOPY.forEach(([x, wd, k], i) => {
-      const flick = 0.6 + 0.4 * Math.max(0, Math.sin(time * 0.9 + i * 2.1) * 0.6 + Math.sin(time * 2.3 + i * 4.7) * 0.4);
-      this.beam(r, g, leafTex, x + Math.sin(time * 0.17 + i) * 6, 70, SUN_TILT * 0.7, wd, 420, 0.15 * k * flick * day);
-    });
-    // rays under the water, swaying with the ripples above
+    SUN.forEach(([x, wd, s], i) => this.beam(m, g, sunTex, x + Math.sin(i * 2.3) * 10, -10, SUN_TILT, wd * 1.15, 760, 0.13 * s * (0.85 + 0.15 * Math.sin(i * 1.9)) * day));
+    CANOPY.forEach(([x, wd, s]) => this.beam(m, g, leafTex, x, 70, SUN_TILT * 0.7, wd, 420, 0.15 * s * day));
+    if (water) this.waterRays(m, g, w, 0, day, 1.7);
+    g.restore();
+  }
+
+  // Rays fanning down from the pond's surface, cut to its depth so they
+  // stay in the water. time sways them; boost makes up for being painted
+  // under the water's wash.
+  waterRays(m, g, w, time, day, boost = 1) {
+    const t = w.terrain;
     const wl = t.waterLevel;
-    const clear = env.pond.clarity;
-    if (clear > 0.15 && r.visible(810, wl + 100, 300)) {
-      const wTex = this.texture('214,246,255');
-      for (let i = 0; i < 6; i++) {
-        const x = 640 + i * 70 + Math.sin(time * 0.31 + i * 1.7) * 20;
-        if (!t.waterAt(x, wl + 6)) continue;
-        const ang = SUN_TILT * 0.6 + Math.sin(time * 0.43 + i) * 0.06;
-        this.beam(r, g, wTex, x, wl + 2, ang, 16 + 10 * hash1(i, 3) + Math.sin(time * 0.7 + i) * 5, 280, 0.12 * clear * day);
-      }
+    const clear = w.env.pond.clarity;
+    if (clear <= 0.15) return;
+    const wTex = this.texture('214,246,255');
+    for (let i = 0; i < 6; i++) {
+      const x = 640 + i * 70 + Math.sin(time * 0.31 + i * 1.7) * 20;
+      if (!t.waterAt(x, wl + 6)) continue;
+      const ang = SUN_TILT * 0.6 + Math.sin(time * 0.43 + i) * 0.06;
+      const reach = 0.92 * (t.surfaceY(x - Math.sin(ang) * 160) - wl);
+      if (reach < 30) continue;
+      this.beam(m, g, wTex, x, wl + 2, ang, 16 + 10 * hash1(i, 3) + Math.sin(time * 0.7 + i) * 5, Math.min(300, reach / 0.75), 0.12 * clear * day * boost);
     }
-    // dust motes floating in the sunbeams
-    g.globalCompositeOperation = 'lighter';
+  }
+
+  // Live light, drawn every frame: dust motes twinkling as they drift down
+  // through the sunbeams, and (when there's budget) the pond's rays swaying
+  // with the ripples.
+  draw(r, g, w, time, opts) {
+    const day = clamp01((w.env.sun - 0.04) / 0.6);
+    if (!opts.rays || day <= 0) return;
+    if (opts.liveWater && r.visible(810, w.terrain.waterLevel + 100, 300)) {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      this.waterRays([r.k, r.ox, r.oy], g, w, time, day);
+      g.restore();
+    }
+    this.drawMotes(r, g, w.terrain, time, day);
+    r.setWorld(g);
+  }
+
+  // Faint, soft-edged glare streaks across the front glass. They never
+  // move, so they're painted into the cached background.
+  glare(g, m) {
+    const [k, ox, oy] = m;
+    g.save();
+    g.setTransform(k, 0, 0, k, ox, oy);
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.clip();
+    for (const [x, wd, a] of [[36, 60, 0.08], [108, 14, 0.07], [W - 120, 40, 0.05]]) {
+      const gr = g.createLinearGradient(x, 0, x + wd, 0);
+      gr.addColorStop(0, 'rgba(255,255,255,0)');
+      gr.addColorStop(0.5, `rgba(255,255,255,${a})`);
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.setTransform(k, 0, 0, k, ox, oy);
+      g.transform(1, 0, -0.18, 1, 0, 0);
+      g.fillStyle = gr;
+      g.fillRect(x, 0, wd, H);
+    }
+    g.restore();
+  }
+
+  // Dust motes floating in the sunbeams (drawn sharp, on the scene itself,
+  // with a plain blend: switching blend modes mid-frame is slow on phones
+  // that paint the canvas without the GPU).
+  drawMotes(r, g, t, time, day) {
+    g.save();
     g.setTransform(1, 0, 0, 1, 0, 0);
     const all = SUN.length;
-    for (const m of this.motes) {
-      const sunBeam = m.b < all;
-      const [bx, wd] = sunBeam ? SUN[m.b] : CANOPY[m.b - all];
+    const zr = r.dpr * Math.max(0.7, Math.min(1.6, r.cam.zoom));
+    for (const mo of this.motes) {
+      const sunBeam = mo.b < all;
+      const [bx, wd] = sunBeam ? SUN[mo.b] : CANOPY[mo.b - all];
       const y0 = sunBeam ? -10 : 70;
       const len = sunBeam ? 520 : 300;
       const tilt = sunBeam ? SUN_TILT : SUN_TILT * 0.7;
-      m.v = (m.v + 0.004 * (0.3 + m.r) * (r.paused ? 0 : 1) * 0.25) % 1;
-      const along = m.v * len;
-      const across = (m.u - 0.5) * wd * 0.8 + Math.sin(time * 0.6 + m.ph) * 3;
-      const x = bx + -Math.sin(tilt) * along + Math.cos(tilt) * across;
+      if (!r.paused) mo.v = (mo.v + 0.001 * (0.3 + mo.r)) % 1;
+      const along = mo.v * len;
+      const across = (mo.u - 0.5) * wd * 0.8 + Math.sin(time * 0.6 + mo.ph) * 3;
+      const x = bx - Math.sin(tilt) * along + Math.cos(tilt) * across;
       const y = y0 + Math.cos(tilt) * along + Math.sin(tilt) * across;
       if (!r.visible(x, y, 4) || t.solidAt(x, y)) continue;
-      const tw = 0.5 + 0.5 * Math.sin(time * 2.2 + m.ph * 3);
-      const fade = Math.sin(m.v * Math.PI);
+      const tw = 0.5 + 0.5 * Math.sin(time * 2.2 + mo.ph * 3);
       const [sx, sy] = r.cam.toScreen(x, y);
-      g.globalAlpha = 0.5 * tw * fade * day;
+      g.globalAlpha = 0.5 * tw * Math.sin(mo.v * Math.PI) * day;
       g.fillStyle = sunBeam ? '#fff6dc' : '#f2ffd0';
       g.beginPath();
-      g.arc(sx * r.dpr, sy * r.dpr, m.r * r.dpr * Math.max(0.7, Math.min(1.6, r.cam.zoom)), 0, Math.PI * 2);
+      g.arc(sx * r.dpr, sy * r.dpr, mo.r * zr, 0, Math.PI * 2);
       g.fill();
     }
     g.restore();
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-    r.setWorld(g);
   }
 }
 

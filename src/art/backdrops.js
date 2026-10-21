@@ -3,6 +3,7 @@
 import { W, H } from '../config.js';
 import { ell, circ, fill, stroke, paint, smoothPath, INK } from './ink.js';
 import { RNG, fbm1 } from '../util/rng.js';
+import { blooms, poolEdge } from './paper.js';
 
 export const BACKDROPS = {
   meadow: { name: 'Sunny meadow' },
@@ -26,20 +27,29 @@ function cloud(g, x, y, s) {
 }
 
 function hills(g, baseY, amp, color, seed, freq = 0.004) {
-  g.beginPath();
-  g.moveTo(-10, H);
-  for (let x = -10; x <= W + 10; x += 10) g.lineTo(x, baseY - fbm1(x * freq, seed) * amp);
-  g.lineTo(W + 10, H);
-  g.closePath();
-  g.fillStyle = color;
-  g.fill();
-  g.beginPath();
+  const top = new Path2D();
+  const area = new Path2D();
+  area.moveTo(-10, H);
   for (let x = -10; x <= W + 10; x += 10) {
     const y = baseY - fbm1(x * freq, seed) * amp;
-    if (x === -10) g.moveTo(x, y);
-    else g.lineTo(x, y);
+    area.lineTo(x, y);
+    if (x === -10) top.moveTo(x, y);
+    else top.lineTo(x, y);
   }
-  stroke(g, 1.3, 'rgba(58,42,31,0.55)');
+  area.lineTo(W + 10, H);
+  area.closePath();
+  g.fillStyle = color;
+  g.fill(area);
+  // a watercolour wash darkens where it dries, along its top edge
+  g.save();
+  g.clip(area);
+  poolEdge(g, top, 'rgba(46,60,24,0.16)', 16);
+  g.restore();
+  g.lineWidth = 1.3;
+  g.strokeStyle = 'rgba(58,42,31,0.55)';
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.stroke(top);
 }
 
 function lollipopTree(g, x, y, s, col) {
@@ -109,20 +119,15 @@ function rainforest(scale, kind) {
     g.closePath();
     g.fillStyle = color;
     g.fill();
+    g.save();
+    g.clip();
+    g.lineWidth = 14;
+    g.strokeStyle = 'rgba(30,50,26,0.14)';
+    g.stroke();
+    g.restore();
     if (ink) stroke(g, 1.2, ink);
   };
   bumps(150, 26, 48, T.far, 'rgba(58,42,31,0.3)');
-  // light shafts through the canopy
-  g.fillStyle = T.light;
-  for (const lx of [1120, 1300, 1480]) {
-    g.beginPath();
-    g.moveTo(lx, 150);
-    g.lineTo(lx + 34, 150);
-    g.lineTo(lx + 120, 520);
-    g.lineTo(lx + 40, 520);
-    g.closePath();
-    g.fill();
-  }
   // 2) tall trunks with buttress roots
   const trunk = (x, w, top, col) => {
     paint(g, col, 1.2, () => {
@@ -217,12 +222,14 @@ export function paintBackdrop(kind, scale) {
   g.scale(scale, scale);
   const rng = new RNG(1234);
 
-  const sky = (top, bottom) => {
+  // a sky laid in with a wet brush: an uneven wash, never a perfect fade
+  const sky = (top, bottom, deep = 'rgba(70,130,190,0.08)') => {
     const gr = g.createLinearGradient(0, 0, 0, 520);
     gr.addColorStop(0, top);
     gr.addColorStop(1, bottom);
     g.fillStyle = gr;
     g.fillRect(0, 0, W, H + 80);
+    blooms(g, 0, 0, W, 520, 150, 60, 140, 'rgba(255,255,250,0.28)', deep, 5);
   };
 
   // paint a little higher than the tank middle so the horizon sits just
@@ -272,6 +279,7 @@ export function paintBackdrop(kind, scale) {
       gr.addColorStop(1, '#fbe9c4');
       g.fillStyle = gr;
       g.fillRect(0, 0, W, H);
+      blooms(g, 0, 0, W, 520, 150, 60, 140, 'rgba(255,250,235,0.26)', 'rgba(200,90,60,0.08)', 6);
       paint(g, '#fff0a8', 1.4, () => circ(g, 1180, 250, 70));
       // mesas
       const mesa = (x, w, h, col) => {
@@ -361,7 +369,7 @@ export function paintBackdrop(kind, scale) {
       break;
     }
     case 'night': {
-      sky('#1f2a52', '#3b4a7a');
+      sky('#1f2a52', '#3b4a7a', 'rgba(10,14,40,0.18)');
       for (let i = 0; i < 140; i++) {
         const x = rng.range(0, W);
         const y = rng.range(0, 470);

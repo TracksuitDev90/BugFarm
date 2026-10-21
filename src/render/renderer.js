@@ -11,6 +11,8 @@ import { DECOR_ART, decorBox } from '../art/decor.js';
 import { drawIcon } from '../art/icons.js';
 import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops.js';
 import { setMisregistration } from '../art/ink.js';
+import { finishSprite, grainTile } from '../art/paper.js';
+import { LightRays } from './light.js';
 import { LAMP_X, MISTER_X } from '../world/environment.js';
 import { zoneBand, zoneStatus } from '../sim/care.js';
 import { angleDiff, clamp, clamp01, lerp } from '../util/math.js';
@@ -84,6 +86,7 @@ export class Renderer {
     this.sprites = new SpriteCache(900);
     this.plantCache = new Map();
     this.fx = new Particles(220);
+    this.light = new LightRays();
     world.fx = this.fx;
     this.q = QUALITY.medium;
     this.qualityName = 'medium';
@@ -263,6 +266,19 @@ export class Renderer {
     g.drawImage(this.backdrop, 0, 0, W, H);
     this.drawLampCones(g);
     this.tr.draw(g, view);
+    // the whole scene inside the glass is painted on watercolour paper
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.clip();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (!this.patterns.grain || this.patterns.grainCtx !== g) {
+      this.patterns.grain = g.createPattern(grainTile(), 'repeat');
+      this.patterns.grainCtx = g;
+    }
+    g.fillStyle = this.patterns.grain;
+    g.fillRect(0, 0, this.bg.width, this.bg.height);
+    g.restore();
     this.drawFrame(g, view);
     if (chunks) g.restore();
   }
@@ -363,6 +379,7 @@ export class Renderer {
     this.setWorld(g);
     for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     this.drawWaterSurface(g);
+    if (this.q.rays) this.light.draw(this, g, w, this.time);
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
     this.drawGauges(g);
@@ -409,46 +426,21 @@ export class Renderer {
     }
   }
 
+  // (painted into the cached background, so beams use its offset)
   drawLampCones(g) {
     const env = this.world.env;
+    const [ox, oy] = [this.ox, this.oy];
+    this.ox = this.bgOx + this.bgM[0];
+    this.oy = this.bgOy + this.bgM[1];
     for (const z of ['desert', 'pond', 'jungle']) {
       const p = env[z].lamp;
       if (p < 0.05) continue;
-      const x = LAMP_X[z];
-      const a = 0.08 * p * (0.6 + 0.4 * env.sun);
-      const gr = g.createLinearGradient(0, 10, 0, 400);
-      gr.addColorStop(0, `rgba(255,236,170,${a * 2})`);
-      gr.addColorStop(1, 'rgba(255,236,170,0)');
-      g.fillStyle = gr;
-      g.beginPath();
-      g.moveTo(x - 16, 14);
-      g.lineTo(x + 16, 14);
-      g.lineTo(x + 130, 400);
-      g.lineTo(x - 130, 400);
-      g.closePath();
-      g.fill();
+      this.light.lampCone(this, g, LAMP_X[z], p, env.sun);
     }
-  }
-
-  drawRays(g) {
-    const t = this.world.terrain;
-    const wl = t.waterLevel;
-    const tm = this.time;
-    g.save();
-    g.globalAlpha = 0.07 * (0.3 + 0.7 * this.world.env.sun) * this.world.env.pond.clarity;
-    g.fillStyle = '#ffffff';
-    for (let i = 0; i < 5; i++) {
-      const x = 600 + i * 95 + Math.sin(tm * 0.25 + i * 1.7) * 30;
-      const wdt = 18 + Math.sin(tm * 0.4 + i) * 8;
-      g.beginPath();
-      g.moveTo(x, wl);
-      g.lineTo(x + wdt, wl);
-      g.lineTo(x + wdt + 60, wl + 300);
-      g.lineTo(x + 40, wl + 300);
-      g.closePath();
-      g.fill();
-    }
-    g.restore();
+    g.globalAlpha = 1;
+    g.setTransform(this.k, 0, 0, this.k, this.ox, this.oy);
+    this.ox = ox;
+    this.oy = oy;
   }
 
   // ------------------------------------------------------------------ entities
@@ -471,6 +463,7 @@ export class Renderer {
         gg.lineCap = 'round';
         gg.lineJoin = 'round';
         drawPlant(gg, p, this.time);
+        finishSprite(gg, S.box);
         e = { canvas: c, ver: p.shapeVersion, b, x0, y0, w: x1 - x0, h: y1 - y0 };
         this.plantCache.set(p, e);
       }
@@ -1121,27 +1114,26 @@ export class Renderer {
     g.setLineDash([]);
   }
 
+  // Glare on the front glass: a couple of faint, soft-edged streaks.
   drawGlass(g) {
     this.setWorld(g);
     g.save();
     g.beginPath();
     g.rect(0, 0, W, H);
     g.clip();
-    g.fillStyle = 'rgba(255,255,255,0.07)';
-    const band = (x, w) => {
-      g.beginPath();
-      g.moveTo(x, 0);
-      g.lineTo(x + w, 0);
-      g.lineTo(x + w - 260, H);
-      g.lineTo(x - 260, H);
-      g.closePath();
-      g.fill();
+    const streak = (x, w, a) => {
+      const gr = g.createLinearGradient(x, 0, x + w, 0);
+      gr.addColorStop(0, 'rgba(255,255,255,0)');
+      gr.addColorStop(0.5, `rgba(255,255,255,${a})`);
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.setTransform(this.k, 0, 0, this.k, this.ox, this.oy);
+      g.transform(1, 0, -0.18, 1, 0, 0);
+      g.fillStyle = gr;
+      g.fillRect(x, 0, w, H);
     };
-    band(230, 70);
-    band(330, 18);
-    band(1240, 50);
-    g.fillStyle = 'rgba(255,255,255,0.12)';
-    band(1305, 10);
+    streak(36, 60, 0.07);
+    streak(108, 14, 0.06);
+    streak(W - 120, 40, 0.045);
     g.restore();
   }
 

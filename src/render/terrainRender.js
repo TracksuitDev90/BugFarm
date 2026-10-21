@@ -5,6 +5,7 @@ import { CELL, GW, GH, MAT, INK, W, H, ZONE_X } from '../config.js';
 import { CHUNK, CHW, CHH } from '../world/terrain.js';
 import { hash2, noise1 } from '../util/rng.js';
 import { ell, circ, fill, stroke } from '../art/ink.js';
+import { blooms, poolEdge } from '../art/paper.js';
 
 const TEX = 64; // texture tile size in world units
 
@@ -144,6 +145,41 @@ function makeTexture(kind, style, S, seed) {
       g.lineTo(x + (r() - 0.5) * 7, y + (r() - 0.5) * 7);
       g.lineTo(x + (r() - 0.5) * 9, y + (r() - 0.5) * 9);
       stroke(g, 0.35, 'rgba(58,42,31,0.5)');
+    }
+  }
+  // a picture-book stipple of ink dots and tiny dashes in sand and soil
+  if (kind === 'sand' || kind === 'soil') {
+    const dots = kind === 'sand' ? 22 : 30;
+    for (let i = 0; i < dots; i++) {
+      const x = r() * TEX;
+      const y = r() * TEX;
+      g.beginPath();
+      g.arc(x, y, 0.22 + r() * 0.22, 0, Math.PI * 2);
+      g.fillStyle = kind === 'sand' ? 'rgba(120,80,40,0.55)' : 'rgba(40,24,14,0.6)';
+      g.fill();
+    }
+    for (let i = 0; i < (kind === 'sand' ? 4 : 6); i++) {
+      const x = r() * (TEX - 8) + 4;
+      const y = r() * (TEX - 8) + 4;
+      const a = (r() - 0.5) * 0.8;
+      g.beginPath();
+      g.moveTo(x - Math.cos(a) * 1.4, y - Math.sin(a) * 1.4);
+      g.quadraticCurveTo(x, y - 0.6, x + Math.cos(a) * 1.4, y + Math.sin(a) * 1.4);
+      stroke(g, 0.32, kind === 'sand' ? 'rgba(110,72,36,0.55)' : 'rgba(30,18,10,0.6)');
+    }
+  }
+  if (kind === 'tunnel') {
+    // pencil hatching, in little clusters, for the shadowy inside of tunnels
+    for (let i = 0; i < 9; i++) {
+      const x = r() * (TEX - 10) + 5;
+      const y = r() * (TEX - 10) + 5;
+      const n = 3 + Math.floor(r() * 3);
+      for (let k = 0; k < n; k++) {
+        g.beginPath();
+        g.moveTo(x + k * 1.3 - 1.8, y + 1.8);
+        g.lineTo(x + k * 1.3 + 1.8, y - 1.8);
+        stroke(g, 0.32, 'rgba(26,14,6,0.38)');
+      }
     }
   }
   if (kind === 'sand') {
@@ -484,29 +520,9 @@ export class TerrainRenderer {
     g.save();
     g.clip(fp);
     // pigment pooling where the wash meets the banks
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    g.lineWidth = 9;
-    g.strokeStyle = look.pool;
-    g.stroke(edge);
-    g.lineWidth = 3.5;
-    g.stroke(edge);
+    poolEdge(g, edge, look.pool, 9);
     // soft blooms of lighter and deeper colour, continuous across chunks
-    const G = 72;
-    for (let gy = Math.floor((wy - 60) / G); gy <= Math.ceil((wy + size + 60) / G); gy++) {
-      for (let gx = Math.floor((wx - 60) / G); gx <= Math.ceil((wx + size + 60) / G); gx++) {
-        const h = hash2(gx, gy, 77);
-        const bx = (gx + hash2(gx, gy, 78)) * G;
-        const by = (gy + hash2(gx, gy, 79)) * G;
-        const r = 26 + h * 34;
-        const rg = g.createRadialGradient(bx, by, 0, bx, by, r);
-        const c = h < 0.5 ? look.bloomLight : look.bloomDark;
-        rg.addColorStop(0, c);
-        rg.addColorStop(1, c.replace(/[\d.]+\)$/, '0)'));
-        g.fillStyle = rg;
-        g.fillRect(bx - r, by - r, r * 2, r * 2);
-      }
-    }
+    blooms(g, wx, wy, wx + size, wy + size, 72, 26, 60, look.bloomLight, look.bloomDark, 77);
     // a few hand-drawn ripple strokes
     for (let n = 0; n < 5; n++) {
       const h = hash2(kx * 7 + n, ky, 41);
@@ -630,6 +646,7 @@ export class TerrainRenderer {
       }
       let firstLayer = true;
       let sandPath = null;
+      let solidPath = null;
       for (const L of LAYERS) {
         if (!present.has(L)) continue;
         const ord = ORDER[L];
@@ -639,6 +656,7 @@ export class TerrainRenderer {
         g.fillStyle = this.patterns[L];
         g.fill(fp);
         if (L === MAT.SAND) sandPath = fp;
+        if (firstLayer) solidPath = fp;
         firstLayer = false;
       }
       // The first layer covers every solid cell, so give the strata a mask of
@@ -668,9 +686,36 @@ export class TerrainRenderer {
         g.restore();
       }
 
+      // Watercolour: soft blooms of lighter and deeper pigment across the
+      // ground (seamless from chunk to chunk)...
+      // (pale paper shows through a sandy wash; dark soil gets deeper pools)
+      if (solidPath) {
+        const sandOnly = present.has(MAT.SAND) && present.size > 1 ? sandPath : null;
+        if (present.has(MAT.SAND) && (present.size === 1 || sandOnly)) {
+          g.save();
+          g.clip(sandOnly || solidPath);
+          blooms(g, xL, yT, xR, yB, 96, 34, 80, 'rgba(255,248,226,0.16)', 'rgba(150,92,40,0.08)', 31);
+          g.restore();
+        }
+        const darkPath = !present.has(MAT.SAND) ? solidPath : present.size > 1 && buildMask(t, i0, j0, (m) => m !== 0 && m !== MAT.SAND) ? maskPaths(i0, j0, true, false).fill : null;
+        if (darkPath) {
+          g.save();
+          g.clip(darkPath);
+          blooms(g, xL, yT, xR, yB, 110, 40, 90, 'rgba(255,236,200,0.045)', 'rgba(36,20,8,0.13)', 32);
+          g.restore();
+        }
+      }
+
       // 3) Edges: soft shadow inside tunnels, then crisp ink.
       buildMask(t, i0, j0, (m) => m !== 0);
       const { edge } = maskPaths(i0, j0, false, true);
+      // ...and pigment pooled along the edge of the wash, inside the ground
+      if (solidPath) {
+        g.save();
+        g.clip(solidPath);
+        poolEdge(g, edge, 'rgba(98,54,22,0.15)', 8);
+        g.restore();
+      }
       if (below) {
         g.save();
         g.clip(below);
@@ -680,15 +725,23 @@ export class TerrainRenderer {
         g.stroke(edge);
         g.restore();
       }
-      g.lineWidth = 1.25;
+      // a confident ink line, with a faint pencil line wandering beside it
+      g.lineWidth = 1.6;
       g.lineCap = 'round';
+      g.lineJoin = 'round';
       g.strokeStyle = INK;
       g.stroke(edge);
+      g.save();
+      g.translate(0.55, 0.45);
+      g.lineWidth = 0.45;
+      g.strokeStyle = 'rgba(58,42,31,0.35)';
+      g.stroke(edge);
+      g.restore();
 
       if (present.has(MAT.ROCK)) {
         buildMask(t, i0, j0, (m) => m === MAT.ROCK);
         const { edge: re } = maskPaths(i0, j0, false, true);
-        g.lineWidth = 1.1;
+        g.lineWidth = 1.35;
         g.strokeStyle = INK;
         g.stroke(re);
       }

@@ -1,6 +1,8 @@
 // Tracks discoveries, unlocks and which species the player has met.
 import { DISCOVERIES, DISC_BY_ID, lockedItems } from '../data/discoveries.js';
 import { Progress } from './progress.js';
+import { Orders } from './orders.js';
+import { ORDER_GIFTS } from '../data/neighbours.js';
 
 export class Journal {
   constructor() {
@@ -10,11 +12,21 @@ export class Journal {
     this.met = {};
     this.sandbox = false;
     this.locked = lockedItems();
+    // Busytown's thank-you gifts start locked too
+    for (const gf of ORDER_GIFTS) this.locked.decor.add(gf.decor);
     this.onUnlock = null;
     this.world = null;
     this.checkT = 0;
     this.offs = [];
     this.progress = new Progress();
+    this.orders = this.newOrders();
+  }
+
+  newOrders() {
+    const o = new Orders();
+    o.canUse = (k, id) => this.canUse(k, id);
+    if (this.orders) o.onOrder = this.orders.onOrder;
+    return o;
   }
 
   attach(world) {
@@ -41,6 +53,7 @@ export class Journal {
     this.offs.push(world.events.on('adopt', (d) => this.meet(d.c.sp)));
     this.offs.push(world.events.on('birth', (d) => d.c && this.meet(d.c.sp)));
     this.progress.attach(world);
+    this.orders.attach(world);
   }
 
   meet(sp) {
@@ -51,6 +64,7 @@ export class Journal {
     const w = this.world;
     if (!w) return;
     this.progress.update(dt);
+    this.orders.update();
     this.checkT -= dt;
     if (this.checkT > 0) return;
     this.checkT = 2;
@@ -91,6 +105,8 @@ export class Journal {
   // Why something is locked, as a hint the keeper can act on.
   lockHint(kind, id) {
     if (kind === 'decor' && !this.isDecorUnlocked(id)) {
+      const gift = ORDER_GIFTS.find((gf) => gf.decor === id);
+      if (gift) return `send orders to Busytown: it's their thank-you gift at ★${gift.stars}.`;
       const by = this.unlockerOf('decor', id);
       if (by) return `discover “${by.title}”. Hint: ${by.hint}`;
     }
@@ -101,6 +117,7 @@ export class Journal {
 
   isDecorUnlocked(id) {
     if (this.sandbox || !this.locked.decor.has(id)) return true;
+    if (this.orders.gifts[id]) return true;
     return DISCOVERIES.some((d) => d.reward && d.reward.decor === id && this.unlocked[d.id]);
   }
   isStyleUnlocked(key, value) {
@@ -120,7 +137,7 @@ export class Journal {
   }
 
   serialize() {
-    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize() };
+    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), orders: this.orders.serialize() };
   }
   load(d) {
     if (!d) return;
@@ -132,7 +149,12 @@ export class Journal {
     this.progress = new Progress();
     this.progress.onLevel = onLevel;
     this.progress.load(d.progress);
-    if (this.world) this.progress.attach(this.world);
+    this.orders = this.newOrders();
+    this.orders.load(d.orders);
+    if (this.world) {
+      this.progress.attach(this.world);
+      this.orders.attach(this.world);
+    }
   }
   // A brand-new farm: every zone back to level 1.
   reset() {

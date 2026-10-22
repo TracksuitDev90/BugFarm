@@ -1,13 +1,15 @@
 # Bug Farm
 
 A cosy picture-book terrarium. One big glass tank with a sandy desert, a pond
-and a grassy jungle, full of small critters going about their lives. Look after
-them, feed them, rearrange their world, and run gentle experiments to see what
-happens.
+and a grassy jungle, full of small critters going about their lives. Every
+critter has a job, like everyone in Busytown: bees make honey, beetles and worms
+make compost, butterflies leave silk behind. Collect what they make and send it
+to the neighbours who write in asking for it. Look after them, rearrange their
+world, and run gentle experiments to see what happens.
 
-![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond, and a misty rainforest jungle with palms, vines, a mushroom cottage and sunflowers, and thermometers on the glass](docs/tank.jpg)
+![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond beside its heater and filter, and a misty rainforest jungle hung with all sorts of vines, with dome heat lamps and misters on the lid and thermometers on the glass](docs/tank.jpg)
 
-<img src="docs/phone.jpg" width="260" align="right" alt="Bug Farm on a phone, zoomed into the ant colony">
+<img src="docs/phone.jpg" width="260" align="right" alt="Bug Farm on a phone: a bumblebee's card in the jungle, saying its job is honey maker and that it has made a jar of honey so far">
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
@@ -42,17 +44,46 @@ remember.
 | --- | --- | --- |
 | Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
 | Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish school together. The turtle climbs out to bask on the rocks. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
-| Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads, with vines trailing from the lid. Ants farm aphids for honeydew and ladybugs hunt them. Bees pollinate flowers so they set seed. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
+| Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads. Every vine hanging from the lid is a different plant: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
+
+## What the farm is for
+
+Every critter has a job, shown on its card along with how much it has made.
+When a critter isn't eating, sleeping or hiding, it works:
+
+| Good | Who makes it | How |
+| --- | --- | --- |
+| **Honey** | Bumblebees | Bees fill their pollen baskets at the flowers and fly them home to the bee hotel. Its nesting holes fill with honey, and a jar appears beside it. The same pollen raises new bees. |
+| **Compost** | Beetles, earthworms | Big leafy plants drop old leaves. Beetles pat leaves and leftovers into a ball, roll it over to a plant and bury it. Worms turn leaves into castings at the surface. Either way the soil gets richer and plants grow faster. |
+| **Seeds** | Bees, butterflies | Pollinated flowers ripen into seed heads. |
+| **Silk** | Butterflies | A butterfly leaves its empty silk chrysalis behind when it hatches. |
+| **Water lilies** | Goldfish, pond snails, shrimp | The fish feed the lilies and the snails and shrimp keep the water clear, so the lilies bloom. |
+
+Goods sparkle in the tank until you tap them to collect them. Anything you
+leave still does some good: seeds sow themselves and compost melts into the
+soil. The other critters have jobs too. Ladybugs guard the plants, frogs catch
+flies, crickets sing the night chorus, fireflies light the jungle and pill bugs
+recycle fallen leaves.
+
+Neighbours in Busytown write to the farm for its goods: the baker wants honey,
+the tailor wants silk, the gardener wants compost, the florist wants lilies,
+the school wants seeds for its garden. Their letters arrive on the clipboard's
+**Orders** tab, and the mailbox flag goes up while they wait. Send an order
+and they reply with thank-you stars and a basket of treats for the critters
+who made it. Enough stars and Busytown sends a farm stand, then a delivery
+van, which you can't get any other way.
 
 ## Growing your farm
 
 A new farm starts small: each zone has just two kinds of critter (ants and
 crickets in the desert, goldfish and pond snails in the pond, snails and
-butterflies in the jungle). Each zone has a level and three keeper goals,
-such as "keep the desert comfy for 6 hours", "a caterpillar wraps up in a
-chrysalis" or "rinse out the pond filter". Finishing them levels the zone up
+butterflies in the jungle). Each zone has a level and three or four keeper goals.
+Most mix looking after the zone ("keep the desert comfy for 6 hours", "rinse
+out the pond filter") with something its critters make or send ("beetles roll
+2 balls of compost", "pick a water lily in bloom", "send an order to
+Busytown"). Finishing them levels the zone up
 and unlocks new critters, snacks, plants and decorations: beetles and then a
 gecko in the desert, shrimp, frogs and a turtle in the pond, and worms, pill
 bugs, aphids, ladybugs, bees, fireflies and grasshoppers in the jungle. The
@@ -68,9 +99,13 @@ gunk, and leafy jungle plants make the air more humid as they grow.
 None of that comes as a pop-up. Instead:
 
 - **The keeper's clipboard** (top right) lists what needs doing, most urgent
-  first, each with a one-tap fix: refill, rinse, top up, clean, or a jump to
-  the right climate control or snack. Its badge shows how many things want
-  attention. Each zone's tab shows its goals, progress and what's next.
+  first, each with a one-tap fix: refill, rinse, top up, clean, collect, or a
+  jump to the right climate control or snack. Its badge shows how many things
+  want attention. The Orders tab holds Busytown's letters and your basket of
+  goods. Each zone's tab shows its goals, progress and what's next.
+- **The equipment explains itself.** Tap a heat lamp, mister, the pond heater
+  or filter, or a thermometer to see what it is, what it does, how it's doing
+  and its controls. Zoom in and each one has a little name tag.
 - **Comfy ranges.** Every zone works out the temperature (and dampness) that
   suits whoever actually lives there, and says who's too hot or too dry.
   The clock colours each zone's temperature, the Climate panel shows the
@@ -82,15 +117,15 @@ None of that comes as a pop-up. Instead:
 
 | Tool | What it does |
 | --- | --- |
-| **Look** | Drag to pan, pinch or scroll to zoom. Tap a critter to see its needs, mood and what it is thinking, and to pet it or give it a treat. Tap the glass to startle everyone. |
+| **Look** | Drag to pan, pinch or scroll to zoom. Tap a critter to see its job, needs, mood and what it is thinking, and to pet it or give it a treat. Tap a good to collect it. Tap any equipment to learn what it does. Tap the glass to startle everyone. |
 | **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle. Critters eat it bite by bite until it's gone. |
 | **Critters** | Adopt new critters and choose where they live. |
 | **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
-| **Decor** | 26 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car and a castle. Many of them do something useful: shelters give shade and warmth, bubblers add oxygen, lamp posts glow at night, the bee house lets bees breed, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
+| **Decor** | 28 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car and a castle. Many of them do something useful: shelters give shade and warmth, bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
 | **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
-| **Climate** | Set each zone's heat lamp and mister, the pond heater and filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
+| **Climate** | Set each zone's heat lamp (a dome lamp clamped to the lid, with a dimmer on its cord) and mister (a pump on the lid that drinks from a water jug and sprays through a nozzle), the pond's glass heater and its filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
 | **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 39 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
-| **Clipboard** | The button at the top right. What needs doing now, how each zone is doing, and the goals for its next level. Tapping a thermometer on the glass opens it too. |
+| **Clipboard** | The button at the top right. What needs doing now, Busytown's orders and your basket of goods, how each zone is doing, and the goals for its next level. |
 
 The lens button in the top right switches between overlays for temperature,
 dampness, ant scent trails and what each critter is thinking. The speed control
@@ -139,7 +174,7 @@ Other tools in `tools/`:
 | `node tools/fuzz.mjs [days] [seed]` | Has a random player feed, sculpt, adopt and change the climate, and reports any broken state. |
 | `node tools/savetest.mjs` | Save and load round-trip, plus the "while you were away" catch-up. |
 | `node tools/experiments.mjs` | Runs each experiment and checks that the expected outcome happens. |
-| `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper and checks that every zone levels up. |
+| `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods and sends orders) and checks that every zone levels up. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
 
 `tools/dev.html` and `tools/gallery.html` show every critter, food, plant and
@@ -166,21 +201,26 @@ src/
   ai/                  utility brain, shared behaviours, food/prey/mate search,
                        ant colony (castes, brood, digging, scent trails, aphid herding)
   data/                species, foods, plants, decor, names, discoveries,
-                       progression (what each zone level unlocks)
-  art/                 procedural ink-and-watercolour drawing of everything,
+                       progression (what each zone level unlocks), goods and
+                       jobs, Busytown's neighbours
+  art/                 procedural ink-and-watercolour drawing of everything
+                       (critters, plants, vines, equipment, goods...),
                        paper grain and watercolour washes
   render/              sprite cache, chunked terrain and water, light shafts,
                        particles, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal
   sim/                 away catch-up, journal, care (comfy ranges and the
-                       to-do list), progress (zone levels and goals)
+                       to-do list), progress (zone levels and goals), orders
+                       (Busytown's letters), equipment (what each gadget is)
   save/                localStorage save, backup, export/import
   audio/               tiny procedural sound effects (WebAudio, no files)
 ```
 
 - **Brains.** Every critter senses its surroundings, scores the behaviours its
   species knows (forage, hunt, flee, bask, hide, court, chirp, pollinate,
-  estivate and so on) against its current needs, and runs the best one.
+  bring pollen home, recycle, estivate and so on) against its current needs,
+  and runs the best one. Work scores highest when a critter is fed and comfy,
+  so a well-kept farm is a busy one.
   Ants have their own colony-level task allocation on top of that. Species and
   life stages are mostly data in `src/data/species.js`.
 - **Water.** Every cell holds an amount of water. Water falls into room
@@ -201,7 +241,8 @@ src/
   into a single background image. Critters are drawn once per pose and size
   bucket into a sprite cache, painted finish included.
 - **Saving.** The save is compact JSON (about 36 KB, with run-length-encoded
-  terrain) in `localStorage`, with a backup copy. Settings can export and
+  terrain, plus goods, the basket and Busytown's orders) in `localStorage`,
+  with a backup copy. Settings can export and
   import saves as files.
 
 ### Adding things
@@ -220,6 +261,11 @@ The catalogs are plain data, and most additions are a single line:
   Flyers also get a `WINGS` entry there (hinge point, length, beat rate).
 - **Unlock:** list a critter, food, plant or decoration under a zone level in
   `src/data/progression.js`. Anything not listed is available from the start.
+- **Job or good:** jobs and goods are in `src/data/goods.js`. A new good also
+  needs art in `src/art/goods.js` and something in the world that makes it
+  (see `addGood` in `src/world/world.js`).
+- **Neighbour:** add someone to `src/data/neighbours.js` with the goods they
+  want and why.
 
 ## Credits
 

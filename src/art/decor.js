@@ -334,7 +334,8 @@ export const DECOR_ART = {
     });
     text(g, 'BUG FARM', 0, -31, 8.6, '#9a3c2e');
   },
-  mailbox(g) {
+  // bare: leave the flag off, so the tank can raise it when letters come
+  mailbox(g, t, bare) {
     line(g, 0, 0, 0, -20, LW * 3.6, INK);
     line(g, 0, 0, 0, -20, LW * 2, '#8a5a35');
     paint(g, '#4c8fd6', LW, () => {
@@ -345,8 +346,16 @@ export const DECOR_ART = {
       g.lineTo(9, -20);
       g.closePath();
     });
-    line(g, 8, -27, 8, -38, LW * 1.2);
-    rect(g, 8, -38, 6, 4, '#e2453f', LW * 0.7);
+    if (!bare) DECOR_ART.mailboxFlag(g, true);
+  },
+  mailboxFlag(g, up) {
+    if (up) {
+      line(g, 8, -27, 8, -38, LW * 1.2);
+      rect(g, 8, -38, 6, 4, '#e2453f', LW * 0.7);
+    } else {
+      line(g, 8, -27, 14, -27, LW * 1.2);
+      rect(g, 13, -28, 4, 6, '#e2453f', LW * 0.7);
+    }
   },
   windmill(g) {
     paint(g, '#f6efe0', LW, () => {
@@ -565,6 +574,137 @@ export const DECOR_ART = {
 };
 
 // Bounds (relative to base point) for sprite sizing: [x0, y0, x1, y1]
+// Busytown's thank-you gifts.
+DECOR_ART.farmStand = function farmStand(g) {
+  // posts
+  for (const x of [-22, 22]) {
+    line(g, x, 0, x, -44, LW * 3.4, INK);
+    line(g, x, 0, x, -44, LW * 1.8, '#9a6a3f');
+  }
+  // the counter, with a sign
+  rect(g, -25, -17, 50, 17, '#c98f4a');
+  for (const y of [-11, -5]) line(g, -25, y, 25, y, LW * 0.5, 'rgba(58,42,31,0.45)');
+  rect(g, -14, -14, 28, 8, '#fbf3df', LW * 0.8);
+  text(g, 'BUG FARM', 0, -9.8, 5.2, '#9a3c2e');
+  // goods on the counter: honey, a basket of seed heads, a lily in a jug
+  paint(g, '#f0a830', LW * 0.8, () => {
+    g.beginPath();
+    g.rect(-21, -25, 7, 8);
+  });
+  paint(g, '#d9483b', LW * 0.7, () => {
+    g.beginPath();
+    g.rect(-22, -27, 9, 2.5);
+  });
+  paint(g, '#b8864a', LW * 0.8, () => {
+    g.beginPath();
+    g.moveTo(-9, -22);
+    g.lineTo(5, -22);
+    g.lineTo(3, -17);
+    g.lineTo(-7, -17);
+    g.closePath();
+  });
+  for (const x of [-6, -2, 2]) {
+    circ(g, x, -23, 2);
+    fill(g, '#7a4f2e');
+    stroke(g, LW * 0.5);
+  }
+  paint(g, '#cfe8f6', LW * 0.8, () => {
+    g.beginPath();
+    g.rect(11, -24, 7, 7);
+  });
+  line(g, 14.5, -24, 14.5, -29, LW * 0.8, '#5f9e45');
+  for (const a of [-0.7, 0, 0.7]) paint(g, '#f4b3cc', LW * 0.5, () => ell(g, 14.5 + Math.sin(a) * 2.4, -31 + Math.abs(a) * 1.4, 1.4, 2.8, a));
+  // striped awning with a scalloped edge
+  paint(g, '#fbf3df', LW, () => {
+    g.beginPath();
+    g.moveTo(-28, -38);
+    g.lineTo(-24, -50);
+    g.lineTo(24, -50);
+    g.lineTo(28, -38);
+    g.closePath();
+  });
+  for (let i = 0; i < 4; i++) {
+    const x0 = -24 + i * 12;
+    paint(g, '#d9483b', 0, () => {
+      g.beginPath();
+      g.moveTo(x0, -50);
+      g.lineTo(x0 + 6, -50);
+      g.lineTo(x0 + 7.5, -38);
+      g.lineTo(x0 + 1.5, -38);
+      g.closePath();
+    });
+  }
+  g.beginPath();
+  g.moveTo(-28, -38);
+  for (let i = 0; i < 8; i++) g.quadraticCurveTo(-28 + i * 7 + 3.5, -33.5, -28 + (i + 1) * 7, -38);
+  g.lineTo(28, -38);
+  fill(g, '#d9483b');
+  stroke(g, LW);
+  g.beginPath();
+  g.moveTo(-28, -38);
+  g.lineTo(-24, -50);
+  g.lineTo(24, -50);
+  g.lineTo(28, -38);
+  stroke(g, LW);
+};
+
+DECOR_ART.deliveryVan = function deliveryVan(g) {
+  // parcels on the roof rack
+  paint(g, '#c98f4a', LW * 0.8, () => {
+    g.beginPath();
+    g.rect(-20, -40, 12, 8);
+  });
+  paint(g, '#e8c48a', LW * 0.8, () => {
+    g.beginPath();
+    g.rect(-7, -38, 9, 6);
+  });
+  line(g, -14, -40, -14, -32, LW * 0.6, '#9a3c2e');
+  line(g, -20, -36, -8, -36, LW * 0.6, '#9a3c2e');
+  line(g, -22, -31.5, 6, -31.5, LW * 1.2, '#5e5a62');
+  // body
+  paint(g, '#f0bf45', LW, () => {
+    g.beginPath();
+    g.moveTo(-28, -8);
+    g.lineTo(-28, -27);
+    g.quadraticCurveTo(-28, -31, -24, -31);
+    g.lineTo(10, -31);
+    g.quadraticCurveTo(15, -31, 18, -24);
+    g.lineTo(22, -17);
+    g.quadraticCurveTo(28, -16, 28, -10);
+    g.lineTo(28, -8);
+    g.closePath();
+  });
+  // windscreen and a round porthole window
+  paint(g, '#cfe8f6', LW * 0.8, () => {
+    g.beginPath();
+    g.moveTo(11, -28);
+    g.quadraticCurveTo(14, -28, 16, -23);
+    g.lineTo(19, -17);
+    g.lineTo(11, -17);
+    g.closePath();
+  });
+  highlight(g, 13, -23, 1, 3, 0.6, 0.3);
+  // the farm's name and a ladybug on the side
+  text(g, 'BUG FARM', -8, -23, 6.4, '#9a3c2e');
+  text(g, 'deliveries', -8, -16.5, 4.6, INK);
+  blob(g, 4, -13.5, 3, 2.4, '#d9483b', LW * 0.7);
+  line(g, 4, -15.9, 4, -11.1, LW * 0.5);
+  for (const [x, y] of [[2.6, -14.4], [5.4, -12.6]]) {
+    circ(g, x, y, 0.55);
+    fill(g, INK);
+  }
+  // bumper, light and wheels
+  paint(g, '#e8e2d6', LW * 0.8, () => {
+    g.beginPath();
+    g.rect(24, -11, 5, 3);
+  });
+  circ(g, 26.5, -14.5, 1.3);
+  fill(g, '#fff6c0');
+  stroke(g, LW * 0.5);
+  wheel(g, -17, -6, 6, '#e8e2d6');
+  wheel(g, 16, -6, 6, '#e8e2d6');
+};
+
 export function decorBox(def) {
   if (def.place === 'top') return [-def.w / 2 - 6, -6, def.w / 2 + 6, def.h + 6];
   return [-def.w / 2 - 10, -def.h - 22, def.w / 2 + 10, 6];

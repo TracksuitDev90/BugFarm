@@ -10,7 +10,8 @@ export class Decor {
     this.x = x;
     this.y = y;
     this.flip = !!opts.flip;
-    this.store = opts.store || 0; // bee hotel pollen / feeder state
+    this.store = opts.store || 0; // bee hotel: pollen on its way to honey
+    this.brood = opts.brood || 0; // bee hotel: pollen put by for raising young
     this.removed = false;
   }
   get name() {
@@ -27,9 +28,11 @@ export class Decor {
     return Math.abs(x - this.x) < d.w / 2 + 4 && y <= this.y + 6 && y >= this.y - d.h - 6;
   }
   serialize() {
-    return { id: this.id, t: this.type, x: Math.round(this.x), y: Math.round(this.y), f: this.flip ? 1 : 0, s: this.store };
+    const o = { id: this.id, t: this.type, x: Math.round(this.x), y: Math.round(this.y), f: this.flip ? 1 : 0, s: this.store };
+    if (this.brood) o.b = this.brood;
+    return o;
   }
   static load(o) {
-    return new Decor(o.t, o.x, o.y, { id: o.id, flip: !!o.f, store: o.s });
+    return new Decor(o.t, o.x, o.y, { id: o.id, flip: !!o.f, store: o.s, brood: o.b });
   }
 }

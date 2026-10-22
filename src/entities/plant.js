@@ -499,8 +499,16 @@ export class Plant {
     for (let i = 0; i < this.leafEaten.length; i++) if (this.leafEaten[i] > 0) this.leafEaten[i] = Math.max(0, this.leafEaten[i] - regrow);
     if (this.capEaten > 0) this.capEaten = Math.max(0, this.capEaten - regrow * 0.5);
     // flowers
-    for (const f of this.flowers) {
+    for (let fi = 0; fi < this.flowers.length; fi++) {
+      const f = this.flowers[fi];
       f.nectar = Math.min(1, f.nectar + (dt * 1.6 * Math.max(0.2, L)) / DAY_LEN);
+      if (def.kind === 'lily') {
+        // water lilies bloom for picking when the pond critters look after
+        // them (seedT is the bloom timer here)
+        if (this.growth > 0.6) f.seedT += dt * comfort * world.lilyCare();
+        if (f.seedT > DAY_LEN * 1.3) f.seedT = world.bloomLily(this, fi) ? 0 : DAY_LEN * 1.3;
+        continue;
+      }
       if (this.growth > 0.6 && !f.pollinated && f.fruit <= 0 && Math.random() < (dt * 0.12) / DAY_LEN) f.pollinated = true; // a little self-pollination
       if (f.pollinated) {
         f.seedT += dt;
@@ -514,13 +522,15 @@ export class Plant {
             f.fruitEaten = 0;
           }
         } else if (f.seedT > DAY_LEN * 0.9) {
-          world.spawnSeedling(this, def.spreads ? 50 : 90);
+          world.ripenSeeds(this, fi, def.spreads ? 50 : 90);
           f.pollinated = false;
           f.seedT = 0;
           f.nectar = 0.2;
         }
       }
     }
+    // big leafy plants shed an old leaf now and then
+    if (!def.aquatic && !def.memorial && def.leaves >= 3 && this.growth > 0.7 && def.kind !== 'succulent' && Math.random() < (dt * 0.35 * Math.min(2, def.h / 40)) / DAY_LEN) world.dropLitter(this);
     // grass/clover spread by runners
     if (def.spreads && this.growth > 0.9 && Math.random() < (dt * 0.25) / DAY_LEN) world.spawnSeedling(this, 40);
     if (this.health <= 0) {

@@ -24,6 +24,8 @@ export const DECOR = {
   windmill: { name: 'Windmill', place: 'ground', w: 44, h: 76, animated: true },
   bananaCar: { name: 'Banana car', place: 'ground', w: 60, h: 28 },
   pickleCar: { name: 'Pickle car', place: 'ground', w: 54, h: 30 },
+  farmStand: { name: 'Farm stand', place: 'ground', w: 56, h: 52 },
+  deliveryVan: { name: 'Delivery van', place: 'ground', w: 58, h: 42 },
   castle: { name: 'Sand castle', place: 'floor', w: 60, h: 76, shelter: true },
   chest: { name: 'Treasure chest', place: 'floor', w: 38, h: 30, bubbles: 0.35, oxygen: 0.1, animated: true },
   diver: { name: 'Diver helmet', place: 'floor', w: 34, h: 38, bubbles: 0.5, oxygen: 0.15 },

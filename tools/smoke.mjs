@@ -92,8 +92,49 @@ await pg.evaluate(() => {
 });
 await pg.waitForTimeout(600);
 check(await pg.isVisible('#card .thought'), 'info card shows what a critter is thinking');
+check(await pg.isVisible('#card .job'), 'the card says what job a critter does');
 await pg.click('#card >> text=Pet');
 await pg.click('#card .card-close');
+
+// equipment explains itself: tap the pond filter in the tank
+const filterAt = await pg.evaluate(() => {
+  const { game } = window.bugfarm;
+  const wl = game.world.terrain.waterLevel;
+  game.cam.zoom = game.cam.fitHeight * 2.4;
+  game.cam.x = 1000;
+  game.cam.y = wl;
+  game.cam.clampAll();
+  game.cam.target = null;
+  return game.cam.toScreen(1016, wl + 20);
+});
+await pg.waitForTimeout(300);
+await pg.mouse.click(filterAt[0], filterAt[1]);
+await pg.waitForTimeout(400);
+check((await pg.textContent('#card .card-name').catch(() => '')) === 'Pond filter' && (await pg.isVisible('#card >> text=Faster')), 'tapping the filter explains what it is, with its controls');
+await pg.click('#card .card-close');
+
+// goods: collect one from the tank, then send Busytown an order
+const goods = await pg.evaluate(() => {
+  const { game, journal, ui } = window.bugfarm;
+  const w = game.world;
+  const p = w.plants.find((q) => q.def.kind === 'lily');
+  w.bloomLily(p, 0);
+  const g = w.goods.find((q) => q.type === 'lily');
+  ui.tap(g.x, g.y - 3, 0, 0, false);
+  const got = w.pantry.lily;
+  w.pantry.seeds = 9;
+  journal.orders.list.push({ id: 99, who: 'florist', needs: { seeds: 2 }, why: 'Test.', stars: 2, day: 1 });
+  return { got, left: w.goods.includes(g) };
+});
+check(goods.got === 1 && !goods.left, 'tapping a water lily collects it into the basket');
+await pg.click('button[aria-label="Keeper\'s clipboard"]');
+await pg.click('#sheet .tabs >> text=Orders');
+await pg.waitForTimeout(300);
+await pg.click('#sheet .order >> text=Send it!');
+await pg.waitForTimeout(300);
+const sent = await pg.evaluate(() => ({ sent: window.bugfarm.journal.orders.sent, seeds: window.bugfarm.game.world.pantry.seeds }));
+check(sent.sent === 1 && sent.seeds === 7, 'sending an order uses up the goods and thanks the farm');
+await pg.click('#toolbar >> text=Look');
 
 // journal & settings
 await pg.click('#toolbar >> text=Journal');
@@ -120,10 +161,11 @@ const before = await pg.evaluate(() => {
 await pg.reload();
 await pg.waitForTimeout(3000);
 const welcome = await pg.isVisible('text=Start my farm');
-const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time, pond: window.bugfarm.journal.progress.levels.pond, shrimp: window.bugfarm.journal.canUse('adopt', 'shrimp') }));
+const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time, pond: window.bugfarm.journal.progress.levels.pond, shrimp: window.bugfarm.journal.canUse('adopt', 'shrimp'), sent: window.bugfarm.journal.orders.sent, lily: window.bugfarm.game.world.pantry.lily }));
 check(!welcome, 'reload skips the welcome (save found)');
 check(Math.abs(after.n - before.n) <= 3 && after.t >= before.t, `tank restored after reload (${before.n} → ${after.n} critters)`);
 check(after.pond === 2 && after.shrimp, 'farm levels and unlocks survive a reload');
+check(after.sent === 1 && after.lily >= 1, 'the basket and sent orders survive a reload');
 
 check(errors.length === 0, 'no errors on the page' + (errors.length ? ':\n' + [...new Set(errors)].slice(0, 6).join('\n') : ''));
 await browser.close();

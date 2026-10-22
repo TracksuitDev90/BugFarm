@@ -1,6 +1,7 @@
 // Behaviour library. Each behaviour scores how much a critter wants to do it
 // right now, then drives the body while it runs.
 import { DAY_LEN, W } from '../config.js';
+import { JOBS } from '../data/goods.js';
 import { clamp, clamp01, smoothstep } from '../util/math.js';
 import { rrange, chance, rpick } from '../util/rng.js';
 import {
@@ -26,6 +27,13 @@ function goTo(c, tgt) {
   return true;
 }
 
+// A grown-up with a job keeps it in mind while it potters about.
+function jobLine(c) {
+  const j = JOBS[c.sp];
+  if (!j || !j.lines || !c.isAdult || Math.random() < 0.35) return '';
+  return rpick(j.lines);
+}
+
 export const BEHAVIORS = {};
 function def(id, b) {
   b.id = id;
@@ -49,7 +57,7 @@ def('idle', {
     }
     return c.brain.t < d.dur;
   },
-  thought: (c) => rpick(['Just looking around.', 'Hmm-hmm-hmm...', 'What a nice day.', 'Thinking about snacks.']),
+  thought: (c) => jobLine(c) || rpick(['Just looking around.', 'Hmm-hmm-hmm...', 'What a nice day.', 'Thinking about snacks.']),
 });
 
 // --------------------------------------------------------------------- wander
@@ -72,9 +80,10 @@ def('wander', {
     return c.brain.t < 25;
   },
   thought: (c) =>
-    c.traits.curious > 0.6
+    jobLine(c) ||
+    (c.traits.curious > 0.6
       ? rpick(['Ooh, what is over there?', 'Exploring ' + c.brain.data.zone + '!', 'Adventure time!'])
-      : rpick(['Having a little stroll.', 'Just pottering about.', 'Stretching my legs.']),
+      : rpick(['Having a little stroll.', 'Just pottering about.', 'Stretching my legs.'])),
 });
 
 // --------------------------------------------------------------------- forage
@@ -549,7 +558,9 @@ def('mate', {
     if (b.needs === 'aphid' && w.count('aphid') < 2) return 0;
     if (b.mode === 'solo') return 0.5;
     if (b.mode === 'hive') {
-      if (!w.hive() || (c.memory.pollen || 0) < 6) return 0;
+      // the bee hotel raises a new bee once enough pollen is put by
+      const h = w.hive();
+      if (!h || (h.brood || 0) < 6) return 0;
       return 0.6;
     }
     const m = c.memory;
@@ -593,8 +604,10 @@ def('mate', {
       if (c.arrived || Math.hypot(c.x - d.hive.x, c.y - (d.hive.y - 30)) < 14) {
         d.t = (d.t || 0) + dt;
         if (d.t > 2) {
-          w.reproduce(c, null);
-          c.memory.pollen = 0;
+          if ((d.hive.brood || 0) >= 6) {
+            d.hive.brood -= 6;
+            w.reproduce(c, null);
+          }
           return false;
         }
       }
@@ -624,7 +637,7 @@ def('mate', {
   thought: (c) => {
     const d = c.brain.data;
     if (d.solo) return 'Feeling motherly...';
-    if (d.hive) return 'Bringing pollen home to the bee hotel.';
+    if (d.hive) return 'Tucking a new egg into the bee hotel.';
     return d.hearts ? 'Twitterpated!' : `Looking for ${d.partner ? d.partner.name : 'a special friend'}.`;
   },
 });
@@ -759,7 +772,7 @@ def('pollinate', {
         d.t = 0;
         w.eat(c, { kind: 'plant', plant: d.fl.plant, slot: d.fl.slot }, 2);
         if (d.fl.plant.pollinate(d.fl.slot)) w.events.emit('pollinate', { c, plant: d.fl.plant });
-        c.memory.pollen = (c.memory.pollen || 0) + 1;
+        c.memory.pollen = Math.min(6, (c.memory.pollen || 0) + 1);
         const v = c.memory.visited || (c.memory.visited = []);
         v.push(d.fl.key);
         if (v.length > 6) v.shift();
@@ -774,7 +787,178 @@ def('pollinate', {
     } else if (c.mode !== 'fly' && c.mode !== 'climb') c.takeOff();
     return c.brain.t < 60;
   },
-  thought: (c) => (c.sp === 'bee' ? rpick(['Bzz! Flower to flower!', 'Collecting pollen. Busy busy!', 'This one smells lovely.']) : 'Sipping sweet nectar.'),
+  thought: (c, w) => {
+    if (c.sp !== 'bee') return rpick(['Sipping sweet nectar.', 'Every flower I visit can make seeds!']);
+    if ((c.memory.pollen || 0) >= 3 && !w.hive()) return 'My pollen baskets are full, but there is no bee hotel to make honey in!';
+    return rpick(['Bzz! Flower to flower!', 'Filling my pollen baskets. Busy busy!', 'This one smells lovely.']);
+  },
+});
+
+// --------------------------------------------------------------------- bring (bees fly their pollen home to make honey)
+def('bring', {
+  can: (c) => c.sp === 'bee',
+  score(c, w) {
+    const p = c.memory.pollen || 0;
+    if (p < 3 || !w.hive()) return 0;
+    return (0.5 + Math.min(6, p) * 0.08) * (0.6 + 0.4 * c.act);
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.hive = w.hive();
+    if (c.mode !== 'fly') c.takeOff();
+    if (d.hive) c.seekPoint(d.hive.x + rrange(-4, 4), d.hive.y - 34);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!d.hive || d.hive.removed) return false;
+    if (c.mode !== 'fly') c.takeOff();
+    if (c.arrived || Math.hypot(c.x - d.hive.x, c.y - (d.hive.y - 34)) < 12) {
+      d.t = (d.t || 0) + dt;
+      c.facing = d.hive.x >= c.x ? 1 : -1;
+      if (d.t > 1.5) {
+        w.depositPollen(c, d.hive);
+        return false;
+      }
+    } else if (!c.target || Math.abs(c.target.x - d.hive.x) > 10) c.seekPoint(d.hive.x, d.hive.y - 34); // (the keeper may have moved the hotel)
+    return c.brain.t < 45;
+  },
+  thought: (c) => (c.brain.data.t ? 'Packing pollen into the honeycomb.' : 'Baskets full! Flying home to make honey.'),
+});
+
+// --------------------------------------------------------------------- recycle (beetles roll leftovers into compost)
+// Leftovers going off, or fallen leaves, on dry land the beetle can reach.
+function findLitter(c, w) {
+  let best = null;
+  let bd = 340;
+  for (const f of w.foods) {
+    if (f.gone || f.inWater || f.state !== 'rest' || f.amount < 0.05) continue;
+    if (f.type !== 'leaves' && f.fresh > 0.45) continue;
+    const d = Math.abs(f.x - c.x) + Math.abs(f.y - c.y) * 0.5;
+    if (d >= bd || !reachable(c, w, f.x, f.y - 2)) continue;
+    bd = d;
+    best = f;
+  }
+  return best;
+}
+// Somewhere to bury a compost ball: beside a plant that could use it, or
+// a patch of open ground a little way off.
+function burySpot(c, w) {
+  const t = w.terrain;
+  let best = null;
+  let bd = 1e9;
+  for (const p of w.plants) {
+    if (p.dead || p.def.aquatic || Math.abs(p.x - c.x) > 180) continue;
+    const x = p.x + (p.x > c.x ? -10 : 10);
+    if (!reachable(c, w, x, t.surfaceY(x) - 3)) continue;
+    const d = Math.abs(x - c.x) * (0.6 + p.health * 0.6) + (w.goods.some((g) => g.type === 'compost' && Math.abs(g.x - x) < 16) ? 200 : 0);
+    if (d < bd) {
+      bd = d;
+      best = x;
+    }
+  }
+  if (best == null) {
+    for (let i = 0; i < 6 && best == null; i++) {
+      const x = Math.min(W - 12, Math.max(12, c.x + rrange(40, 110) * (chance(0.5) ? 1 : -1)));
+      if (reachable(c, w, x, t.surfaceY(x) - 3)) best = x;
+    }
+  }
+  return best == null ? null : { x: best, y: t.surfaceY(best) };
+}
+def('recycle', {
+  can: (c) => c.sp === 'beetle' && c.isAdult && c.mode === 'walk',
+  score(c, w) {
+    if (c.hunger > 0.55 || c.act < 0.3) return 0;
+    const m = c.memory;
+    if (m.ball) return 0.85; // already rolling one: see it through
+    if (!m.litT || w.time - m.litT > 3) {
+      m.litT = w.time;
+      m.lit = findLitter(c, w);
+    }
+    if (!m.lit) return 0;
+    return (0.4 + (1 - c.traits.lazy) * 0.25) * (0.6 + 0.4 * c.act);
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const m = c.memory;
+    if (m.ball) {
+      d.phase = 'roll';
+      d.spot = burySpot(c, w);
+      if (d.spot) c.seekPoint(d.spot.x, d.spot.y);
+      return;
+    }
+    d.phase = 'go';
+    d.f = m.lit;
+    if (d.f) c.seek({ kind: 'food', food: d.f });
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const m = c.memory;
+    if (d.phase === 'go') {
+      if (!d.f || d.f.gone || d.f.amount < 0.02) return false;
+      if (c.arrived) {
+        d.phase = 'gather';
+        d.t = 0;
+        c.halt();
+        c.facing = d.f.x >= c.x ? 1 : -1;
+      } else if (c.blocked || c.brain.t > 30) return false;
+      return true;
+    }
+    if (d.phase === 'gather') {
+      c.pose = 'eat';
+      d.t += dt;
+      if (d.t > 2.4) {
+        const take = Math.min(d.f.amount, 0.6);
+        d.f.amount -= take;
+        w.nibbled(d.f, c);
+        if (d.f.amount <= 0.01) w.removeFood(d.f);
+        m.ball = { r: 2.4 + take * 2.2 };
+        c.pose = 'idle';
+        d.phase = 'roll';
+        d.spot = burySpot(c, w);
+        if (!d.spot) return false;
+        c.seekPoint(d.spot.x, d.spot.y);
+      }
+      return true;
+    }
+    if (d.phase === 'roll') {
+      if (!d.spot) return false;
+      if (c.arrived || Math.abs(c.x - d.spot.x) < 6) {
+        d.phase = 'bury';
+        d.t = 0;
+        c.halt();
+      } else if (c.blocked || c.brain.t > 45) {
+        // can't get there: bury it right here
+        d.spot = { x: c.x, y: c.y };
+        d.phase = 'bury';
+        d.t = 0;
+        c.halt();
+      }
+      return true;
+    }
+    // bury
+    c.pose = 'dig';
+    d.t += dt;
+    if (d.t > 2.4) {
+      const bx = c.x + c.facing * 6;
+      w.makeCompost(c, bx, w.terrain.surfaceY(bx), 'ball');
+      w.dust(bx, w.terrain.surfaceY(bx), 3);
+      m.ball = null;
+      c.pose = 'idle';
+      c.emote('heart', 1.2);
+      return false;
+    }
+    return true;
+  },
+  stop(c) {
+    if (c.pose === 'dig' || c.pose === 'eat') c.pose = 'idle';
+  },
+  thought(c) {
+    const p = c.brain.data.phase;
+    if (p === 'gather') return 'Patting the leftovers into a nice round ball.';
+    if (p === 'roll') return 'Rolling my compost ball somewhere useful.';
+    if (p === 'bury') return 'Burying it by the plants. They\'ll love this!';
+    return 'Ooh, leftovers! Time to recycle.';
+  },
 });
 
 // --------------------------------------------------------------------- graze (algae)
@@ -1024,7 +1208,7 @@ export const SPECIES_BEHAVIORS = {
   cricket: [...BASE, 'chirp', 'hide'],
   grasshopper: [...BASE, 'chirp'],
   gecko: [...BASE, 'hunt', 'bask', 'hide'],
-  beetle: [...BASE, 'headstand', 'hide'],
+  beetle: [...BASE, 'headstand', 'hide', 'recycle'],
   goldfish: [...BASE, 'hunt', 'graze'],
   frog: [...BASE, 'hunt', 'croak', 'graze'],
   turtle: [...BASE, 'bask'],
@@ -1034,7 +1218,7 @@ export const SPECIES_BEHAVIORS = {
   aphid: ['idle', 'sap', 'mate', 'comfort'],
   butterfly: [...BASE, 'pollinate', 'pupate'],
   snail: [...BASE, 'estivate'],
-  bee: [...BASE, 'pollinate'],
+  bee: [...BASE, 'pollinate', 'bring'],
   worm: ['idle', 'wander', 'rest', 'forage', 'comfort', 'mate', 'surface'],
   firefly: [...BASE, 'glow'],
   pillbug: [...BASE, 'hide'],

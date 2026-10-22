@@ -9,6 +9,7 @@ import { FOOD_ORDER } from '../src/data/foods.js';
 import { PLANT_ORDER } from '../src/data/plants.js';
 import { DECOR_ORDER } from '../src/data/decor.js';
 import { mulberry32 } from '../src/util/rng.js';
+import { Journal } from '../src/sim/journal.js';
 
 const days = +(process.argv[2] || 4);
 const seed = +(process.argv[3] || 1);
@@ -16,6 +17,8 @@ const R = mulberry32(seed);
 const pick = (a) => a[Math.floor(R() * a.length)];
 const w = new World();
 w.newGame(seed, seed % 2 ? 'farm' : true);
+const j = new Journal();
+j.attach(w);
 let issues = 0;
 const report = (msg) => {
   if (issues++ < 15) console.log('  ! ' + msg);
@@ -24,7 +27,7 @@ const steps = Math.round((days * DAY_LEN) / SIM_DT);
 const actions = {};
 for (let i = 0; i < steps; i++) {
   if (i % 90 === 0) {
-    const a = Math.floor(R() * 11);
+    const a = Math.floor(R() * 12);
     const x = R() * W;
     const y = R() * H;
     try {
@@ -61,6 +64,15 @@ for (let i = 0; i < steps; i++) {
           actions.chore = (actions.chore || 0) + 1;
           break;
         }
+        case 11: {
+          // goods and Busytown's orders
+          const k = Math.floor(R() * 3);
+          if (k === 0 && w.goods.length) w.collectGood(pick(w.goods));
+          else if (k === 1) for (const o of j.orders.ready()) j.orders.send(o);
+          else if (j.orders.list.length) j.orders.decline(pick(j.orders.list));
+          actions.orders = (actions.orders || 0) + 1;
+          break;
+        }
       }
     } catch (e) {
       report('action ' + a + ' threw: ' + (e.stack || e));
@@ -68,6 +80,7 @@ for (let i = 0; i < steps; i++) {
   }
   try {
     w.step(SIM_DT);
+    j.update(SIM_DT);
   } catch (e) {
     report('step threw: ' + (e.stack || e).split('\n').slice(0, 4).join(' | '));
     break;
@@ -79,10 +92,13 @@ for (let i = 0; i < steps; i++) {
     }
     for (const f of w.foods) if (!Number.isFinite(f.x) || !Number.isFinite(f.y) || f.y > H + 5) report(`food ${f.type} bad pos ${f.x},${f.y} state=${f.state}`);
     for (const p of w.plants) if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !p.shape.box.every(Number.isFinite)) report(`plant ${p.type} bad`);
+    for (const g of w.goods) if (!Number.isFinite(g.x) || !Number.isFinite(g.y) || g.y > H + 5) report(`good ${g.type} bad pos ${g.x},${g.y}`);
+    for (const [k, v] of Object.entries(w.pantry)) if (!Number.isFinite(v) || v < 0) report(`pantry ${k} = ${v}`);
   }
 }
 const env = w.env;
 console.log(`fuzz ${days} days seed ${seed}: ${issues} issue(s); actions ${JSON.stringify(actions)}`);
 console.log(`end: ${w.creatures.length} critters, ${w.plants.length} plants, ${w.foods.length} foods, ${w.decor.length} decor; O2 ${env.pond.oxygen.toFixed(2)} clarity ${env.pond.clarity.toFixed(2)}; water ${w.terrain.waterLevel}`);
 console.log('counts', JSON.stringify(w.counts));
+console.log(`goods waiting ${w.goods.length}, basket ${JSON.stringify(w.pantry)}, orders open ${j.orders.list.length}, sent ${j.orders.sent}`);
 process.exit(issues ? 1 : 0);

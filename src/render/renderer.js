@@ -6,15 +6,19 @@ import { SpriteCache, bucketFor } from './sprites.js';
 import { Particles } from './particles.js';
 import { CREATURE_ART, PALETTES, WINGS, wingAngle, butterflyLift, drawWingBlade, wingBox, drawButterflyWings, drawWorm, drawBrood, drawHalo } from '../art/creatures.js';
 import { drawFood } from '../art/food.js';
-import { drawPlant, drawVine } from '../art/plants.js';
+import { drawPlant } from '../art/plants.js';
+import { drawVine, vineBox } from '../art/vines.js';
 import { DECOR_ART, decorBox } from '../art/decor.js';
+import { drawGood, goodBox } from '../art/goods.js';
 import { drawIcon } from '../art/icons.js';
 import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops.js';
 import { setMisregistration } from '../art/ink.js';
 import { finishSprite, grainTile } from '../art/paper.js';
 import { LightRays } from './light.js';
-import { LAMP_X, MISTER_X } from '../world/environment.js';
+import { LAMP_X, MISTER_X, HEATER_X, FILTER_X } from '../world/environment.js';
+import { heatLamp, mister, pondHeater, pondFilter, tag } from '../art/equipment.js';
 import { zoneBand, zoneStatus } from '../sim/care.js';
+import { GAUGE_AT, equipmentBox } from '../sim/equipment.js';
 import { angleDiff, clamp, clamp01, lerp } from '../util/math.js';
 import { hash1 } from '../util/rng.js';
 
@@ -49,11 +53,20 @@ const POSES = {
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
 // How much each walker bobs with its footsteps (snails glide instead).
 const STEP_BOB = { cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
-// Stick-on strip thermometers on the glass, one per zone.
-export const GAUGE_AT = { desert: [34, 40], pond: [580, 40], jungle: [1492, 40] };
-// Vines trailing from the lid over the jungle: [x, length]. They keep clear
-// of the jungle lamp and mister.
-const VINES = [[1078, 150], [1132, 240], [1186, 120], [1402, 200], [1452, 110], [1528, 260], [1584, 170]];
+// Vines trailing from the lid over the jungle, each a different plant. They
+// keep clear of the jungle mister's spray, the lamp and the thermometer.
+// liana: a woody rope looped between two hooks `span` apart, sagging `sag`.
+const VINES = [
+  { x: 1072, kind: 'pothos', len: 196, seed: 3 },
+  { x: 1100, kind: 'liana', len: 128, span: 72, sag: 92, seed: 11 },
+  { x: 1202, kind: 'pearls', len: 132, seed: 17 },
+  { x: 1378, kind: 'hoya', len: 158, seed: 23 },
+  { x: 1418, kind: 'passion', len: 236, seed: 29 },
+  { x: 1458, kind: 'moss', len: 104, seed: 31 },
+  { x: 1520, kind: 'morning', len: 252, seed: 37 },
+  { x: 1556, kind: 'pitcher', len: 176, seed: 43 },
+  { x: 1586, kind: 'hearts', len: 214, seed: 41 },
+];
 
 function artPose(c) {
   let p = c.pose;
@@ -108,6 +121,7 @@ export class Renderer {
     this.screenScale = 1;
     this.paused = false;
     this.flapT = 0; // wing-beat clock: real time, but stops while paused
+    this.mail = 0; // letters from Busytown waiting (raises the mailbox flag)
     this.setQuality('medium', true);
   }
 
@@ -369,6 +383,7 @@ export class Renderer {
       if (t.waterAt(c.x, c.y) && c.sp !== 'worm') this.drawCreatureE(g, c, alpha);
     }
     this.setWorld(g);
+    this.drawPondGear(g);
     this.drawWater(g);
     // --- underground: ant brood & stores, worms
     this.drawColonies(g);
@@ -379,6 +394,7 @@ export class Renderer {
     for (const p of w.plants) if (!p.def.aquatic && this.visible(p.x, p.y, 120)) this.drawPlantE(g, p);
     this.drawVines(g);
     for (const f of w.foods) if ((!f.inWater || f.state === 'float') && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
+    this.drawGoods(g, false);
     for (const c of w.creatures) {
       if (c.sp === 'worm' || !this.visible(c.x, c.y, 40)) continue;
       if (!t.waterAt(c.x, c.y)) this.drawCreatureE(g, c, alpha);
@@ -386,6 +402,7 @@ export class Renderer {
     this.setWorld(g);
     for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     this.drawWaterSurface(g);
+    this.drawGoods(g, true);
     this.light.draw(this, g, w, this.time, { rays: this.q.rays, liveWater: this.q.liveRays });
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
@@ -479,12 +496,55 @@ export class Renderer {
     }
   }
 
+  // Goods waiting to be collected pop in, bob gently and twinkle now and
+  // then so they're easy to spot. floating: just the water lilies.
+  drawGoods(g, floating) {
+    const w = this.world;
+    if (!w.goods.length) return;
+    const b = Math.min(this.bucket, 3);
+    for (const gd of w.goods) {
+      if ((gd.type === 'lily') !== floating || !this.visible(gd.x, gd.y, 30)) continue;
+      const s = this.sprites.get('gd|' + gd.type + gd.look, b, goodBox(gd.type), (gg) => drawGood(gg, gd.type, gd.look));
+      const k = Math.sin(this.time * 2.2 + gd.id);
+      const sc = 0.5 + 0.5 * clamp01(gd.age / 0.5);
+      const bob = gd.type === 'lily' ? k * 0.6 : gd.type === 'honey' || gd.type === 'compost' ? 0 : k * 0.4;
+      this.put(g, gd.x, gd.y + bob, gd.type === 'silk' ? k * 0.08 : 0, sc, sc);
+      g.globalAlpha = clamp01((gd.life - gd.age) / 30);
+      g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+      g.globalAlpha = 1;
+      if (!this.paused && (this.time + gd.id * 0.77) % 3.4 < (this.dt || 0)) this.fx.sparkle(gd.x, gd.y - 6, 1);
+    }
+    this.setWorld(g);
+  }
+
+  // The bee hotel's nesting holes fill with honey, bottom row first, as the
+  // bees bring pollen home.
+  drawHoneycomb(g, d) {
+    const n = Math.round(this.world.honeyFill(d) * 12);
+    for (let i = 0; i < n; i++) {
+      const x = -8.4 + (i % 4) * 5.6;
+      const y = -26 - Math.floor(i / 4) * 7;
+      g.beginPath();
+      g.arc(x, y, 1.9, 0, TAU);
+      g.fillStyle = '#f0a830';
+      g.fill();
+      g.beginPath();
+      g.arc(x - 0.6, y - 0.6, 0.6, 0, TAU);
+      g.fillStyle = 'rgba(255,255,255,0.7)';
+      g.fill();
+    }
+  }
+
   drawVines(g) {
     const b = Math.min(this.bucket, 3);
-    VINES.forEach(([x, len], i) => {
-      if (!this.visible(x, len / 2, len / 2 + 30)) return;
-      const s = this.sprites.get('vine|' + i, b, [-24, -6, 24, len + 10], (gg) => drawVine(gg, len, i * 7 + 3));
-      this.put(g, x, 0, Math.sin(this.world.time * 0.5 + i * 1.7) * 0.025, 1, 1);
+    VINES.forEach((v, i) => {
+      const box = vineBox(v);
+      if (!this.visible(v.x + (box[0] + box[2]) / 2, box[3] / 2, (box[2] - box[0]) / 2 + box[3] / 2)) return;
+      const s = this.sprites.get('vine|' + i, b, box, (gg) => drawVine(gg, v));
+      // hanging vines swing from their hook; a looped liana just breathes
+      const k = Math.sin(this.world.time * 0.5 + i * 1.7);
+      if (v.span) this.put(g, v.x, 0, 0, 1, 1 + k * 0.012);
+      else this.put(g, v.x, 0, k * (0.02 + 2 / v.len), 1, 1);
       g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
     });
     this.setWorld(g);
@@ -493,10 +553,14 @@ export class Renderer {
   drawDecorE(g, d) {
     const def = d.def;
     const box = decorBox(def);
-    const s = this.sprites.get('d|' + d.type, Math.min(this.bucket, 3), box, (gg) => DECOR_ART[d.type](gg, 0));
+    const bare = d.type === 'mailbox';
+    const s = this.sprites.get('d|' + d.type + (bare ? '|bare' : ''), Math.min(this.bucket, 3), box, (gg) => DECOR_ART[d.type](gg, 0, bare));
     this.put(g, d.x, d.y, 0, d.flip ? -1 : 1, 1);
     g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+    // the mailbox's flag is up while Busytown's letters are waiting
+    if (bare) DECOR_ART.mailboxFlag(g, this.mail > 0);
     if (d.type === 'windmill') DECOR_ART.windmillBlades(g, this.world.time);
+    if (d.def.hive) this.drawHoneycomb(g, d);
   }
 
   drawFoodE(g, f, alpha) {
@@ -601,6 +665,7 @@ export class Renderer {
     g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
     if (wspec && !wspec.butterfly) this.drawWings(g, c, wspec, ph, false, bucket);
     if (c.carry) this.drawCarry(g, c);
+    if (c.memory.ball && !c.dead) this.drawBall(g, c);
     g.globalAlpha = 1;
     if (c.dead && c.cause !== 'eaten' && c.deadT < 4) this.drawSpirit(g, c, x, y);
     if (c.tongue) {
@@ -681,6 +746,34 @@ export class Renderer {
     g.lineWidth = 0.5;
     g.strokeStyle = INK;
     g.stroke();
+  }
+
+  // A beetle's compost ball, rolled along in front of it (in the beetle's
+  // own transform, so +x is the way it's facing).
+  drawBall(g, c) {
+    const r = c.memory.ball.r;
+    const by = c.foot / (c.drawScale || 1) - r;
+    g.save();
+    g.translate(8.5 + r, by);
+    g.rotate((c.x / r) * Math.sign(c.facing || 1));
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.fillStyle = '#7a5a3a';
+    g.fill();
+    g.lineWidth = 0.7;
+    g.strokeStyle = INK;
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, r * 0.62, 0.3, 2.2);
+    g.moveTo(-r * 0.3, -r * 0.5);
+    g.arc(0, 0, r * 0.3, 3.4, 5.2);
+    g.lineWidth = 0.5;
+    g.strokeStyle = '#4e3622';
+    g.stroke();
+    g.fillStyle = '#8cb85a';
+    g.fillRect(r * 0.2, -r * 0.55, r * 0.35, r * 0.22);
+    g.fillRect(-r * 0.6, r * 0.15, r * 0.3, r * 0.2);
+    g.restore();
   }
 
   drawBuried(g, c) {
@@ -823,152 +916,70 @@ export class Renderer {
     }
   }
 
+  // The pond heater and filter stand in the water by the jungle bank. They're
+  // drawn before the water so the parts below the surface look submerged.
+  drawPondGear(g) {
+    const env = this.world.env;
+    const wl = this.world.terrain.waterLevel;
+    if (!this.visible(1000, wl, 160)) return;
+    const p = env.pond;
+    const b = Math.min(this.bucket, 3);
+    // the heater's coil glows while it's actually warming the water
+    const heating = p.heater ? Math.round(clamp01((p.heaterTarget - p.temp) / 1.2 + 0.15) * 4) / 4 : 0;
+    const hs = { on: p.heater, heating, target: Math.round(p.heaterTarget - 6) / 28 };
+    this.blit(g, `eq|heater|${p.heater}|${heating}|${Math.round(p.heaterTarget)}`, b, [-14, -38, 20, 76], HEATER_X, wl, (gg) => pondHeater(gg, 0, 0, hs));
+    const fs = { flow: env.filterFlow, setting: Math.round(p.filter * 20) / 20, clean: Math.round(p.filterClean * 12) / 12, time: this.time };
+    this.blit(g, `eq|filter|${fs.setting}|${fs.clean}`, b, [-28, -19, 16, 52], FILTER_X, wl, (gg) => pondFilter(gg, 0, 0, { ...fs, part: 'body' }));
+    pondFilter(g, FILTER_X, wl, { ...fs, part: 'live' });
+  }
+
+  // Draw a cached sprite at (x, y) in the world.
+  blit(g, key, bucket, box, x, y, draw) {
+    const s = this.sprites.get(key, bucket, box, draw);
+    this.put(g, x, y, 0, 1, 1);
+    g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+    this.setWorld(g);
+  }
+
   drawEquipment(g) {
     const env = this.world.env;
     const t = this.world.terrain;
     this.setWorld(g);
-    const shadeCols = { desert: '#e2553f', pond: '#77b255', jungle: '#4c8fd6' };
+    // name tags fade in once you're close enough to read them
+    const tagA = clamp01((this.cam.zoom - 1.05) / 0.45);
+    const time = this.time;
+    const b = Math.min(this.bucket, 3);
     for (const z of ['desert', 'pond', 'jungle']) {
       const x = LAMP_X[z];
-      if (!this.visible(x, 0, 60)) continue;
-      const p = env[z].lamp;
-      g.beginPath();
-      g.moveTo(x, -26);
-      g.lineTo(x, -2);
-      g.lineWidth = 1.6;
-      g.strokeStyle = INK;
-      g.stroke();
-      // bulb
-      g.beginPath();
-      g.ellipse(x, 13, 6.5, 5.5, 0, 0, TAU);
-      g.fillStyle = p > 0.02 ? `rgb(${Math.round(lerp(220, 255, p))},${Math.round(lerp(200, 236, p))},${Math.round(lerp(150, 140, p))})` : '#cfc6b4';
-      g.fill();
-      g.lineWidth = 1;
-      g.strokeStyle = INK;
-      g.stroke();
-      // shade
-      g.beginPath();
-      g.moveTo(x - 6, -3);
-      g.lineTo(x + 6, -3);
-      g.quadraticCurveTo(x + 9, 2, x + 22, 11);
-      g.lineTo(x - 22, 11);
-      g.quadraticCurveTo(x - 9, 2, x - 6, -3);
-      g.closePath();
-      g.fillStyle = shadeCols[z];
-      g.fill();
-      g.lineWidth = 1.3;
-      g.stroke();
-      g.beginPath();
-      g.ellipse(x - 8, 5, 4, 1.4, -0.4, 0, TAU);
-      g.fillStyle = 'rgba(255,255,255,0.45)';
-      g.fill();
+      if (!this.visible(x, 0, 70)) continue;
+      const p = Math.round(env[z].lamp * 20) / 20;
+      this.blit(g, `eq|lamp|${z}|${p}`, b, [-24, -32, 32, 37], x, 0, (gg) => heatLamp(gg, 0, { power: p, zone: z, part: 'body' }));
+      heatLamp(g, x, { power: p, zone: z, time, part: 'live' });
+      tag(g, 'heat lamp', x + 17, 18, 16, 18, tagA);
     }
     for (const z of ['desert', 'jungle']) {
       const x = MISTER_X[z];
-      if (!this.visible(x, 0, 40)) continue;
-      const m = env[z].mister;
-      g.beginPath();
-      g.rect(x - 4, -6, 8, 10);
-      g.fillStyle = '#c9a65a';
-      g.fill();
-      g.lineWidth = 1;
-      g.strokeStyle = INK;
-      g.stroke();
-      g.beginPath();
-      g.moveTo(x - 5, 4);
-      g.lineTo(x + 5, 4);
-      g.lineTo(x + 3, 8);
-      g.lineTo(x - 3, 8);
-      g.closePath();
-      g.fillStyle = '#9aa0a6';
-      g.fill();
-      g.stroke();
-      // its water bottle, showing how much is left
-      const water = env[z].water;
-      const bx = x + 9;
-      g.beginPath();
-      g.roundRect ? g.roundRect(bx, -16, 9, 18, 2.5) : g.rect(bx, -16, 9, 18);
-      g.fillStyle = 'rgba(235,246,252,0.9)';
-      g.fill();
-      if (water > 0.01) {
-        g.fillStyle = '#7cc0e6';
-        g.fillRect(bx + 1, 1 - 16 * water, 7, 16 * water);
-      }
-      g.lineWidth = water < 0.15 && m > 0.02 ? 1.2 + Math.max(0, Math.sin(this.time * 5)) * 0.8 : 1;
-      g.strokeStyle = water < 0.15 && m > 0.02 ? '#e2553f' : INK;
-      g.stroke();
-      g.beginPath();
-      g.moveTo(bx + 2, -18);
-      g.lineTo(bx + 7, -18);
-      g.lineWidth = 2.5;
-      g.strokeStyle = INK;
-      g.stroke();
-      g.lineWidth = 1;
-      g.beginPath();
-      g.moveTo(x + 4, -2);
-      g.lineTo(bx, -2);
-      g.stroke();
-      if (env.misting(z) > 0.02) {
-        g.save();
-        g.globalAlpha = 0.18 * m;
-        g.beginPath();
-        g.moveTo(x - 3, 8);
-        g.lineTo(x + 3, 8);
-        g.lineTo(x + 70, 90);
-        g.lineTo(x - 70, 90);
-        g.closePath();
-        g.fillStyle = '#d9f0fb';
-        g.fill();
-        g.restore();
-      }
+      if (!this.visible(x + 20, 0, 90)) continue;
+      const e = env[z];
+      const ms = { setting: Math.round(e.mister * 20) / 20, spraying: env.misting(z), water: Math.round(e.water * 32) / 32, time };
+      const empty = ms.water < 0.15 && ms.setting > 0.02;
+      this.blit(g, `eq|mister|${ms.setting}|${ms.water}|${empty}|${ms.spraying > 0.02}`, b, [-8, -34, 53, 30], x, 0, (gg) => mister(gg, 0, { ...ms, part: 'body' }));
+      mister(g, x, { ...ms, part: 'live' });
+      tag(g, 'mister', x, 8, -18, 14, tagA);
+      tag(g, 'water jug', x + 42, 20, 10, 10, tagA);
     }
-    // pond heater & filter
+    // pond heater & filter labels (the gear itself is drawn under the water)
     const wl = t.waterLevel;
-    if (this.visible(1000, wl, 140)) {
+    if (this.visible(1000, wl, 160)) {
       const p = env.pond;
-      g.beginPath();
-      g.roundRect ? g.roundRect(986, wl - 30, 9, 110, 4) : g.rect(986, wl - 30, 9, 110);
-      g.fillStyle = 'rgba(230,245,250,0.55)';
-      g.fill();
-      g.lineWidth = 1;
-      g.strokeStyle = INK;
-      g.stroke();
-      for (let i = 0; i < 8; i++) {
-        g.beginPath();
-        g.moveTo(987, wl - 10 + i * 10);
-        g.lineTo(994, wl - 5 + i * 10);
-        g.lineWidth = 0.8;
-        g.strokeStyle = p.heater ? '#e2553f' : '#9a8a7a';
-        g.stroke();
-      }
-      g.beginPath();
-      g.arc(990.5, wl - 24, 2.2, 0, TAU);
-      g.fillStyle = p.heater ? '#ff5a3c' : '#6a6a6a';
-      g.fill();
-      // filter box hanging on the right (it browns as the sponge clogs)
-      g.beginPath();
-      g.rect(1018, wl - 46, 36, 30);
-      const gunk = 1 - p.filterClean;
-      g.fillStyle = `rgb(${Math.round(lerp(232, 168, gunk))},${Math.round(lerp(226, 148, gunk))},${Math.round(lerp(214, 104, gunk))})`;
-      g.fill();
-      g.lineWidth = 1.2;
-      g.strokeStyle = INK;
-      g.stroke();
-      g.beginPath();
-      g.rect(1032, wl - 16, 6, 90);
-      g.fillStyle = 'rgba(220,235,240,0.7)';
-      g.fill();
-      g.stroke();
-      g.font = "bold 7px 'Patrick Hand', sans-serif";
-      g.fillStyle = INK;
-      g.textAlign = 'center';
-      g.fillText('FILTER', 1036, wl - 28);
+      tag(g, 'heater', HEATER_X - 2, wl - 22, -20, -10, tagA);
+      tag(g, 'filter', FILTER_X + 10, wl - 14, 14, -12, tagA);
       // the fill line on the glass, once the pond has evaporated below it
       if (wl - p.full > 6 && this.visible(800, p.full, 300)) {
         g.setLineDash([5, 4]);
         g.beginPath();
         g.moveTo(700, p.full);
-        g.lineTo(980, p.full);
+        g.lineTo(950, p.full);
         g.lineWidth = 0.9;
         g.strokeStyle = 'rgba(40,80,120,0.6)';
         g.stroke();
@@ -977,17 +988,6 @@ export class Renderer {
         g.textAlign = 'left';
         g.fillStyle = 'rgba(40,80,120,0.8)';
         g.fillText('fill line', 704, p.full - 2.5);
-      }
-      if (this.world.env.filterFlow > 0.02) {
-        g.beginPath();
-        for (let i = 0; i < 4; i++) {
-          const yy = wl - 16 + i * 4;
-          g.moveTo(1018, yy);
-          g.quadraticCurveTo(1010, yy + 2 + Math.sin(this.time * 8 + i) * 1.5, 1004, wl + 2);
-        }
-        g.lineWidth = 1.1;
-        g.strokeStyle = `rgba(200,235,250,${0.4 + this.world.env.filterFlow * 0.5})`;
-        g.stroke();
       }
     }
   }
@@ -1091,6 +1091,21 @@ export class Renderer {
   }
 
   drawSelection(g, c, alpha) {
+    if (c.kind === 'equip') {
+      const b = equipmentBox(this.world, c);
+      if (!b) return;
+      this.setWorld(g);
+      const m = 3 + Math.sin(this.time * 4) * 1.2;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(b[0] - m, b[1] - m, b[2] - b[0] + m * 2, b[3] - b[1] + m * 2, 6);
+      else g.rect(b[0] - m, b[1] - m, b[2] - b[0] + m * 2, b[3] - b[1] + m * 2);
+      g.setLineDash([4, 3]);
+      g.lineWidth = 1.6 / Math.max(0.6, this.cam.zoom);
+      g.strokeStyle = '#f6d64a';
+      g.stroke();
+      g.setLineDash([]);
+      return;
+    }
     if (c.kind !== 'creature' && c.kind !== 'plant' && c.kind !== 'decor' && c.kind !== 'food') return;
     this.setWorld(g);
     let x = c.x;
@@ -1183,7 +1198,7 @@ export class Renderer {
       g.drawImage(spr, x - 260, -120, 520, 640);
       g.globalAlpha = Math.min(1, p) * 0.9;
       const b = this.glowSprite('rgba(255,240,190,1)');
-      g.drawImage(b, x - 22, -9, 44, 44);
+      g.drawImage(b, x - 24, 2, 48, 48);
     }
     for (const d of this.world.decor) {
       if (!d.def.light || !this.visible(d.x, d.y, 100)) continue;

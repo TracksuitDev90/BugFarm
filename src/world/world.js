@@ -1,7 +1,7 @@
 // The World owns every entity and runs the simulation step.
 import { W, H, CELL, GW, GH, MAT, DAY_LEN, MAX_CREATURES, MAX_FOOD, MAX_PLANTS, MAX_DECOR, ZONE_X } from '../config.js';
 import { Terrain, POND_L, POND_R } from './terrain.js';
-import { Environment, LAMP_X, MISTER_X } from './environment.js';
+import { Environment, LAMP_X, MISTER_X, FILTER_X } from './environment.js';
 import { SpatialHash } from './spatial.js';
 import { Emitter } from '../util/events.js';
 import { RNG, rrange, rint, chance, rpick } from '../util/rng.js';
@@ -10,13 +10,21 @@ import { Creature, nextId, setNextId } from '../entities/creature.js';
 import { Plant } from '../entities/plant.js';
 import { Food } from '../entities/food.js';
 import { Decor } from '../entities/decor.js';
+import { Good } from '../entities/good.js';
 import { SPECIES } from '../data/species.js';
 import { PLANTS } from '../data/plants.js';
 import { DECOR } from '../data/decor.js';
 import { FOODS } from '../data/foods.js';
+import { GOODS, GOOD_ORDER } from '../data/goods.js';
 import { tickBrain, force } from '../ai/brain.js';
 import { Colony } from '../ai/ants.js';
 import { preyValue } from '../ai/search.js';
+
+const MAX_GOODS = 40;
+// Pollen loads it takes to fill a jar of honey, and how much a worm eats
+// between castings.
+const HONEY_POLLEN = 20;
+const CASTING = 0.12;
 
 export class World {
   constructor() {
@@ -27,6 +35,10 @@ export class World {
     this.plants = [];
     this.foods = [];
     this.decor = [];
+    this.goods = [];
+    // what the keeper has collected, ready to send to Busytown
+    this.pantry = {};
+    for (const id of GOOD_ORDER) this.pantry[id] = 0;
     this.colonies = [];
     this.hashC = new SpatialHash(64);
     this.hashF = new SpatialHash(64);
@@ -290,6 +302,150 @@ export class World {
     if (i >= 0) this.decor.splice(i, 1);
   }
 
+  // ------------------------------------------------------------------ goods
+  addGood(type, x, y, opts = {}) {
+    if (!GOODS[type] || this.goods.length >= MAX_GOODS) return null;
+    const g = new Good(type, x, y, opts);
+    this.goods.push(g);
+    this.events.emit('good', { g, by: opts.by || null });
+    return g;
+  }
+  removeGood(g) {
+    if (g.gone) return;
+    g.gone = true;
+    const i = this.goods.indexOf(g);
+    if (i >= 0) this.goods.splice(i, 1);
+  }
+  goodsOf(type) {
+    let n = 0;
+    for (const g of this.goods) if (g.type === type) n++;
+    return n;
+  }
+  // The keeper picks a good up and pops it in the basket.
+  collectGood(g) {
+    if (!g || g.gone) return false;
+    this.removeGood(g);
+    this.pantry[g.type] = (this.pantry[g.type] || 0) + 1;
+    this.stats.collected = (this.stats.collected || 0) + 1;
+    this.sparkle(g.x, g.y - 4, 5);
+    this.events.emit('collect', { g, type: g.type });
+    return true;
+  }
+  collectAll() {
+    let n = 0;
+    for (const g of this.goods.slice()) if (this.collectGood(g)) n++;
+    return n;
+  }
+  // Nobody collected it in time. Seeds sow themselves; compost melts into
+  // the soil and feeds it; lilies and the rest simply fade.
+  goodExpired(g) {
+    this.removeGood(g);
+    if (g.type === 'seeds') {
+      const parent = this.plants.find((p) => p.id === g.src && !p.dead) || (PLANTS[g.plant] ? { def: PLANTS[g.plant], x: g.x } : null);
+      if (parent) this.spawnSeedling(parent, 70);
+    } else if (g.type === 'compost') {
+      const z = this.env.zoneAt(g.x);
+      if (this.env.fertility[z] != null) this.env.fertility[z] = Math.min(1.2, this.env.fertility[z] + 0.04);
+    }
+  }
+
+  // A bee unloads its pollen at the bee hotel. Enough loads fill a jar of
+  // honey, which waits beside the hotel; with two jars waiting the comb is
+  // full until the keeper collects them.
+  depositPollen(c, hive) {
+    const n = c.memory.pollen || 0;
+    c.memory.pollen = 0;
+    if (!n) return;
+    hive.store = (hive.store || 0) + n;
+    // some is put by to feed the young bees the hotel raises
+    hive.brood = Math.min(12, (hive.brood || 0) + n * 0.5);
+    while (hive.store >= HONEY_POLLEN) {
+      const jars = this.goods.filter((g) => g.type === 'honey' && g.src === hive.id).length;
+      if (jars >= 2) {
+        hive.store = HONEY_POLLEN;
+        break;
+      }
+      hive.store -= HONEY_POLLEN;
+      const side = this.goods.some((g) => g.type === 'honey' && g.src === hive.id && g.x < hive.x) ? 1 : -1;
+      const x = hive.x + side * 12;
+      const g = this.addGood('honey', x, this.terrain.surfaceY(x), { src: hive.id, by: c });
+      if (!g) break;
+      this.credit(c);
+      this.events.emit('honey', { c, hive, g });
+      this.addLog('The bees filled a jar of honey at the bee hotel!', 'star');
+      this.sparkle(hive.x, hive.y - 34, 8);
+    }
+  }
+  honeyFill(hive) {
+    return Math.min(1, (hive.store || 0) / HONEY_POLLEN);
+  }
+
+  // Recyclers at work: a ball of compost a beetle buried, or a little heap
+  // of worm castings. Either way the soil gets richer.
+  makeCompost(c, x, y, look) {
+    const z = this.env.zoneAt(x);
+    if (this.env.fertility[z] != null) this.env.fertility[z] = Math.min(1.2, this.env.fertility[z] + 0.03);
+    this.credit(c);
+    const crowded = this.goods.some((g) => g.type === 'compost' && Math.abs(g.x - x) < 14) || this.goodsOf('compost') >= 6;
+    const g = crowded ? null : this.addGood('compost', x, y, { look, by: c });
+    this.events.emit('compost', { c, g });
+    return g;
+  }
+  // Worms eat their way through the soil and leave castings at the surface.
+  wormWork(c, amt) {
+    const m = c.memory;
+    m.cast = (m.cast || 0) + amt;
+    if (m.cast < CASTING) return;
+    m.cast = 0;
+    const t = this.terrain;
+    const sy = t.surfaceY(c.x);
+    if (t.waterSurfaceAt(c.x) > 0 && t.waterAt(c.x, sy - 2)) return; // under the pond
+    this.makeCompost(c, c.x, sy, 'castings');
+  }
+
+  // A pollinated flower has ripened. Now and then it keeps a seed head the
+  // keeper can pick (one waiting per plant); otherwise it sows itself.
+  ripenSeeds(p, fi, range) {
+    const slot = p.shape.slots.find((s) => s.kind === 'flower' && s.i === fi);
+    if (!slot || p.def.memorial || !chance(0.35) || this.goodsOf('seeds') >= 5 || this.goods.some((g) => g.type === 'seeds' && g.src === p.id)) {
+      this.spawnSeedling(p, range);
+      return;
+    }
+    const [x, y] = p.slotWorld(slot, this.time);
+    this.addGood('seeds', x, y, { src: p.id, plant: p.type, fi });
+  }
+  // How well the pond critters look after the water lilies (0..1): goldfish
+  // feed them, and snails and shrimp keep the water clear enough to bloom.
+  lilyCare() {
+    const fish = Math.min(1, this.count('goldfish') / 3);
+    const clean = Math.min(1, (this.count('pondsnail') + this.count('shrimp')) / 3);
+    return (0.2 + fish * 0.8) * (0.45 + clean * 0.55) * clamp01((this.env.pond.clarity - 0.35) / 0.4);
+  }
+  bloomLily(p, fi) {
+    if (this.goods.some((g) => g.type === 'lily' && g.src === p.id)) return false;
+    const slot = p.shape.slots.find((s) => s.kind === 'flower' && s.i === fi);
+    const [x] = slot ? p.slotWorld(slot, this.time) : [p.x];
+    const g = this.addGood('lily', x, this.terrain.waterLevel - 1, { src: p.id });
+    if (g) this.events.emit('bloom', { plant: p, g });
+    return !!g;
+  }
+  // Big leafy plants shed an old leaf now and then: work for the recyclers.
+  dropLitter(p) {
+    let n = 0;
+    for (const f of this.foods) if (f.type === 'leaves' && f.litter) n++;
+    if (n >= 6) return;
+    const t = this.terrain;
+    const x = clamp(p.x + rrange(-1, 1) * (8 + p.def.h * 0.25), 10, W - 10);
+    const sy = t.surfaceY(x);
+    if (t.waterSurfaceAt(x) > 0 && t.waterAt(x, sy - 2)) return;
+    const f = this.addFood('leaves', x, Math.max(20, p.y - p.def.h * p.growth * 0.6), { amount: 0.6, max: 0.6, vy: 10 });
+    f.litter = true;
+  }
+  // Count a job well done for the critter that did it.
+  credit(c) {
+    if (c) c.memory.made = (c.memory.made || 0) + 1;
+  }
+
   addLog(text, icon = 'leaf') {
     this.log.unshift({ text, icon, day: this.env.day, hour: this.env.hour });
     if (this.log.length > 120) this.log.length = 120;
@@ -430,6 +586,7 @@ export class World {
       like = c.diet.soil || 0.3;
       amt = bite * 0.6;
     } else return false;
+    if (c.sp === 'worm') this.wormWork(c, amt);
     const relief = (amt / c.appetite) * (0.45 + 0.55 * like);
     // eating when already full goes straight to the waistline
     if (c.hunger < 0.2) c.plump = Math.min(1.5, c.plump + relief * 0.12 * (1 - c.hunger * 4));
@@ -634,8 +791,11 @@ export class World {
       c.mode = 'fly';
       c.vy = -20;
       this.sparkle(c.x, c.y, 10);
+      // the empty chrysalis stays behind: fine silk for the keeper
+      this.addGood('silk', c.x, c.y + 2, { by: c });
+      this.credit(c);
       this.events.emit('metamorph', { c, kind: 'butterfly' });
-      this.addLog(`${c.name} came out of the chrysalis as a butterfly!`, 'star');
+      this.addLog(`${c.name} came out of the chrysalis as a butterfly, and left its silk behind!`, 'star');
     } else if (c.sp === 'frog' && c.stage === 'adult') {
       c.mode = 'swim';
       this.events.emit('metamorph', { c, kind: 'frog' });
@@ -985,7 +1145,7 @@ export class World {
   }
   rinseFilter() {
     this.env.pond.filterClean = 1;
-    this.splash(1036, this.terrain.waterLevel, 0.6);
+    this.splash(FILTER_X, this.terrain.waterLevel, 0.6);
     this.events.emit('chore', { kind: 'rinse', zone: 'pond' });
   }
   topUpPond() {
@@ -1146,6 +1306,10 @@ export class World {
     }
 
     for (const col of this.colonies) col.update(this, dt);
+    for (let i = this.goods.length - 1; i >= 0; i--) {
+      const g = this.goods[i];
+      if (g) g.update(dt, this);
+    }
     this.updateFireflies(dt);
     this.updateEquipment(dt);
 
@@ -1223,7 +1387,8 @@ export class World {
       if (this.fx && d.def.bubbles && chance(dt * d.def.bubbles * 3)) this.fx.bubble(d.x + rrange(-4, 4), d.y - (d.type === 'chest' ? 18 : d.type === 'diver' ? 30 : 6));
     }
     if (this.fx && env.filterFlow > 0 && chance(dt * env.filterFlow * 8)) {
-      this.fx.bubble(1036 + rrange(-4, 4), this.terrain.waterLevel + 30 + rrange(0, 40));
+      // air stirred in where the filter's spout pours back into the pond
+      this.fx.bubble(FILTER_X - 30 - rrange(0, 26), this.terrain.waterLevel + rrange(3, 14));
     }
     // misters make it rain
     if (this.fx) {
@@ -1260,6 +1425,8 @@ export class World {
       plants: this.plants.map((p) => Object.assign(p.serialize(), { id: p.id })),
       foods: this.foods.map((f) => f.serialize()),
       decor: this.decor.map((d) => d.serialize()),
+      goods: this.goods.map((g) => g.serialize()),
+      pantry: this.pantry,
       colonies: this.colonies.map((c) => c.serialize()),
       style: this.style,
       stats: this.stats,
@@ -1296,6 +1463,13 @@ export class World {
       setNextId(f.id + 1);
       this.foods.push(f);
     }
+    for (const gd of d.goods || []) {
+      if (!GOODS[gd.t]) continue;
+      const g = Good.load(gd);
+      setNextId(g.id + 1);
+      this.goods.push(g);
+    }
+    Object.assign(this.pantry, d.pantry || {});
     for (const cd of d.colonies || []) this.colonies.push(Colony.load(cd));
     for (const cd of d.creatures || []) {
       if (!SPECIES[cd.sp]) continue;

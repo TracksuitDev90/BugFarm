@@ -198,14 +198,14 @@ export function tankNeeds(w, canUse = () => true, fmt = (t) => Math.round(t) + '
       const sps = dry ? band.mLo : band.mHi;
       const whom = sps.length ? ` for the ${who(sps)}` : '';
       if (dry && e.water <= 0.001 && e.mister > 0.02) {
-        add(z, st.mSev + 0.6, 'drop', `The ${z} mister has run dry, so the air is drying out${whom}. Refill its water bottle.`, { kind: 'refill', zone: z });
+        add(z, st.mSev + 0.6, 'drop', `The ${z} mister's jug has run dry, so the air is drying out${whom}. Refill it.`, { kind: 'refill', zone: z });
       } else {
         add(z, st.mSev + 0.4, 'drop', `${Z} air is too ${dry ? 'dry' : 'soggy'}${whom}. Turn the mister ${dry ? 'up' : 'down'}.`, { kind: 'climate', zone: z });
       }
     }
     if (z !== 'pond') {
       const e = env[z];
-      if (e.mister > 0.02 && e.water > 0.001 && e.water < 0.25) add(z, 1, 'drop', `The ${z} mister bottle is nearly empty.`, { kind: 'refill', zone: z });
+      if (e.mister > 0.02 && e.water > 0.001 && e.water < 0.25) add(z, 1, 'drop', `The ${z} mister's water jug is nearly empty.`, { kind: 'refill', zone: z });
     }
     // hungry critters with nothing they fancy in sight
     const hungry = list.filter((c) => c.hunger > 0.62 && c.memory.ffT != null && !c.memory.ff && c.sp !== 'aphid');

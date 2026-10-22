@@ -67,7 +67,9 @@ export class Particles {
     this.rainAcc[zone] += rate * dt;
     while (this.rainAcc[zone] >= 1) {
       this.rainAcc[zone] -= 1;
-      this.add({ type: 'rain', x: x + rrange(-190, 190), y: rrange(16, 30), vx: rrange(-6, 6), vy: rrange(240, 300), r: 1, life: 3, terrain });
+      // drops leave the nozzle in a cone, so the far ones start lower
+      const d = rrange(-190, 190);
+      this.add({ type: 'rain', x: x + d, y: 12 + Math.abs(d) * 0.34 + rrange(0, 8), vx: d * 0.04 + rrange(-6, 6), vy: rrange(240, 300), r: 1, life: 3, terrain });
     }
   }
   update(dt, terrain, time) {

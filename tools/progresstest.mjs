@@ -1,7 +1,8 @@
 // Plays a new farm headless with a simple, attentive keeper and reports how
 // the zones level up, so the goals stay reachable as the game changes.
 // The keeper feeds each zone, follows the clipboard's advice on the climate,
-// refills misters, rinses the filter and tops up the pond.
+// refills misters, rinses the filter and tops up the pond, collects the goods
+// the critters make and sends Busytown's orders.
 // usage: node tools/progresstest.mjs [days=10] [seed=3]
 import { World } from '../src/world/world.js';
 import '../src/ai/ants.js';
@@ -55,6 +56,9 @@ for (let i = 0; i < steps; i++) {
       if (n.act.kind === 'clean') w.cleanPond();
       if (n.act.kind === 'tidy') w.tidyLand();
     }
+    // collect what the critters made and post any order that's ready
+    w.collectAll();
+    for (const o of j.orders.ready()) j.orders.send(o);
     // snacks twice a day in each zone, chosen for whoever lives there
     if (Math.round(env.hour) % 12 === 8) {
       for (const z of ['desert', 'pond', 'jungle']) {
@@ -94,6 +98,7 @@ for (let i = 0; i < steps; i++) {
 console.log('\n' + (levels.join('\n') || 'no level-ups'));
 const L = j.progress.levels;
 console.log(`\nfinal levels: desert ${L.desert}/${maxLevel('desert')}, pond ${L.pond}/${maxLevel('pond')}, jungle ${L.jungle}/${maxLevel('jungle')}; ${fed} snacks; counts ${JSON.stringify(w.counts)}`);
+console.log(`goods collected ${w.stats.collected || 0}, orders sent ${j.orders.sent} (★${j.orders.stars}), basket ${JSON.stringify(w.pantry)}`);
 if (errors.length) {
   console.log(errors[0]);
   process.exit(1);

@@ -72,7 +72,7 @@ export class LightRays {
   lampCone(m, g, x, power, sun) {
     const tex = this.texture('255,226,150');
     const a = 0.32 * power * (0.55 + 0.45 * sun);
-    for (const [ang, wd, k] of [[0, 120, 1], [-0.22, 70, 0.55], [0.22, 70, 0.55], [-0.4, 46, 0.3], [0.4, 46, 0.3]]) this.beam(m, g, tex, x, 10, ang, wd, 430, a * k);
+    for (const [ang, wd, k] of [[0, 120, 1], [-0.22, 70, 0.55], [0.22, 70, 0.55], [-0.4, 46, 0.3], [0.4, 46, 0.3]]) this.beam(m, g, tex, x, 24, ang, wd, 420, a * k);
     g.globalAlpha = 1;
   }
 

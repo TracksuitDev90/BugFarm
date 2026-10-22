@@ -13,7 +13,7 @@ export function awaySeconds(realSeconds) {
 
 export function catchUp(world, gameSeconds, onProgress) {
   return new Promise((resolve) => {
-    const summary = { seconds: gameSeconds, born: 0, died: [], eaten: 0, dug: 0, sprouts: 0, metamorph: [], logs: [] };
+    const summary = { seconds: gameSeconds, born: 0, died: [], eaten: 0, dug: 0, sprouts: 0, metamorph: [], logs: [], goods: {}, letters: 0 };
     if (gameSeconds < 20) {
       resolve(null);
       return;
@@ -28,6 +28,7 @@ export function catchUp(world, gameSeconds, onProgress) {
       world.events.on('sprout', () => summary.sprouts++),
       world.events.on('metamorph', (d) => summary.metamorph.push(d.c.name)),
       world.events.on('log', (l) => summary.logs.push(l.text)),
+      world.events.on('good', (d) => (summary.goods[d.g.type] = (summary.goods[d.g.type] || 0) + 1)),
     ];
     const fx = world.fx;
     world.fx = null;

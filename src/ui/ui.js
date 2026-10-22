@@ -18,8 +18,11 @@ import { fmtTemp, clamp, clamp01 } from '../util/math.js';
 import { rrange } from '../util/rng.js';
 import { zoneBand, zoneStatus, tankNeeds, ZONE_NAMES, listWords, plural } from '../sim/care.js';
 import { maxLevel } from '../data/progression.js';
-import { GAUGE_AT } from '../render/renderer.js';
-import { MISTER_X } from '../world/environment.js';
+import { equipmentAt, equipmentInfo } from '../sim/equipment.js';
+import { heatLamp, mister, pondHeater, pondFilter } from '../art/equipment.js';
+import { GOODS, GOOD_ORDER, JOBS, goodWord } from '../data/goods.js';
+import { drawGood, goodBox } from '../art/goods.js';
+import { neighbour, needsWords } from '../sim/orders.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 function el(tag, attrs = {}, ...kids) {
@@ -68,9 +71,12 @@ const TIPS = [
   'Tap any critter to see what it is thinking.',
   'Zone temperatures up top turn red when too hot and blue when too chilly.',
   'Each zone levels up as you finish its goals. New critters and snacks unlock!',
-  'Misters run on a water bottle. Refill it before the air dries out.',
+  'Misters run on a water jug. Refill it before the air dries out.',
   'The weather changes every day or so. Check the forecast on the clipboard.',
   'Tap the glass to give everyone a little startle.',
+  'Tap a heat lamp, mister, heater or filter to see what it does.',
+  'Every critter has a job. Tap one to see what it does for the farm.',
+  'Busytown writes in for the goods your critters make. Check the Orders tab on the clipboard.',
   'Try the lens button (top right) to see heat, damp and scent trails.',
   'Turn the desert lamp way up and see where the ants go.',
   'Too much food spoils. Too little and tummies rumble!',
@@ -99,6 +105,10 @@ function artCanvas(css, box, draw, dpr = Math.min(2, window.devicePixelRatio || 
     /* ignore */
   }
   return c;
+}
+
+function goodCanvas(type, css = 28, look = '') {
+  return artCanvas([css, css], goodBox(type), (g) => drawGood(g, type, look));
 }
 
 function creatureArt(sp, stage, pose = 'idle', palIdx = 0, acc = null, accColor = '#e2553f', css = [64, 52]) {
@@ -267,12 +277,14 @@ export class UI {
     if (this.tool === 'clip') {
       const tabs = el('div', { class: 'tabs' });
       const prog = this.journal.progress;
-      for (const z of ['needs', 'desert', 'pond', 'jungle']) {
-        const lv = z === 'needs' ? '' : this.journal.sandbox || prog.legacy ? '' : ` ★${prog.levels[z]}`;
+      const ready = this.journal.orders.ready().length;
+      for (const z of ['needs', 'orders', 'desert', 'pond', 'jungle']) {
+        const lv = z === 'needs' || z === 'orders' ? '' : this.journal.sandbox || prog.legacy ? '' : ` ★${prog.levels[z]}`;
+        const label = z === 'needs' ? 'To do' : z === 'orders' ? 'Orders' : ZONE_NAMES[z];
         tabs.append(el('button', { class: this.tab.clip === z ? 'on' : '', onclick: () => {
           this.tab.clip = z;
           this.renderSheet();
-        } }, (z === 'needs' ? 'To do' : ZONE_NAMES[z]) + lv));
+        } }, label + lv, z === 'orders' && ready ? el('i', { class: 'tabdot' }, String(ready)) : null));
       }
       head.append(tabs);
     }
@@ -629,15 +641,15 @@ export class UI {
       const b = el('button', { class: 'btn small blue', onclick: () => {
         this.world.refillMister(z);
         this.sound.play('splash', 0.4);
-        this.toast(`Glug glug! The ${z} mister bottle is full again.`, 'drop');
+        this.toast(`Glug glug! The ${z} mister's jug is full again.`, 'drop');
         this.updateClimate();
       } }, 'Refill');
       this.climateEls[z].bottle = m;
-      return el('div', { class: 'equip', title: 'The mister sprays from this bottle. When it runs dry the air dries out.' }, el('span', {}, 'Mister water'), m, b);
+      return el('div', { class: 'equip', title: 'The mister sprays from this jug. When it runs dry the air dries out.' }, el('span', {}, 'Mister jug'), m, b);
     };
     zc('desert', 'Desert', 'sun', [
       slider('Heat lamp', 'Warms the desert air, and makes a hot basking spot right under the lamp', () => env.desert.lamp, (v) => (env.desert.lamp = v)),
-      slider('Mister', 'Sprays fine rain: damper air, a little cooler. Uses water from its bottle', () => env.desert.mister, (v) => (env.desert.mister = v)),
+      slider('Mister', 'Sprays fine rain: damper air, a little cooler. Uses water from its jug', () => env.desert.mister, (v) => (env.desert.mister = v)),
     ]);
     grid.lastChild.append(bottle('desert'));
     const heaterOut = el('output', {}, fmtTemp(env.pond.heaterTarget, u));
@@ -681,7 +693,7 @@ export class UI {
     );
     zc('jungle', 'Jungle', 'leaf', [
       slider('Heat lamp', 'Warms the jungle air', () => env.jungle.lamp, (v) => (env.jungle.lamp = v)),
-      slider('Mister', 'Rainforest drizzle: damp air for snails, worms and frogs. Uses water from its bottle', () => env.jungle.mister, (v) => (env.jungle.mister = v)),
+      slider('Mister', 'Rainforest drizzle: damp air for snails, worms and frogs. Uses water from its jug', () => env.jungle.mister, (v) => (env.jungle.mister = v)),
     ]);
     grid.lastChild.append(bottle('jungle'));
     body.append(grid);
@@ -764,6 +776,11 @@ export class UI {
   // each zone is doing, and the goals that grow the farm.
   buildClipboard(body) {
     const z = this.tab.clip;
+    if (z === 'orders') {
+      this.clipEls = { z };
+      this.buildOrders(body);
+      return;
+    }
     this.clipEls = { z, needs: el('div', { class: 'needs' }), status: el('div', { class: 'zstatus' }), goals: el('div', { class: 'goals' }) };
     if (z === 'needs') {
       body.append(this.clipEls.status, el('h4', {}, 'Things to do'), this.clipEls.needs);
@@ -809,8 +826,91 @@ export class UI {
     box.append(el('div', { class: 'unlocks' }, el('b', {}, 'Unlocks: '), names.join(' · ')));
   }
 
+  // The farm's purpose: Busytown's letters asking for the goods the
+  // critters make, the basket of goods collected so far, and the thank-you
+  // stars earned.
+  buildOrders(body) {
+    this.ordEls = { pantry: el('div', { class: 'pantry' }), waiting: el('div'), list: el('div', { class: 'orders' }), foot: el('div') };
+    body.append(
+      el('h4', {}, 'In your basket'),
+      this.ordEls.pantry,
+      this.ordEls.waiting,
+      el('h4', {}, 'Letters from Busytown'),
+      this.ordEls.list,
+      this.ordEls.foot
+    );
+    this.ordKey = '';
+    this.updateOrders(true);
+  }
+
+  updateOrders(force) {
+    const w = this.world;
+    const ord = this.journal.orders;
+    const E = this.ordEls;
+    const key = GOOD_ORDER.map((g) => w.pantry[g] || 0).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id).join(',') + '|' + ord.stars;
+    if (!force && key === this.ordKey) return;
+    this.ordKey = key;
+    // the letters
+    E.list.innerHTML = '';
+    if (!ord.list.length) {
+      const hint = ord.hintMakers(w);
+      const can = ord.makeable(w).length;
+      E.list.append(el('p', { class: 'small' }, can ? 'No letters right now. Busytown writes every few hours.' : `Busytown will write as soon as your farm makes something.${hint.length ? ` For example, ${hint[0].makers.join(' or ')} make ${GOODS[hint[0].id].name.toLowerCase()}.` : ''}`));
+    }
+    for (const o of ord.list) {
+      const nb = neighbour(o.who);
+      const ok = ord.canSend(o);
+      const needs = el('div', { class: 'oneeds' });
+      for (const [g, n] of Object.entries(o.needs)) {
+        const have = Math.min(n, w.pantry[g] || 0);
+        needs.append(el('span', { class: 'oneed' + (have >= n ? ' ok' : ''), title: GOODS[g].how }, goodCanvas(g, 22), `${have} of ${n} ${n === 1 ? GOODS[g].one : GOODS[g].many}`));
+      }
+      E.list.append(
+        el('div', { class: 'order' + (ok ? ' ready' : '') },
+          el('div', { class: 'ohead' }, iconCanvas(nb.icon, 22), el('span', {}, el('b', {}, nb.name), ', ' + nb.job)),
+          el('p', { class: 'letter' }, `“Dear Bug Farm, could you send ${needsWords(o.needs)}? ${o.why}”`),
+          needs,
+          el('div', { class: 'ofoot' },
+            el('span', { class: 'ostars' }, `Thank-you: ★${o.stars} + treats`),
+            el('button', { class: 'btn small', onclick: () => {
+              ord.decline(o);
+              this.refreshNeeds();
+              this.updateOrders(true);
+            } }, 'Not now'),
+            el('button', { class: 'btn small' + (ok ? ' yellow' : ''), disabled: !ok, onclick: () => this.sendOrder(o) }, ok ? 'Send it!' : 'Not enough yet')))
+      );
+    }
+    // the basket: tap a good to hear who makes it
+    E.pantry.innerHTML = '';
+    for (const g of GOOD_ORDER) {
+      const n = w.pantry[g] || 0;
+      E.pantry.append(el('button', { class: 'pgood' + (n ? '' : ' none'), title: GOODS[g].how, onclick: () => this.toast(`<b>${esc(GOODS[g].name)}:</b> ${esc(GOODS[g].how)}`, goodCanvas(g, 26), false, 5000) }, goodCanvas(g, 30), el('b', {}, String(n)), el('span', {}, GOODS[g].name)));
+    }
+    // goods still waiting in the tank
+    E.waiting.innerHTML = '';
+    if (w.goods.length) {
+      const counts = {};
+      for (const gd of w.goods) counts[gd.type] = (counts[gd.type] || 0) + 1;
+      const words = listWords(Object.entries(counts).map(([g, n]) => goodWord(g, n)));
+      E.waiting.append(el('div', { class: 'need sev1' }, iconCanvas('star', 22), el('span', {}, `Waiting in the tank: ${words}. Tap them there, or`), el('button', { class: 'btn small yellow', onclick: () => {
+        const n = w.collectAll();
+        this.sound.play('sparkle', 0.6);
+        this.toast(`Collected ${n} good${n === 1 ? '' : 's'} into your basket.`, 'star');
+        this.refreshNeeds();
+        this.updateOrders(true);
+      } }, 'Collect all')));
+    }
+    const next = ord.nextGift();
+    E.foot.innerHTML = '';
+    E.foot.append(el('p', { class: 'small ototal' }, `Orders sent: ${ord.sent} · ★${ord.stars} thank-you stars${next ? ` · Busytown's next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}` : ''}`));
+  }
+
   updateClipboard(force) {
     if (!this.clipEls || this.tool !== 'clip') return;
+    if (this.clipEls.z === 'orders') {
+      if (this.ordEls) this.updateOrders(force);
+      return;
+    }
     const w = this.world;
     const u = this.settings.units;
     const z = this.clipEls.z;
@@ -851,7 +951,7 @@ export class UI {
   }
 
   needLabel(act) {
-    return { climate: 'Climate', feed: 'Feed', refill: 'Refill', clean: 'Clean', rinse: 'Rinse', topup: 'Top up', tidy: 'Tidy' }[act.kind] || 'Show me';
+    return { climate: 'Climate', feed: 'Feed', refill: 'Refill', clean: 'Clean', rinse: 'Rinse', topup: 'Top up', tidy: 'Tidy', orders: 'Orders', collect: 'Collect' }[act.kind] || 'Show me';
   }
 
   // Do (or open the controls for) whatever a need asks.
@@ -862,7 +962,7 @@ export class UI {
       case 'refill':
         w.refillMister(a.zone);
         this.sound.play('splash', 0.4);
-        this.toast(`Glug glug! The ${a.zone} mister bottle is full again.`, 'drop');
+        this.toast(`Glug glug! The ${a.zone} mister's jug is full again.`, 'drop');
         break;
       case 'clean':
         w.cleanPond();
@@ -884,6 +984,16 @@ export class UI {
         this.toast(k ? `Tidied up ${k} squishy leftovers.` : 'All tidy.', 'leaf');
         break;
       }
+      case 'orders':
+        this.tab.clip = 'orders';
+        this.renderSheet();
+        return;
+      case 'collect': {
+        const k = w.collectAll();
+        this.sound.play('sparkle', 0.6);
+        this.toast(`Collected ${k} good${k === 1 ? '' : 's'} into your basket.`, 'star');
+        break;
+      }
       case 'feed':
         if (a.food) this.choice.feed = a.food;
         this.setTool('feed');
@@ -901,6 +1011,11 @@ export class UI {
 
   refreshNeeds() {
     this.needs = tankNeeds(this.world, (k, id) => this.journal.canUse(k, id), (t) => fmtTemp(t, this.settings.units));
+    const ready = this.journal.orders.ready();
+    if (ready.length) this.needs.push({ zone: null, sev: 1.05, icon: 'star', text: ready.length === 1 ? `${neighbour(ready[0].who).name}'s order is ready to send to Busytown!` : `${ready.length} orders are ready to send to Busytown!`, act: { kind: 'orders' } });
+    const waiting = this.world.goods.length;
+    if (waiting) this.needs.push({ zone: null, sev: 0.5, icon: 'star', text: `${waiting === 1 ? 'A good is' : waiting + ' goods are'} waiting in the tank to be collected.`, act: { kind: 'collect' } });
+    this.needs.sort((a, b) => b.sev - a.sev);
     const urgent = this.needs.filter((n) => n.sev >= 1);
     const top = urgent.length ? urgent[0].sev : 0;
     this.clipBadge.textContent = urgent.length;
@@ -976,6 +1091,15 @@ export class UI {
       if (d < r && d < bd) {
         bd = d;
         best = c;
+      }
+    }
+    if (best) return best;
+    for (const gd of w.goods) {
+      const [x0, y0, x1, y1] = goodBox(gd.type);
+      const d = Math.hypot(gd.x + (x0 + x1) / 2 - wx, gd.y + (y0 + y1) / 2 - wy);
+      if (d < Math.max(zr, 11) && d < bd) {
+        bd = d;
+        best = gd;
       }
     }
     if (best) return best;
@@ -1077,8 +1201,12 @@ export class UI {
         this.hooks.terrainChanged();
         return;
       default: {
-        if (this.tapEquipment(wx, wy)) return;
         const hit = this.pick(wx, wy);
+        if (hit && hit.kind === 'good') {
+          this.collect(hit);
+          return;
+        }
+        if (!(hit && hit.kind === 'creature') && this.tapEquipment(wx, wy)) return;
         if (hit) {
           this.select(hit);
           this.sound.play('pop', 0.4);
@@ -1104,31 +1232,128 @@ export class UI {
     }
   }
 
-  // The glass thermometers open the clipboard; a mister's bottle refills.
+  // Pick a good up from the tank and pop it in the basket.
+  collect(gd) {
+    const w = this.world;
+    if (!w.collectGood(gd)) return;
+    this.sound.play('sparkle', 0.6);
+    this.haptic(10);
+    const first = !this.settings.seenGoods;
+    const more = first ? '<br>Neighbours in Busytown send orders for goods like this. Open the clipboard\'s Orders tab.' : '';
+    this.toast(`Collected a ${esc(gd.def.one)}! <small>(${goodWord(gd.type, w.pantry[gd.type])} in your basket)</small>${more}`, goodCanvas(gd.type, 26, gd.look), false, first ? 6500 : 2400);
+    if (first) {
+      this.settings.seenGoods = true;
+      this.hooks.saveSettings();
+    }
+    this.updateClipboard(true);
+  }
+
+  // A letter has arrived from Busytown.
+  newLetter(o) {
+    const nb = neighbour(o.who);
+    this.sound.play('pop', 0.6);
+    this.toast(`<b>A letter from ${esc(nb.name)}</b>, ${esc(nb.job)}: could you send ${esc(needsWords(o.needs))}? <small>See the clipboard's Orders.</small>`, nb.icon, false, 5000);
+    this.refreshNeeds();
+    if (this.tool === 'clip') this.renderSheet();
+  }
+
+  sendOrder(o) {
+    const r = this.journal.orders.send(o);
+    if (!r) return;
+    this.sound.play('sparkle', 0.9);
+    this.haptic(20);
+    this.toast(`<b>Sent to ${esc(r.nb.name)}!</b> +${o.stars} ★${r.treats.length ? '<br>A basket of treats came back for your critters.' : ''}`, 'star', true, 4500);
+    for (const gf of r.gifts) this.toast(`<b>A gift from Busytown!</b><br>${esc(gf.text)} <i>Find it in Decor.</i>`, 'house', true, 7500);
+    this.refreshNeeds();
+    this.renderSheet();
+  }
+
+  // Tapping a piece of equipment (heat lamp, mister, pond heater, filter or
+  // thermometer) opens a card saying what it is, what it does and how it's
+  // doing, with its controls right there.
   tapEquipment(wx, wy) {
-    const slop = 6 / Math.max(0.5, this.cam.zoom);
-    for (const [z, [x, y]] of Object.entries(GAUGE_AT)) {
-      if (Math.abs(wx - x) < 9 + slop && wy > y - 6 - slop && wy < y + (z === 'pond' ? 64 : 84) + slop) {
+    const e = equipmentAt(this.world, wx, wy, 6 / Math.max(0.5, this.cam.zoom));
+    if (!e) return false;
+    this.select(e);
+    this.sound.play('pop', 0.4);
+    return true;
+  }
+
+  equipAction(e, id) {
+    const w = this.world;
+    const env = w.env;
+    const z = e.zone;
+    const step = (v, d, lo = 0, hi = 1) => Math.round(clamp(v + d, lo, hi) * 20) / 20;
+    switch (id) {
+      case 'lampUp':
+      case 'lampDown':
+        env[z].lamp = step(env[z].lamp, id === 'lampUp' ? 0.1 : -0.1);
+        break;
+      case 'mistUp':
+      case 'mistDown':
+        env[z].mister = step(env[z].mister, id === 'mistUp' ? 0.1 : -0.1);
+        break;
+      case 'refill':
+        w.refillMister(z);
+        this.sound.play('splash', 0.4);
+        this.toast(`Glug glug! The ${z} mister's jug is full again.`, 'drop');
+        break;
+      case 'heaterToggle':
+        env.pond.heater = !env.pond.heater;
+        break;
+      case 'heaterUp':
+      case 'heaterDown':
+        env.pond.heaterTarget = clamp(Math.round(env.pond.heaterTarget) + (id === 'heaterUp' ? 1 : -1), 6, 34);
+        env.pond.heater = true;
+        break;
+      case 'filterUp':
+      case 'filterDown':
+        env.pond.filter = step(env.pond.filter, id === 'filterUp' ? 0.1 : -0.1);
+        break;
+      case 'rinse':
+        w.rinseFilter();
+        this.sound.play('splash', 0.4);
+        this.toast('Squeeze, rinse, squeeze! The filter sponge is clean.', 'drop');
+        break;
+      case 'climate':
+        this.select(null);
+        this.flashZone = z;
+        this.setTool('climate');
+        return;
+      case 'clip':
+        this.select(null);
         this.tab.clip = z;
         this.setTool('clip');
-        return true;
-      }
+        return;
+      default:
+        return;
     }
-    for (const z of ['desert', 'jungle']) {
-      const x = MISTER_X[z];
-      if (Math.abs(wx - (x + 8)) < 14 + slop && wy < 10 + slop && wy > -24 - slop) {
-        if (this.world.env[z].water < 0.97) {
-          this.world.refillMister(z);
-          this.sound.play('splash', 0.4);
-          this.toast(`Glug glug! The ${z} mister bottle is full again.`, 'drop');
-        } else {
-          this.flashZone = z;
-          this.setTool('climate');
-        }
-        return true;
-      }
-    }
-    return false;
+    if (id !== 'refill' && id !== 'rinse') this.sound.play('pop', 0.3);
+    this.updateCard(true);
+  }
+
+  // A small painting of a piece of equipment for its card.
+  equipPortrait(e) {
+    const env = this.world.env;
+    const rail = (g, x0, x1) => {
+      g.fillStyle = '#b77d4b';
+      g.fillRect(x0, -26, x1 - x0, 26);
+      g.lineWidth = 1.2;
+      g.strokeStyle = '#3a2a1f';
+      g.beginPath();
+      g.moveTo(x0, 0);
+      g.lineTo(x1, 0);
+      g.stroke();
+    };
+    const p = env.pond;
+    let c;
+    if (e.id === 'lamp') c = artCanvas([72, 64], [-24, -32, 32, 44], (g) => (rail(g, -30, 40), heatLamp(g, 0, { power: env[e.zone].lamp, zone: e.zone, sun: 1, time: 0 })));
+    else if (e.id === 'mister') c = artCanvas([72, 64], [-10, -34, 54, 32], (g) => (rail(g, -12, 58), mister(g, 0, { setting: env[e.zone].mister, spraying: 0, water: env[e.zone].water, time: 0 })));
+    else if (e.id === 'heater') c = artCanvas([72, 64], [-18, -36, 20, 40], (g) => pondHeater(g, 0, 12, { on: p.heater, heating: p.heater && p.temp < p.heaterTarget - 0.3 ? 1 : 0, target: (p.heaterTarget - 6) / 28, time: 0 }));
+    else if (e.id === 'filter') c = artCanvas([72, 64], [-30, -20, 18, 54], (g) => pondFilter(g, 0, 0, { flow: 0, setting: p.filter, clean: p.filterClean, time: 0 }));
+    else c = iconCanvas('thermo', 48);
+    c.className = 'portrait';
+    return c;
   }
 
   hold(wx, wy, held) {
@@ -1218,6 +1443,9 @@ export class UI {
       const ok = this.world.canPlace('decor', def.id, wx, y).ok;
       this.r.ghost = { kind: 'decor', def, x: wx, y, ok };
     } else this.r.ghost = null;
+    // a pointing hand over gadgets you can tap to learn about
+    const cur = this.tool === 'look' && equipmentAt(this.world, wx, wy) ? 'pointer' : '';
+    if (this.game.canvas.style.cursor !== cur) this.game.canvas.style.cursor = cur;
   }
 
   haptic(ms) {
@@ -1262,7 +1490,8 @@ export class UI {
     c.append(el('div', { class: 'card-top' }, this.portrait, el('div', { style: 'flex:1;min-width:0' }, this.cardName, this.cardSub), close));
     const actions = el('div', { class: 'card-actions' });
     if (e.kind === 'creature') {
-      c.append(this.cardThought, this.cardMeters, this.cardChips);
+      this.cardJob = el('div', { class: 'job' });
+      c.append(this.cardThought, this.cardJob, this.cardMeters, this.cardChips);
       actions.append(
         el('button', { class: 'btn small yellow', onclick: () => {
           this.cam.follow = this.cam.follow === e ? null : e;
@@ -1310,8 +1539,13 @@ export class UI {
         this.world.removeFood(e);
         this.select(null);
       } }, 'Tidy it up'));
+    } else if (e.kind === 'equip') {
+      this.cardWhat = el('p', { class: 'what' });
+      c.append(this.cardWhat, this.cardMeters);
     }
     c.append(actions);
+    this.cardActions = actions;
+    this.actionsKey = '';
     this.updateCard(true);
   }
 
@@ -1341,6 +1575,7 @@ export class UI {
       if (e.dead) sub = `${e.def.name} · passed away`;
       this.cardSub.textContent = sub;
       this.cardThought.textContent = e.dead ? 'Resting peacefully now.' : e.stage === 'egg' ? (e.sp === 'frog' ? 'Little tadpoles are wriggling inside...' : 'Something is growing in here...') : e.stage === 'chrysalis' ? 'Changing... shh!' : e.thought || '...';
+      this.cardJob.innerHTML = this.jobHTML(e);
       const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
       const mood = this.mood(e);
       this.cardMeters.innerHTML =
@@ -1398,8 +1633,36 @@ export class UI {
       }
       this.cardName.textContent = e.def.name;
       const inside = this.world.creatures.filter((c) => c.hidden && e.covers(c.x, c.y));
-      this.cardSub.textContent = e.def.shelter ? (inside.length ? `Inside: ${inside.map((c) => c.name).slice(0, 4).join(', ')}` : 'Nobody home right now.') : e.def.hive ? `Pollen stored: ${e.store || 0}` : e.def.feeder ? 'Drops food every morning at 8:00.' : 'Looking lovely.';
-      this.cardMeters.innerHTML = '';
+      const gift = e.type === 'farmStand' || e.type === 'deliveryVan';
+      this.cardSub.textContent = e.def.shelter ? (inside.length ? `Inside: ${inside.map((c) => c.name).slice(0, 4).join(', ')}` : 'Nobody home right now.') : e.def.hive ? 'Bees bring pollen home here to make honey and raise young.' : e.def.feeder ? 'Drops food every morning at 8:00.' : gift ? 'A thank-you gift from Busytown.' : 'Looking lovely.';
+      if (e.def.hive) {
+        const jars = this.world.goods.filter((g) => g.type === 'honey' && g.src === e.id).length;
+        const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
+        this.cardMeters.innerHTML = `<span>Honeycomb</span>${bar(this.world.honeyFill(e), '#f0a830')}<span>Jars ready</span><span>${jars ? `${jars} beside the hotel — tap to collect` : 'none yet'}</span>`;
+      } else this.cardMeters.innerHTML = '';
+    } else if (e.kind === 'equip') {
+      const info = equipmentInfo(this.world, e, (t) => fmtTemp(t, u));
+      const env = this.world.env;
+      const look = e.id === 'lamp' ? Math.round(env[e.zone].lamp * 10) : e.id === 'mister' ? Math.round(env[e.zone].water * 8) + ':' + Math.round(env[e.zone].mister * 10) : e.id === 'heater' ? `${env.pond.heater}${Math.round(env.pond.heaterTarget)}` : e.id === 'filter' ? Math.round(env.pond.filterClean * 6) + ':' + Math.round(env.pond.filter * 10) : '';
+      const pk = 'e' + e.id + e.zone + look;
+      if (pk !== this.portraitKey) {
+        this.portraitKey = pk;
+        const p = this.equipPortrait(e);
+        this.portrait.replaceWith(p);
+        this.portrait = p;
+      }
+      this.cardName.textContent = info.name;
+      this.cardSub.textContent = info.sub;
+      if (this.cardWhat.textContent !== info.what) this.cardWhat.textContent = info.what;
+      const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
+      this.cardMeters.innerHTML = info.meters.map(([l, v, col]) => `<span>${esc(l)}</span>${bar(v, col)}`).join('');
+      // buttons are rebuilt only when they change, so they don't jump under a finger
+      const key = info.actions.map((a) => a.join(':')).join('|');
+      if (key !== this.actionsKey) {
+        this.actionsKey = key;
+        this.cardActions.innerHTML = '';
+        for (const [id, label, style] of info.actions) this.cardActions.append(el('button', { class: 'btn small' + (style ? ' ' + style : ''), onclick: () => this.equipAction(e, id) }, label));
+      }
     } else if (e.kind === 'food') {
       if (this.portraitKey !== 'f' + e.bites + e.rot) {
         this.portraitKey = 'f' + e.bites + e.rot;
@@ -1413,6 +1676,17 @@ export class UI {
       const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
       this.cardMeters.innerHTML = `<span>Left</span>${bar(e.amount / e.max, '#f0bf45')}<span>Fresh</span>${bar(e.fresh, '#77b255')}`;
     }
+  }
+
+  // What a critter does for the farm, and how much of it it has done.
+  jobHTML(e) {
+    const j = JOBS[e.sp];
+    if (!j || e.dead) return '';
+    if (e.stage === 'queen') return '<b>Job:</b> Queen <span>— lays every egg in the colony while the workers look after her.</span>';
+    const made = e.memory.made || 0;
+    const did = made && j.makes ? ` <i>Made ${goodWord(j.makes, made)} so far.</i>` : '';
+    if (!e.isAdult) return `<b>Job when grown up:</b> ${esc(j.title)} <span>— ${esc(j.does)}.</span>`;
+    return `<b>Job:</b> ${esc(j.title)} <span>— ${esc(j.does)}.</span>${did}`;
   }
 
   mood(c) {
@@ -1515,6 +1789,7 @@ export class UI {
         this.refreshNeeds();
       }
       this.updateHUD();
+      this.r.mail = this.journal.orders.list.length;
       this.updateCard();
       this.updateClimate();
       this.updateClipboard();
@@ -1562,7 +1837,8 @@ export class UI {
 
   // ------------------------------------------------------------------ toasts
   toast(msg, icon = 'leaf', big = false, ms = 3200) {
-    const t = el('div', { class: 'panel toast' + (big ? ' big' : '') }, iconCanvas(icon, big ? 30 : 24), el('div', { html: msg }));
+    const ic = typeof icon === 'string' ? iconCanvas(icon, big ? 30 : 24) : icon;
+    const t = el('div', { class: 'panel toast' + (big ? ' big' : '') }, ic, el('div', { html: msg }));
     this.toasts.prepend(t);
     while (this.toasts.children.length > 3) this.toasts.lastChild.remove();
     setTimeout(() => {
@@ -1636,6 +1912,7 @@ export class UI {
               el('div', {},
                 el('h3', {}, met ? d.name : '???', el('span', { class: 'small' }, met ? `  · ${this.world.count(sp)} in the tank` : '  · not met yet')),
                 met ? el('div', { class: 'small' }, d.blurb) : el('div', { class: 'small' }, `Lives in the ${d.zone}.`),
+                met && JOBS[sp] ? el('div', { class: 'small job' }, el('b', {}, 'Job: '), `${JOBS[sp].title} — ${JOBS[sp].does}.`) : null,
                 met ? el('div', { class: 'small' }, `Comfy at ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)} · Eats: ${eats} · Active: ${d.activity === 'any' ? 'any time' : d.activity === 'dusk' ? 'dawn & dusk' : 'by ' + d.activity}`) : null,
                 met ? el('ul', {}, ...d.facts.map((f) => el('li', {}, f))) : null))
           );
@@ -1779,6 +2056,9 @@ export class UI {
       if (summary.metamorph.length) li('star', `${summary.metamorph.join(', ')} went through a big change!`);
       if (summary.dug > 0) li('shovel', `The ants dug ${summary.dug} bits of new tunnel.`);
       if (summary.sprouts) li('sprout', `${summary.sprouts} new plants sprouted.`);
+      const made = Object.entries(summary.goods || {});
+      if (made.length) li('star', `The critters made ${listWords(made.map(([g, n]) => goodWord(g, n)))}. Collect them from the tank!`);
+      if (summary.letters) li('star', `${summary.letters} letter${summary.letters > 1 ? 's' : ''} arrived from Busytown. See the clipboard's Orders.`);
       if (summary.eaten) li('paw', `${summary.eaten} critters became somebody's snack.`);
       for (const n of summary.died.slice(0, 6)) li('flower', `${n} passed away.`);
       if (!ul.children.length) li('leaf', 'It was a quiet, peaceful time.');

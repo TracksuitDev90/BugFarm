@@ -55,6 +55,7 @@ function wireWorld() {
   journal.attach(w);
   journal.onUnlock = (d) => ui && ready && ui.discovery(d);
   journal.progress.onLevel = (z, lv, unlocks) => ui && ready && ui.levelUp(z, lv, unlocks);
+  journal.orders.onOrder = (o) => ui && ready && !w.awayMode && ui.newLetter(o);
   w.events.on('sound', ({ name, x, y, p }) => {
     const cam = game.cam;
     const v = cam.view(20);
@@ -146,6 +147,7 @@ async function loadFromData(data, elapsedReal) {
     summary = await catchUp(w, secs, (p) => {
       if (bar) bar.style.width = Math.round(p * 100) + '%';
     });
+    if (summary) summary.letters = journal.orders.catchUp();
   }
   return summary;
 }
@@ -243,7 +245,10 @@ async function boot() {
       if (ready && settings.away === 'living' && gone > 90) {
         ui.toast('Catching up on the tank...', 'leaf');
         const s = await catchUp(game.world, awaySeconds(gone));
-        if (s) ui.showAway(s, gone);
+        if (s) {
+          s.letters = journal.orders.catchUp();
+          ui.showAway(s, gone);
+        }
       }
       game.last = performance.now();
       game.start();

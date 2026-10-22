@@ -1106,6 +1106,7 @@ export class Creature {
     if (this.memory.floats) o.fl = 1;
     if (this.memory.underground) o.ug = 1;
     if (this.memory.young) o.yg = this.memory.young;
+    if (this.memory.made) o.mk = this.memory.made;
     if (this.climb && this.climb.plant) o.cl = { p: this.climb.plant.id, k: this.climb.slot.kind, i: this.climb.slot.i };
     return o;
   }
@@ -1136,6 +1137,7 @@ export class Creature {
     if (o.fl) c.memory.floats = true;
     if (o.ug) c.memory.underground = true;
     if (o.yg) c.memory.young = o.yg;
+    if (o.mk) c.memory.made = o.mk;
     if (o.m && ['walk', 'swim', 'fly', 'crawl', 'burrow', 'still'].includes(o.m)) c.mode = o.m;
     c._climbRef = o.cl || null;
     setNextId(o.id + 1);

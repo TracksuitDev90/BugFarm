@@ -266,4 +266,7 @@ export class Environment {
 
 export const LAMP_X = { desert: 416, pond: 624, jungle: 1330 };
 export const MISTER_X = { desert: 240, jungle: 1250 };
+// The pond heater and filter stand in the water by the jungle bank.
+export const HEATER_X = 970;
+export const FILTER_X = 1016;
 export { W };

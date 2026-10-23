@@ -2,8 +2,10 @@
 // sparkles. Updated with real time so they stay calm at high sim speeds.
 import { INK } from '../config.js';
 import { rrange, chance } from '../util/rng.js';
+import { breeze } from '../world/breeze.js';
 
 const TAU = Math.PI * 2;
+const CUR = [0, 0];
 
 export class Particles {
   constructor(max = 260) {
@@ -19,7 +21,7 @@ export class Particles {
   }
   add(p) {
     if (this.list.length >= this.max) {
-      if (p.type === 'rain' || p.type === 'dust' || p.type === 'mist') return;
+      if (p.type === 'rain' || p.type === 'dust' || p.type === 'mist' || p.type === 'smoke') return;
       this.list.shift();
     }
     p.t = 0;
@@ -57,6 +59,10 @@ export class Particles {
       this.add({ type: 'crumb', x: x + rrange(-2, 2), y: y + rrange(-1, 1), vx: rrange(-18, 18), vy: -rrange(10, 28), r: rrange(0.45, 0.9), life: rrange(0.8, 1.2), col: colors[i % colors.length], floor, rot: Math.random() * TAU });
     }
   }
+  // A curl of chimney smoke (or teapot steam) from a house with someone home.
+  smoke(x, y, steam) {
+    this.add({ type: 'smoke', x, y, vx: 0, vy: -rrange(6, 10), r: rrange(1.4, 2.2), life: rrange(2.4, 3.6), steam, ph: Math.random() * TAU });
+  }
   // A soft puff of ground mist drifting over damp jungle soil.
   mist(x, y) {
     this.add({ type: 'mist', x, y, vx: rrange(-5, 5), vy: -rrange(0.5, 2), r: rrange(14, 26), life: rrange(5, 8) });
@@ -81,16 +87,25 @@ export class Particles {
       let alive = p.t < p.life;
       switch (p.type) {
         case 'bubble':
+          // bubbles wobble up and get carried a little by the current
+          breeze.current(p.x, p.y, CUR);
           p.y += p.vy * dt;
-          p.x += Math.sin(p.t * 5 + p.ph) * 6 * dt;
+          p.x += (Math.sin(p.t * 5 + p.ph) * 6 + CUR[0] * 0.6) * dt;
           if (!terrain.waterAt(p.x, p.y - 1)) {
             alive = false;
             if (chance(0.3)) this.ripples.push({ x: p.x, t: 0, s: 0.25 });
           }
           break;
         case 'mist':
-          p.x += p.vx * dt;
+          p.x += (p.vx + breeze.wind(p.x) * 14) * dt;
           p.y += p.vy * dt;
+          break;
+        case 'smoke':
+          // rises, spreads, and leans over in the breeze
+          p.vx += (breeze.wind(p.x) * 26 - p.vx) * Math.min(1, dt * 1.5);
+          p.x += (p.vx + Math.sin(p.t * 2 + p.ph) * 2) * dt;
+          p.y += p.vy * dt;
+          p.vy *= 1 - dt * 0.25;
           break;
         case 'dust':
         case 'puff':
@@ -98,7 +113,10 @@ export class Particles {
           p.y += p.vy * dt;
           p.vx *= 1 - dt * 3;
           p.vy *= 1 - dt * 3;
-          if (p.type === 'dust') p.vy += 30 * dt;
+          if (p.type === 'dust') {
+            p.vy += 30 * dt;
+            p.x += breeze.wind(p.x) * 10 * dt;
+          }
           break;
         case 'crumb':
           if (p.floor < 0) {
@@ -127,7 +145,8 @@ export class Particles {
           p.rot += dt * 3;
           break;
         case 'rain':
-          p.x += p.vx * dt;
+          // the mister's spray drifts in a gust
+          p.x += (p.vx + breeze.wind(p.x) * 30) * dt;
           p.y += p.vy * dt;
           if (terrain.solidAt(p.x, p.y) || terrain.waterAt(p.x, p.y)) {
             alive = false;
@@ -216,6 +235,18 @@ export class Particles {
           g.strokeStyle = INK;
           g.stroke();
           break;
+        case 'smoke': {
+          const u = p.t / p.life;
+          g.globalAlpha = Math.min(1, u * 6) * (1 - u) * (p.steam ? 0.55 : 0.45);
+          g.beginPath();
+          g.arc(p.x, p.y, p.r * (1 + u * 2.4), 0, TAU);
+          g.fillStyle = p.steam ? '#ffffff' : '#d8d2c8';
+          g.fill();
+          g.lineWidth = 0.35;
+          g.strokeStyle = 'rgba(58,42,31,0.35)';
+          g.stroke();
+          break;
+        }
         case 'mist': {
           g.globalAlpha = Math.sin((p.t / p.life) * Math.PI) * 0.22;
           g.beginPath();

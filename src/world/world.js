@@ -3,6 +3,7 @@ import { W, H, CELL, GW, GH, MAT, DAY_LEN, MAX_CREATURES, MAX_FOOD, MAX_PLANTS, 
 import { Terrain, POND_L, POND_R } from './terrain.js';
 import { Environment, LAMP_X, MISTER_X, FILTER_X } from './environment.js';
 import { SpatialHash } from './spatial.js';
+import { breeze } from './breeze.js';
 import { Emitter } from '../util/events.js';
 import { RNG, rrange, rint, chance, rpick } from '../util/rng.js';
 import { clamp, clamp01, dist } from '../util/math.js';
@@ -18,7 +19,7 @@ import { FOODS } from '../data/foods.js';
 import { GOODS, GOOD_ORDER } from '../data/goods.js';
 import { tickBrain, force } from '../ai/brain.js';
 import { Colony } from '../ai/ants.js';
-import { preyValue } from '../ai/search.js';
+import { preyValue, suits } from '../ai/search.js';
 
 const MAX_GOODS = 40;
 // Pollen loads it takes to fill a jar of honey, and how much a worm eats
@@ -58,6 +59,8 @@ export class World {
     this.log = [];
     this.lastHour = this.env.hour;
     this.plantTick = 0;
+    this.homeT = 99; // who-lives-where is refreshed every second
+    this.moveLogT = -99;
     this.seed = 1;
   }
 
@@ -91,6 +94,7 @@ export class World {
     this.addDecor('sign', 505);
     this.addDecor('flowerpot', 300);
     this.addDecor('castle', 880);
+    this.addDecor('pipe', 690);
     this.addDecor('log', 1480);
     this.addDecor('mushroomHouse', 1110);
     if (!farm) {
@@ -300,6 +304,8 @@ export class World {
     d.removed = true;
     const i = this.decor.indexOf(d);
     if (i >= 0) this.decor.splice(i, 1);
+    // anyone inside tumbles out, blinking
+    for (const c of this.creatures) if (c.inside === d) this.leaveShelter(c);
   }
 
   // ------------------------------------------------------------------ goods
@@ -507,8 +513,62 @@ export class World {
     return null;
   }
   shelterAt(x, y) {
-    for (const d of this.decor) if (d.def.shelter && d.covers(x, y)) return d;
+    for (const d of this.decor) if (d.def.shelter && !d.wet && d.covers(x, y)) return d;
     return null;
+  }
+
+  // ------------------------------------------------------------------ homes
+  homeOf(c) {
+    const id = c.memory.home;
+    if (!id) return null;
+    for (const d of this.decor) if (d.id === id) return d;
+    return null;
+  }
+  // A critter settles into a shelter. If it has no home yet and there's a
+  // spare bed, this is home now.
+  moveIn(c, d) {
+    if (c.memory.home || !suits(c, d) || d.residents.length >= (d.def.cap || 3)) return false;
+    c.memory.home = d.id;
+    d.residents.push(c);
+    this.events.emit('moveIn', { c, d });
+    // (a full tank settling in at once would flood the logbook)
+    if (this.time - this.moveLogT > 40 && !this.awayMode) {
+      this.moveLogT = this.time;
+      this.addLog(`${c.name} the ${c.def.name.toLowerCase()} made a home in the ${d.def.name.toLowerCase()}.`, 'house');
+    }
+    return true;
+  }
+  // Out of the door: its house was moved or taken away, or it was dragged
+  // off by something more pressing.
+  leaveShelter(c) {
+    if (!c.inside) return;
+    const b = c.brain.b;
+    c.brain.b = null;
+    if (b && b.stop) b.stop(c, this);
+    c.inside = null;
+    c.hidden = false;
+    c.peek = 0;
+    c.doorT = 1;
+    c.brain.think = 0;
+  }
+  // Who lives where, kept fresh from the critters' own memories (so it
+  // survives saving and loading, and the sand shifting under a castle).
+  updateHomes() {
+    const t = this.terrain;
+    for (const d of this.decor) {
+      if (!d.def.shelter) continue;
+      d.residents.length = 0;
+      d.wet = t.waterAt(d.x, d.y - 4);
+    }
+    for (const c of this.creatures) {
+      if (c.dead) continue;
+      const d = c.inside;
+      if (d && (d.removed || !suits(c, d) || Math.abs(c.x - d.doorX) > 30 || Math.abs(c.y - d.doorY) > 40)) this.leaveShelter(c);
+      if (!c.memory.home) continue;
+      const h = this.homeOf(c);
+      if (!h || !suits(c, h) || h.residents.length >= (h.def.cap || 3)) c.memory.home = 0;
+      else h.residents.push(c);
+    }
   }
   rainBoost() {
     return 0;
@@ -1216,6 +1276,7 @@ export class World {
     const t = this.terrain;
     // environment reacts to the loads gathered during the previous step
     env.update(dt, this);
+    breeze.update(dt, this);
     env.rotLoad = 0;
     env.bioLoad = 0;
     env.grazers = 0;
@@ -1267,6 +1328,12 @@ export class World {
     }
     this.evaporate(dt);
 
+    this.homeT += dt;
+    if (this.homeT >= 1) {
+      this.homeT = 0;
+      this.updateHomes();
+    }
+
     // creatures
     const cs = this.creatures;
     for (let i = cs.length - 1; i >= 0; i--) {
@@ -1298,6 +1365,7 @@ export class World {
       // animation
       c.anim += dt * (c.moving ? 1 : 0.4);
       if (c.landT > 0) c.landT -= dt;
+      if (c.doorT > 0) c.doorT -= dt;
       if (c.emoteT > 0) c.emoteT -= dt;
       if (c.tongue) {
         c.tongue.t -= dt;
@@ -1489,6 +1557,9 @@ export class World {
         c.body = null;
         c.applyStage(true);
       }
+      // an egg or baby a nurse was carrying goes back with the rest
+      const col = cd.cb && this.colony(c.colonyId);
+      if (col) col.brood.push({ stage: cd.cb.s, t: cd.cb.t || 0, x: c.x, y: Math.floor(c.y / CELL) * CELL + 1.5, a: 0 });
       this.addCreature(c);
     }
     this.computeRegions();

@@ -3,10 +3,10 @@
 import { DAY_LEN, W } from '../config.js';
 import { JOBS } from '../data/goods.js';
 import { clamp, clamp01, smoothstep } from '../util/math.js';
-import { rrange, chance, rpick } from '../util/rng.js';
+import { rrange, rint, chance, rpick } from '../util/rng.js';
 import {
-  cachedFood, validFood, findPrey, findMate, wanderTarget, nearestPlantSlot, comfortSpot, nearestShelter, lampSpot,
-  pickFlower, reachable, preyValue,
+  cachedFood, validFood, findPrey, findMate, wanderTarget, nearestPlantSlot, comfortSpot, lampSpot,
+  pickFlower, reachable, preyValue, homeKind, findHome, snugSpot, shelterNear, swimSpot, restSpot,
 } from './search.js';
 
 function hungerScore(c) {
@@ -34,7 +34,78 @@ function jobLine(c) {
   return rpick(j.lines);
 }
 
+// ---- home life
+// Set off for a shelter's front door (a flyer lands on the doorstep first).
+function headInside(c, d, speedMul) {
+  if (c.mode === 'fly') c.seekPoint(d.doorX, d.doorY, { ground: true });
+  else if (c.mode === 'swim') c.seekPoint(d.doorX, d.doorY - Math.max(4, c.size * 0.25), speedMul ? { speedMul } : undefined);
+  else c.seekPoint(d.doorX + rrange(-1.5, 1.5), d.doorY, speedMul ? { speedMul } : undefined);
+}
+function atDoor(c, d) {
+  return Math.abs(c.x - d.doorX) < 6 + c.size * 0.3 && Math.abs(c.y - d.doorY) < 12 + c.size * 0.5;
+}
+// Slip inside, out of sight and out of reach, and move in for good if it
+// has no home yet and there's a spare bed.
+function tuckIn(c, w, d) {
+  c.halt();
+  c.vx = c.vy = 0;
+  c.inside = d;
+  c.hidden = true;
+  c.peek = 0;
+  w.moveIn(c, d);
+}
+function comeOut(c) {
+  if (!c.inside) return;
+  c.inside = null;
+  c.hidden = false;
+  c.peek = 0;
+  c.doorT = 1.5;
+}
+// Awake indoors, a critter now and then pops out onto the doorstep for a
+// look round, then ducks back in.
+function peekTick(c, dt, d) {
+  if (c.peek > 0) {
+    c.peek -= dt;
+    if (c.peek <= 0) c.hidden = true;
+    else if (chance(dt * 0.7)) c.facing = -c.facing;
+    return;
+  }
+  if (c.fear < 0.3 && chance(dt * 0.06 * (0.5 + c.traits.curious))) {
+    c.peek = rrange(1.6, 3.4);
+    c.hidden = false;
+    c.pose = 'idle';
+    const side = d.doorX - d.x;
+    c.facing = Math.abs(side) > 4 ? (side > 0 ? 1 : -1) : chance(0.5) ? 1 : -1;
+  }
+}
+// Walking to the door, then in. Returns 'in' once inside, 'go' on the way,
+// or 'fail' if it can't get there.
+function goInside(c, w, d, maxT = 30) {
+  if (!d || d.removed) return 'fail';
+  if (c.inside === d) return 'in';
+  if (c.arrived || atDoor(c, d)) {
+    tuckIn(c, w, d);
+    return 'in';
+  }
+  if ((c.blocked && c.mode !== 'fly' && c.mode !== 'swim') || c.brain.t > maxT) return 'fail';
+  return 'go';
+}
+function homeWord(d) {
+  return d.def.name.toLowerCase();
+}
+
 export const BEHAVIORS = {};
+// Make another critter drop what it's doing for this (brain.force does the
+// same, but brain.js imports this file).
+function switchTo(c, w, id, data) {
+  const cur = c.brain.b;
+  if (cur && cur.stop) cur.stop(c, w);
+  c.brain.b = BEHAVIORS[id];
+  c.brain.t = 0;
+  c.brain.data = data || {};
+  c.brain.think = 0.6;
+  BEHAVIORS[id].start(c, w);
+}
 function def(id, b) {
   b.id = id;
   BEHAVIORS[id] = b;
@@ -45,39 +116,114 @@ def('idle', {
   score: () => 0.07,
   start(c) {
     c.halt();
-    c.brain.data.dur = rrange(1.5, 4);
+    c.brain.data.dur = rrange(1.5, 4) / c.tempo;
+    c.brain.data.fidget = rrange(0.3, 1.6);
     c.pose = 'idle';
   },
   tick(c, w, dt) {
     const d = c.brain.data;
-    if (chance(dt * 0.3) && c.mode !== 'climb') c.facing = -c.facing;
     if (c.mode === 'fly') {
       // hover lazily
       if (!c.target || c.arrived) c.seekPoint(c.x + rrange(-12, 12), c.y + rrange(-8, 8));
+      return c.brain.t < d.dur;
     }
+    if (c.mode === 'swim') {
+      // hang about, finning gently in place
+      if (!c.target || c.arrived) c.seekPoint(c.x + rrange(-10, 10), c.y + rrange(-6, 6));
+      return c.brain.t < d.dur;
+    }
+    // little fidgets: a groom, a look round, a shuffle, a hop on the spot
+    if (d.groom > 0) {
+      d.groom -= dt;
+      if (d.groom <= 0) c.pose = 'idle';
+    } else if (c.mode === 'walk' && c.target && c.arrived) c.halt();
+    d.fidget -= dt;
+    if (d.fidget <= 0 && c.mode === 'walk') {
+      d.fidget = rrange(0.6, 2) / c.tempo;
+      const r = Math.random();
+      if (r < 0.3) {
+        d.groom = rrange(0.7, 1.6);
+        c.pose = 'eat';
+      } else if (r < 0.6) c.facing = -c.facing;
+      else if (r < 0.8) {
+        const x = clamp(c.x + rrange(4, 12) * (chance(0.5) ? 1 : -1), 10, W - 10);
+        if (reachable(c, w, x, w.terrain.surfaceY(x) - 3)) c.seekPoint(x, w.terrain.surfaceY(x), { speedMul: 0.6 });
+      } else if (c.def.hop && c.hopCD <= 0 && chance(0.6)) c.tryHop(w, chance(0.5) ? 1 : -1, rrange(12, 30));
+    } else if (c.mode !== 'walk' && c.mode !== 'climb' && chance(dt * 0.3)) c.facing = -c.facing;
     return c.brain.t < d.dur;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
   },
   thought: (c) => jobLine(c) || rpick(['Just looking around.', 'Hmm-hmm-hmm...', 'What a nice day.', 'Thinking about snacks.']),
 });
 
 // --------------------------------------------------------------------- wander
+// Where to wander next. Most trips are short, but now and then a critter
+// sets off on a proper expedition.
+function roam(c, w) {
+  const far = chance(0.18) ? rrange(1.6, 2.6) : rrange(0.4, 1.1);
+  if (c.mode === 'swim') return swimSpot(c, w, (c.sp === 'turtle' ? 200 : 150) * (0.7 + c.traits.curious * 0.6));
+  const range = c.mode === 'fly' ? 220 : (60 + c.traits.curious * 140) * far;
+  return wanderTarget(c, w, range);
+}
 def('wander', {
   score: (c) => (0.15 + c.traits.curious * 0.14) * c.act,
   start(c, w) {
-    const range = c.mode === 'fly' ? 220 : c.mode === 'swim' ? 160 : 60 + c.traits.curious * 140;
-    if (!goTo(c, wanderTarget(c, w, range))) c.brain.data.fail = true;
-    c.brain.data.zone = zoneWord(w, c.x);
+    const d = c.brain.data;
+    if (!goTo(c, roam(c, w))) d.fail = true;
+    d.zone = zoneWord(w, c.x);
+    // swimmers string a few legs together rather than stopping after each
+    d.legs = c.mode === 'swim' ? rint(1, 4) : 1;
+    d.stopIn = rrange(1.5, 6) / c.tempo;
+    if (c.mode === 'walk' && c.target) c.target.speedMul = rrange(0.75, 1.2);
   },
   tick(c, w, dt) {
     const d = c.brain.data;
     if (d.fail) return false;
+    if (d.paused > 0) {
+      // stopped for a sniff and a look round
+      d.paused -= dt;
+      if (d.paused <= 0) {
+        c.pose = 'idle';
+        if (d.resume) c.seek(d.resume);
+      }
+      return true;
+    }
     if (c.arrived) {
-      d.pause = (d.pause || rrange(0.8, 2.5)) - dt;
+      if (--d.legs > 0) {
+        if (!goTo(c, roam(c, w))) return false;
+        return true;
+      }
+      d.pause = (d.pause || rrange(0.5, 2.5) / c.tempo) - dt;
       if (c.mode === 'fly' && c.sp !== 'butterfly' && c.sp !== 'bee') return false;
       return d.pause > 0;
     }
     if (c.blocked && c.mode !== 'fly' && c.mode !== 'swim') return false;
+    // on foot, a stroll isn't a straight march: stop to sniff the air, change
+    // its mind, put on a little speed or dawdle
+    if (c.mode === 'walk' && c.target) {
+      d.stopIn -= dt;
+      if (d.stopIn <= 0) {
+        d.stopIn = rrange(2, 7) / c.tempo;
+        const r = Math.random();
+        if (r < 0.4) {
+          d.resume = c.target;
+          c.halt();
+          d.paused = rrange(0.5, 2.2);
+          c.pose = chance(0.4) ? 'eat' : 'idle';
+          if (chance(0.5)) c.facing = -c.facing;
+        } else if (r < 0.62) {
+          if (!goTo(c, roam(c, w))) return false;
+        } else if (r < 0.75 && c.def.hop && c.hopCD <= 0) {
+          c.tryHop(w, c.facing, rrange(30, 60));
+        } else c.target.speedMul = rrange(0.6, 1.35);
+      }
+    }
     return c.brain.t < 25;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
   },
   thought: (c) =>
     jobLine(c) ||
@@ -287,10 +433,27 @@ def('flee', {
     if (c.fear < 0.3) return 0;
     return c.fear * 1.5;
   },
+  // once safely indoors, stay put a while (peeking out to check) before
+  // venturing out again
+  lock(c) {
+    return !!c.inside && c.brain.t < c.brain.data.dur;
+  },
   start(c, w) {
     const d = c.brain.data;
     const src = c.threat || c.memory.scare;
     d.dur = rrange(2, 4);
+    // (a snail just pulls into its shell; it's its own house)
+    if (homeKind(c) && c.mode !== 'climb' && !c.def.rolls && c.sp !== 'snail' && c.sp !== 'pondsnail') {
+      // home (or any door it fits) is close: bolt for it
+      const sh = shelterNear(c, w, c.mode === 'swim' ? 170 : 140);
+      if (sh) {
+        d.sh = sh;
+        d.dur = rrange(6, 12);
+        headInside(c, sh, 1.5);
+        if (chance(0.7)) c.emote('!', 1.2);
+        return;
+      }
+    }
     if (c.def.rolls) {
       c.halt();
       c.pose = 'ball';
@@ -330,6 +493,18 @@ def('flee', {
   },
   tick(c, w, dt) {
     const d = c.brain.data;
+    if (d.sh) {
+      if (!c.inside) {
+        const r = goInside(c, w, d.sh, 8);
+        if (r === 'in') {
+          d.t0 = c.brain.t;
+          w.events.emit('dashHome', { c, d: d.sh });
+        }
+        return r !== 'fail';
+      }
+      if (c.brain.t - d.t0 > 2.5) peekTick(c, dt, d.sh);
+      return c.brain.t < d.dur || c.fear > 0.25;
+    }
     if (d.ball) {
       if (c.sp === 'turtle') c.pose = 'hide';
       return c.brain.t < d.dur + 1.5 || c.fear > 0.4;
@@ -339,9 +514,16 @@ def('flee', {
   },
   stop(c) {
     if (c.pose === 'ball' || c.pose === 'shell' || c.pose === 'hide') c.pose = 'idle';
+    comeOut(c);
   },
   thought: (c) =>
-    c.pose === 'ball' ? 'Rolled up tight! Safe in here.' : c.pose === 'shell' || c.pose === 'hide' ? 'Hiding in my shell...' : c.threat ? `Eek! A ${c.threat.def.name.toLowerCase()}!` : 'Whoa! What was that?',
+    c.inside
+      ? c.peek > 0
+        ? 'Is it safe to come out yet?'
+        : `Safe inside the ${homeWord(c.inside)}!`
+      : c.brain.data.sh
+        ? `Run! Back to the ${homeWord(c.brain.data.sh)}!`
+        : c.pose === 'ball' ? 'Rolled up tight! Safe in here.' : c.pose === 'shell' || c.pose === 'hide' ? 'Hiding in my shell...' : c.threat ? `Eek! A ${c.threat.def.name.toLowerCase()}!` : 'Whoa! What was that?',
 });
 
 // --------------------------------------------------------------------- comfort
@@ -356,6 +538,7 @@ def('comfort', {
     const tgt = comfortSpot(c, w);
     if (tgt) goTo(c, tgt);
     else d.stay = true;
+    if (tgt && tgt.shelter) d.sh = tgt.shelter;
     if (d.kind === 'hot') c.emote('hot', 1.5);
     else if (d.kind === 'cold') c.emote('cold', 1.5);
     else if (d.kind === 'dry') c.emote('drop', 1.5);
@@ -370,10 +553,14 @@ def('comfort', {
         w.events.emit('gasp', { c });
       }
     }
-    if (c.arrived || d.stay) {
+    if (d.sh && !c.inside && c.arrived) tuckIn(c, w, d.sh);
+    if (c.arrived || d.stay || c.inside) {
       d.sit = (d.sit || 0) + dt;
       if (d.kind !== 'air') c.pose = c.energy < 0.5 ? 'sleep' : 'idle';
-      if (c.discomfort < 0.1 || d.sit > 14) return false;
+      if (c.inside && c.pose !== 'sleep') peekTick(c, dt, c.inside);
+      // (tucked up indoors it settles in for a while rather than popping
+      // straight back out the moment it feels better)
+      if ((c.discomfort < 0.1 && (!c.inside || d.sit > 12)) || d.sit > (c.inside ? 45 : 14)) return false;
     } else if (c.blocked && c.mode !== 'swim' && c.mode !== 'fly') {
       d.stay = true;
     }
@@ -381,11 +568,12 @@ def('comfort', {
   },
   stop(c) {
     if (c.pose === 'gasp' || c.pose === 'sleep') c.pose = 'idle';
+    comeOut(c);
   },
   thought: (c) => {
     const k = c.brain.data.kind;
-    if (k === 'hot') return c.brain.data.sit ? 'Ahh, much cooler here.' : 'Phew, too hot! Looking for shade.';
-    if (k === 'cold') return c.brain.data.sit ? 'Warming up slowly...' : 'Brrr! Finding somewhere warm.';
+    if (k === 'hot') return c.inside ? `Ahh, nice and shady in the ${homeWord(c.inside)}.` : c.brain.data.sit ? 'Ahh, much cooler here.' : 'Phew, too hot! Looking for shade.';
+    if (k === 'cold') return c.inside ? `Snug and warm in the ${homeWord(c.inside)}.` : c.brain.data.sit ? 'Warming up slowly...' : 'Brrr! Finding somewhere warm.';
     if (k === 'air') return 'Gulp! The water feels stuffy... need air.';
     return 'So dry! Looking for somewhere damp.';
   },
@@ -423,8 +611,10 @@ def('bask', {
     } else if (c.blocked && c.mode !== 'swim') return false;
     return c.brain.t < 80;
   },
-  stop(c) {
+  stop(c, w) {
     c.pose = 'idle';
+    // warmed through: off for a paddle or a potter before the next sunbathe
+    if (c.brain.data.sit > 8) (c.memory.cool || (c.memory.cool = {})).bask = w.time + rrange(40, 150);
   },
   thought: (c) => (c.brain.data.sit ? 'Mmm, toasty warm. Soaking up the heat.' : 'Off to my sunny spot under the lamp.'),
 });
@@ -443,21 +633,25 @@ def('rest', {
   start(c, w) {
     const d = c.brain.data;
     let tgt = null;
+    // a critter with a home nearly always goes home to sleep; others often
+    // take a spare bed if there's one going (and it may become theirs)
+    const sh = homeKind(c) && c.mode !== 'climb' ? snugSpot(c, w, c.def.likesShelter ? 320 : 220) : null;
+    // (fish often doze out among the weeds instead, where you can see them)
+    const own = w.homeOf(c) === sh;
+    if (sh && chance(c.mode === 'swim' ? (own ? 0.5 : 0.3) : own ? 0.92 : c.def.likesShelter ? 0.9 : 0.6)) {
+      d.shelter = sh;
+      headInside(c, sh);
+      return;
+    }
     if (c.mode === 'fly') {
       tgt = nearestPlantSlot(c, w, 300, ['leaf', 'flower', 'stem', 'pad']);
       if (!tgt) {
         const x = c.x;
         tgt = { kind: 'point', x, y: w.terrain.surfaceY(x), ground: true };
       }
-    } else if ((c.mode === 'walk' || c.mode === 'climb') && !c.aquatic) {
-      const sh = nearestShelter(c, w, c.def.likesShelter ? 300 : 160);
-      if (sh && (c.def.likesShelter || chance(0.6))) {
-        tgt = { kind: 'point', x: sh.x + rrange(-6, 6), y: sh.y };
-        d.shelter = sh;
-      }
     } else if (c.mode === 'swim') {
-      const fy = w.terrain.surfaceY(c.x) - 12;
-      tgt = { kind: 'point', x: c.x, y: Math.max(w.terrain.waterLevel + 10, fy) };
+      // doze hovering among the weeds or out in calm water, not on the floor
+      tgt = restSpot(c, w);
     }
     if (tgt) goTo(c, tgt);
     else {
@@ -467,11 +661,18 @@ def('rest', {
   },
   tick(c, w, dt) {
     const d = c.brain.data;
-    if (c.arrived || d.here || (c.blocked && c.mode !== 'fly')) {
+    if (d.shelter && !c.inside) {
+      const r = goInside(c, w, d.shelter, 35);
+      if (r === 'fail') {
+        // couldn't get there: nap right here instead
+        d.shelter = null;
+        d.here = true;
+        c.halt();
+      } else if (r === 'go') return true;
+    }
+    if (c.inside || c.arrived || d.here || (c.blocked && c.mode !== 'fly')) {
       if (c.mode !== 'climb' && c.mode !== 'swim') c.halt();
-      if (c.mode === 'swim') c.vx *= 0.9;
       c.pose = 'sleep';
-      if (d.shelter) c.hidden = true;
       d.zz = (d.zz || 0) - dt;
       if (d.zz <= 0) {
         d.zz = 3.5;
@@ -486,9 +687,17 @@ def('rest', {
   },
   stop(c) {
     c.pose = 'idle';
+    comeOut(c);
     c.hidden = false;
   },
-  thought: (c) => (c.pose === 'sleep' ? rpick(['Zzz... dreaming of snacks.', 'Zzz...', 'Snoozing.', 'Zzz... five more minutes.']) : 'Getting sleepy. Time for bed.'),
+  thought: (c) =>
+    c.pose === 'sleep'
+      ? c.inside
+        ? rpick([`Zzz... tucked up in the ${homeWord(c.inside)}.`, 'Zzz...', 'Zzz... home sweet home.'])
+        : rpick(['Zzz... dreaming of snacks.', 'Zzz...', 'Snoozing.', 'Zzz... five more minutes.'])
+      : c.brain.data.shelter
+        ? `Off home to bed in the ${homeWord(c.brain.data.shelter)}.`
+        : 'Getting sleepy. Time for bed.',
 });
 
 // --------------------------------------------------------------------- hide (shelter by day / when nervous)
@@ -504,18 +713,18 @@ def('hide', {
     const m = c.memory;
     if (!m.shT || w.time - m.shT > 3) {
       m.shT = w.time;
-      m.sh = nearestShelter(c, w, 260);
+      m.sh = homeKind(c) ? snugSpot(c, w, 260) : null;
     }
     if (!m.sh && !(c.sp === 'beetle' && c.tempDisc > 0.3)) return 0;
     return s;
   },
   lock(c) {
-    return c.hidden && c.fear < 0.6 && c.hunger < 0.8 && c.act < 0.55;
+    return (c.hidden || !!c.inside) && c.fear < 0.6 && c.hunger < 0.8 && c.act < 0.55;
   },
   start(c, w) {
     const d = c.brain.data;
     d.sh = c.memory.sh;
-    if (d.sh) c.seekPoint(d.sh.x + rrange(-5, 5), d.sh.y);
+    if (d.sh) headInside(c, d.sh);
     else {
       d.dig = true;
       c.halt();
@@ -529,19 +738,29 @@ def('hide', {
       if (c.tempDisc < 0.05 && c.brain.t > 10) return false;
       return c.brain.t < 120;
     }
-    if (!d.sh || d.sh.removed) return false;
-    if (c.arrived) {
-      c.hidden = true;
-      c.pose = 'sleep';
-      if (c.act > 0.6 && c.brain.t > 8) return false;
-    } else if (c.blocked) return false;
+    if (!c.inside) return goInside(c, w, d.sh) !== 'fail';
+    // dozing the day away, or awake and peeking out now and then
+    if (c.energy < 0.75) c.pose = 'sleep';
+    else {
+      if (c.pose === 'sleep') c.pose = 'idle';
+      peekTick(c, dt, c.inside);
+    }
+    if (c.act > 0.6 && c.brain.t > 8) return false;
     return c.brain.t < 200;
   },
   stop(c) {
+    comeOut(c);
     c.hidden = false;
     c.pose = 'idle';
   },
-  thought: (c) => (c.brain.data.dig ? 'Dug in under the cool sand.' : c.hidden ? 'Cosy in my hidey-hole.' : 'Off to my hidey-hole.'),
+  thought: (c) =>
+    c.brain.data.dig
+      ? 'Dug in under the cool sand.'
+      : c.inside
+        ? c.peek > 0
+          ? 'Just peeking out to see what is going on.'
+          : `Cosy in the ${homeWord(c.inside)}.`
+        : 'Off to my hidey-hole.',
 });
 
 // --------------------------------------------------------------------- mate
@@ -1083,14 +1302,20 @@ def('huddle', {
       if (f.climb) c.seek({ kind: 'plant', plant: f.climb.plant, slot: f.climb.slot });
       else c.seekPoint(f.x + rrange(-4, 4), f.y);
     } else {
-      const sh = nearestShelter(c, w, 400);
-      if (sh) c.seekPoint(sh.x, sh.y);
-      else d.here = true;
+      const sh = snugSpot(c, w, 400);
+      if (sh) {
+        d.sh = sh;
+        headInside(c, sh);
+      } else d.here = true;
     }
   },
   tick(c, w, dt) {
     const d = c.brain.data;
-    if (c.arrived || d.here || (d.friend && Math.hypot(d.friend.x - c.x, d.friend.y - c.y) < 10)) {
+    if (d.sh && !c.inside && goInside(c, w, d.sh, 40) === 'fail') {
+      d.sh = null;
+      d.here = true;
+    }
+    if (c.inside || c.arrived || d.here || (d.friend && Math.hypot(d.friend.x - c.x, d.friend.y - c.y) < 10)) {
       if (c.mode === 'fly') c.land(w);
       if (c.mode === 'walk') c.halt();
       c.huddling = true;
@@ -1107,8 +1332,9 @@ def('huddle', {
   stop(c) {
     c.huddling = false;
     c.pose = 'idle';
+    comeOut(c);
   },
-  thought: () => 'Chilly! Snuggling up with friends to keep warm.',
+  thought: (c) => (c.inside ? `Chilly! Snuggled up in the ${homeWord(c.inside)}.` : 'Chilly! Snuggling up with friends to keep warm.'),
 });
 
 // --------------------------------------------------------------------- headstand (desert beetles drink fog)
@@ -1201,8 +1427,203 @@ def('investigate', {
   thought: () => rpick(['Ooh! What is that?', 'Something new! Let me look.', 'Curiouser and curiouser...']),
 });
 
+// --------------------------------------------------------------------- home (pop home for a bit, or go house-hunting)
+def('home', {
+  can: (c) => !!homeKind(c) && c.mode !== 'climb' && c.mode !== 'burrow',
+  score(c, w) {
+    if (c.hunger > 0.55 || c.fear > 0.3 || c.discomfort > 0.3) return 0;
+    const m = c.memory;
+    if (m.homeT && w.time - m.homeT < 50) return 0;
+    if (w.homeOf(c)) return (0.08 + c.traits.lazy * 0.16 + (1 - c.act) * 0.12) * (1.15 - c.traits.curious * 0.3);
+    // no home yet: the curious go and look round anywhere with a vacancy
+    if (!m.huntT || w.time - m.huntT > 8) {
+      m.huntT = w.time;
+      m.vacancy = findHome(c, w, 280);
+    }
+    return m.vacancy && !m.vacancy.removed ? 0.1 + c.traits.curious * 0.25 : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const m = c.memory;
+    m.homeT = w.time;
+    d.sh = w.homeOf(c) || m.vacancy;
+    d.newbie = !w.homeOf(c);
+    d.stay = rrange(8, 26);
+    if (d.sh) headInside(c, d.sh);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!c.inside) {
+      const r = goInside(c, w, d.sh);
+      if (r === 'in') {
+        d.t0 = c.brain.t;
+        c.pose = 'idle';
+        if (d.newbie && w.homeOf(c) === d.sh) c.emote('heart', 1.8);
+      }
+      return r !== 'fail';
+    }
+    // pottering about indoors, peeking out now and then
+    peekTick(c, dt, c.inside);
+    return c.brain.t - d.t0 < d.stay;
+  },
+  stop(c) {
+    comeOut(c);
+  },
+  thought(c, w) {
+    const d = c.brain.data;
+    const h = d.sh ? homeWord(d.sh) : 'house';
+    if (c.inside) return c.peek > 0 ? 'Just popping my head out to see what is going on.' : d.newbie ? `I live in the ${h} now!` : rpick([`Pottering about at home in the ${h}.`, 'Tidying up my little room.', 'Home sweet home.']);
+    return d.newbie ? `Ooh, the ${h} has a spare room!` : `Popping home to the ${h} for a bit.`;
+  },
+});
+
+// --------------------------------------------------------------------- socialize (say hello to a friend, or swim along together)
+def('socialize', {
+  can: (c) => (c.mode === 'walk' || c.mode === 'swim') && !c.def.colony,
+  score(c, w) {
+    if (c.hunger > 0.5 || c.fear > 0.3 || c.act < 0.4) return 0;
+    const m = c.memory;
+    if (m.palT && w.time - m.palT < 45) return 0;
+    if (!m.palQ || w.time - m.palQ > 4) {
+      m.palQ = w.time;
+      m.pal = w.hashC.nearest(c.x, c.y, Math.max(90, c.def.sight * 1.4), (o) => {
+        if (o === c || o.dead || o.hidden || o.sp !== c.sp || o.mode !== c.mode || o.stage === 'egg') return false;
+        const b = o.brain.b;
+        if (b && (b.id === 'rest' || b.id === 'mate' || b.id === 'flee' || b.id === 'hide')) return false;
+        return reachable(c, w, o.x, o.y);
+      });
+    }
+    return m.pal ? (0.06 + c.traits.social * 0.3) * c.act : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.pal = c.memory.pal;
+    c.memory.palT = w.time;
+    d.dur = c.mode === 'swim' ? rrange(6, 12) : rrange(10, 16);
+    if (d.pal) c.seek({ kind: 'creature', c: d.pal });
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const p = d.pal;
+    if (!p || p.dead || p.removed || p.hidden) return false;
+    if (c.mode === 'swim') {
+      // swim alongside for a while, nose to tail
+      d.re = (d.re || 0) - dt;
+      if (d.re <= 0) {
+        d.re = 0.8;
+        c.seekPoint(p.x - p.facing * (p.size * 0.6 + 4) + rrange(-4, 4), p.y + rrange(-8, 8));
+      }
+      if (!d.hi && Math.hypot(p.x - c.x, p.y - c.y) < 40) {
+        d.hi = true;
+        if (chance(0.5)) c.emote(rpick(['heart', 'note']), 1.2);
+      }
+      return c.brain.t < d.dur;
+    }
+    const dist = Math.hypot(p.x - c.x, p.y - c.y);
+    if (!d.hi) {
+      if (dist < (c.size + p.size) * 0.5 + 6) {
+        d.hi = true;
+        d.t = 0;
+        d.len = rrange(2.2, 3.4);
+        c.halt();
+        c.facing = p.x >= c.x ? 1 : -1;
+        c.emote(rpick(['heart', 'note', '?']), 1.6);
+        const b = p.brain.b;
+        if (!b || b.id === 'idle' || b.id === 'wander') switchTo(p, w, 'greeted', { pal: c });
+      } else if (c.arrived || c.blocked || c.brain.t > 12) return false;
+      else if (!c.target) c.seek({ kind: 'creature', c: p });
+      return true;
+    }
+    d.t += dt;
+    c.pose = d.t % 1.4 < 0.5 ? 'eat' : 'idle'; // a nod and a natter
+    return d.t < d.len;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
+  },
+  thought: (c) => {
+    const p = c.brain.data.pal;
+    const n = p ? p.name : 'a friend';
+    return c.mode === 'swim' ? `Swimming along with ${n}.` : c.brain.data.hi ? rpick([`Having a natter with ${n}.`, `Swapping news with ${n}.`]) : `Ooh, there's ${n}! Hello!`;
+  },
+});
+
+def('greeted', {
+  score: () => 0,
+  start(c) {
+    if (c.mode === 'walk') c.halt();
+  },
+  tick(c) {
+    const p = c.brain.data.pal;
+    if (!p || p.dead || p.removed) return false;
+    c.facing = p.x >= c.x ? 1 : -1;
+    c.pose = c.brain.t % 1.3 < 0.45 ? 'eat' : 'idle';
+    return c.brain.t < 3;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
+  },
+  thought: (c) => `Oh hello, ${c.brain.data.pal ? c.brain.data.pal.name : 'you'}!`,
+});
+
+// --------------------------------------------------------------------- breathe (air-breathers pop up to the surface)
+def('breathe', {
+  can: (c) => c.sp === 'turtle' || c.sp === 'pondsnail' || (c.sp === 'frog' && (c.stage === 'froglet' || c.stage === 'adult')),
+  score(c, w) {
+    const m = c.memory;
+    const t = w.terrain;
+    if (m.airT == null) m.airT = w.time - rrange(0, 80);
+    // out of the water, or already at the top, it's breathing just fine
+    if (!c.inWater || c.y < t.waterSurfY(c.x) + 8) {
+      m.airT = w.time;
+      return 0;
+    }
+    const need = c.sp === 'pondsnail' ? 200 : c.sp === 'turtle' ? 110 : 80;
+    return smoothstep(need * 0.6, need * 1.3, w.time - m.airT) * 0.95;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const t = w.terrain;
+    if (c.mode === 'swim') {
+      const x = clamp(c.x + rrange(-40, 40), 520, 1100);
+      if (t.waterAt(x, t.waterLevel + 4)) c.seekPoint(x, t.waterLevel + 3);
+      else c.seekPoint(c.x, t.waterLevel + 3);
+      return;
+    }
+    // a pond snail climbs a stem to the top (a lily pad is perfect)
+    const s = nearestPlantSlot(c, w, 300, ['pad', 'leaf', 'flower', 'stem'], (p) => p.def.aquatic);
+    if (s) {
+      let top = s;
+      for (const sl of s.plant.shape.slots) if (sl.y < top.slot.y) top = { kind: 'plant', plant: s.plant, slot: sl };
+      c.seek(top);
+    } else d.none = true;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const t = w.terrain;
+    if (d.none) {
+      c.memory.airT = w.time - 60; // try again in a while
+      return false;
+    }
+    if (c.y < t.waterSurfY(c.x) + 8 || (c.mode === 'climb' && c.arrived)) {
+      d.t = (d.t || 0) + dt;
+      if (!d.gulp) {
+        d.gulp = true;
+        if (w.fx) w.fx.ripples.push({ x: c.x, t: 0, s: 0.3 });
+      }
+      if (d.t > (c.mode === 'climb' ? 6 : 1.4)) {
+        c.memory.airT = w.time;
+        if (c.mode !== 'climb') w.bubble(c.x, c.y + 4);
+        return false;
+      }
+    }
+    return c.brain.t < 40;
+  },
+  thought: (c) => (c.sp === 'pondsnail' ? 'Climbing up for a breath of fresh air.' : 'Popping up for a breath of air!'),
+});
+
 // Which behaviours each species knows.
-const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate'];
+const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize'];
 export const SPECIES_BEHAVIORS = {
   default: BASE,
   cricket: [...BASE, 'chirp', 'hide'],
@@ -1210,10 +1631,10 @@ export const SPECIES_BEHAVIORS = {
   gecko: [...BASE, 'hunt', 'bask', 'hide'],
   beetle: [...BASE, 'headstand', 'hide', 'recycle'],
   goldfish: [...BASE, 'hunt', 'graze'],
-  frog: [...BASE, 'hunt', 'croak', 'graze'],
-  turtle: [...BASE, 'bask'],
-  pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate'],
-  shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate'],
+  frog: [...BASE, 'hunt', 'croak', 'graze', 'breathe'],
+  turtle: [...BASE, 'bask', 'breathe'],
+  pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'home', 'breathe'],
+  shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize'],
   ladybug: [...BASE, 'hunt', 'huddle'],
   aphid: ['idle', 'sap', 'mate', 'comfort'],
   butterfly: [...BASE, 'pollinate', 'pupate'],

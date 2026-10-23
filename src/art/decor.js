@@ -517,6 +517,35 @@ export const DECOR_ART = {
     for (let i = -3; i <= 3; i++) line(g, 0, -1, i * 5, -22 + Math.abs(i) * 1.6, LW * 0.6, 'rgba(180,100,90,0.6)');
     rect(g, -5, -4, 10, 4, '#f2c2b0');
   },
+  pipe(g) {
+    // a terracotta drain pipe on its side: a bell socket on the left and a
+    // dark round way in on the right
+    paint(g, '#c9714a', LW, () => {
+      g.beginPath();
+      g.moveTo(-24, -2);
+      g.lineTo(-24, -20);
+      g.quadraticCurveTo(0, -22, 26, -20);
+      g.lineTo(26, -2);
+      g.quadraticCurveTo(0, 0, -24, -2);
+      g.closePath();
+    });
+    for (const x of [-10, 6]) curve(g, x, -20.5, x + 1.6, -11, x, -1.5, LW * 0.5, 'rgba(58,42,31,0.45)');
+    paint(g, '#b8603c', LW, () => {
+      g.beginPath();
+      g.moveTo(-31, -1);
+      g.lineTo(-31, -23);
+      g.quadraticCurveTo(-27, -24.5, -23, -23);
+      g.lineTo(-23, -1);
+      g.quadraticCurveTo(-27, 0, -31, -1);
+      g.closePath();
+    });
+    blob(g, 27, -11, 5.6, 10.6, '#e08a5c', LW);
+    blob(g, 27, -11, 3.7, 8, '#3a2a1f', LW * 0.7);
+    highlight(g, -4, -18, 12, 1.4, 0.35, -0.02);
+    fuzzPath(g, -13, -21, 7, 2.4, 9, 0.25, 5);
+    fill(g, '#8cc152');
+    stroke(g, LW * 0.6);
+  },
   bubbler(g) {
     blob(g, 0, -3.4, 8, 3.6, '#9aa0a6', LW);
     for (let i = 0; i < 5; i++) {

@@ -5,6 +5,17 @@ import { DAY_LEN, W, H } from '../config.js';
 import { clamp } from '../util/math.js';
 import { rrange } from '../util/rng.js';
 import { nextId } from './creature.js';
+import { breeze } from '../world/breeze.js';
+
+const CUR = [0, 0];
+
+// Room to drift into: deep, open water a little way on in that direction
+// (so nothing gets washed up into the shallows or against the rocks, out
+// of the fishes' reach).
+function openWater(t, x, y, dir) {
+  const ahead = x + dir * 10;
+  return t.surfaceY(ahead) - t.waterLevel > 16 && t.waterAt(x, y) && t.waterAt(ahead, y) && t.waterAt(ahead, y + 8);
+}
 
 export class Food {
   constructor(type, x, y, opts = {}) {
@@ -94,14 +105,20 @@ export class Food {
       }
       case 'float': {
         this.y = t.waterSurfY(this.x) + 1 + Math.sin(w.time * 1.5 + this.id) * 0.8;
-        this.x += Math.sin(w.time * 0.3 + this.id) * 3 * dt;
+        // flakes drift a little on the pond's slow loop and the breeze (but
+        // never up into the shallows, where the fish couldn't reach them)
+        breeze.current(this.x, this.y, CUR);
+        const nx = this.x + (CUR[0] * 0.25 + Math.sin(w.time * 0.3 + this.id) * 3) * dt;
+        if (openWater(t, nx, this.y + 2, nx < this.x ? -1 : 1)) this.x = nx;
         this.floatT -= dt;
         if (!t.waterAt(this.x, this.y + 2) || this.floatT <= 0) this.state = t.waterAt(this.x, this.y + 2) ? 'sink' : 'fall';
         break;
       }
       case 'sink': {
-        this.y += 16 * dt;
-        this.x += Math.sin(w.time * 1.1 + this.id) * 4 * dt;
+        breeze.current(this.x, this.y, CUR);
+        this.y += (16 + CUR[1] * 0.3) * dt;
+        const nx = this.x + (CUR[0] * 0.3 + Math.sin(w.time * 1.1 + this.id) * 4) * dt;
+        if (openWater(t, nx, this.y, nx < this.x ? -1 : 1)) this.x = nx;
         const gy = t.surfaceY(this.x);
         if (this.y >= gy - 1) {
           this.y = gy;

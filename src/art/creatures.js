@@ -4,12 +4,15 @@ import {
   INK, TAU, PAL, ell, circ, fill, stroke, paint, blob, smoothPath, fuzzPath, highlight, cheek, eye, dotEye,
   smile, line, bent, curve, antenna, wing, drawHat, drawNeckwear, isNeckwear,
 } from './ink.js';
+import { drawGuppy, drawTetra, drawKoi, drawPuffer, drawAxolotl, drawDragonfly, drawMoth } from './morecritters.js';
 
 export const PALETTES = {
   ant: [
-    { body: '#c4553b', light: '#e07a5a' },
-    { body: '#6e4630', light: '#97664a' },
-    { body: '#d1873a', light: '#efaa60' },
+    { body: '#c4553b', light: '#e07a5a', name: 'Red garden ant' },
+    { body: '#6e4630', light: '#97664a', name: 'Brown garden ant' },
+    { body: '#d1873a', light: '#efaa60', name: 'Orange garden ant' },
+    { body: '#8a2e22', light: '#b84a38', name: 'Harvester ant', kind: 'harvester' },
+    { body: '#c98a3a', light: '#e8b060', name: 'Honeypot ant', kind: 'honeypot', gaster: '#f3c43c' },
   ],
   cricket: [
     { body: '#b98a52', dark: '#8a643b', light: '#d9b07a' },
@@ -34,10 +37,57 @@ export const PALETTES = {
     { shell: '#6a3f6f', head: '#4a2a4f' },
   ],
   goldfish: [
-    { body: '#f08a3c', fin: '#f7b26b', belly: '#fbd29a' },
-    { body: '#f2c14e', fin: '#f8da8a', belly: '#fff0bf' },
-    { body: '#f7f0e2', fin: '#f6c9a8', belly: '#ffffff', cap: '#e8603c' },
-    { body: '#e2553f', fin: '#f39a7a', belly: '#fbc7aa' },
+    { body: '#f08a3c', fin: '#f7b26b', belly: '#fbd29a', name: 'Common goldfish' },
+    { body: '#f2c14e', fin: '#f8da8a', belly: '#fff0bf', name: 'Lemon goldfish' },
+    { body: '#f7f0e2', fin: '#f6c9a8', belly: '#ffffff', cap: '#e8603c', form: 'fantail', name: 'Red-cap oranda' },
+    { body: '#e2553f', fin: '#f39a7a', belly: '#fbc7aa', name: 'Ruby goldfish' },
+    { body: '#ef7a3a', fin: '#f6a86a', belly: '#fbd29a', form: 'comet', name: 'Comet' },
+    { body: '#f6e6c8', fin: '#f8d8b0', belly: '#fffaf0', form: 'fantail', patches: '#f08a3c', name: 'Calico fantail' },
+    { body: '#3d3632', fin: '#5a4f48', belly: '#6b5f56', form: 'moor', name: 'Black moor' },
+    { body: '#bcc8d8', fin: '#d4dce6', belly: '#eef2f6', form: 'comet', patches: '#f08a3c', dots: '#3d3632', name: 'Shubunkin' },
+  ],
+  guppy: [
+    { body: '#c9c4a0', tail: '#e8475a', tail2: '#f6d64a', shine: '#9fd4f0', name: 'Red-tail guppy' },
+    { body: '#cfcab0', tail: '#4c8fd6', tail2: '#9fd4f0', shine: '#c9e8f6', name: 'Blue guppy' },
+    { body: '#d4c49a', tail: '#f0913a', tail2: '#3a2a1f', pattern: 'spots', name: 'Leopard guppy' },
+    { body: '#c9c4a8', tail: '#8d6cc0', tail2: '#f39ac0', shine: '#e6d4f2', name: 'Purple guppy' },
+    { body: '#d0c8a0', tail: '#77b255', tail2: '#f6d64a', pattern: 'spots', name: 'Cobra guppy' },
+    { body: '#e8d0c0', tail: '#f39ac0', tail2: '#fffdf6', name: 'Pink guppy' },
+  ],
+  tetra: [
+    { back: '#9aa87a', belly: '#eef0e6', red: '#e2453f', stripe: '#4fd2f0', name: 'Neon tetra' },
+    { back: '#8aa07a', belly: '#eef0e6', red: '#e2453f', stripe: '#3fb8f0', full: true, name: 'Cardinal tetra' },
+    { back: '#c9b890', belly: '#f4efe0', red: '#f0d26a', stripe: '#f0913a', name: 'Glowlight tetra' },
+  ],
+  koi: [
+    { body: '#fbf6ea', fin: '#f6efe0', patches: [[-5, -2.4, 4.4, 3.2, '#e2453f'], [4, -3.4, 3.6, 2.6, '#e2453f']], name: 'Kohaku koi' },
+    { body: '#fbf6ea', fin: '#f6efe0', patches: [[8.6, -3.2, 2.8, 2.6, '#e2453f']], name: 'Tancho koi' },
+    { body: '#f2c14e', fin: '#f6da8a', metal: true, name: 'Ogon koi' },
+    { body: '#3d3632', fin: '#5a4f48', patches: [[-3, -2, 4, 3.4, '#e2453f'], [6, 2, 3, 2, '#fbf6ea'], [-8, 2, 2.4, 1.8, '#fbf6ea']], name: 'Showa koi' },
+    { body: '#fbf6ea', fin: '#f6efe0', patches: [[-4, -2.6, 4, 2.8, '#e2453f'], [5, -2.6, 3, 2, '#e2453f'], [0, -3.6, 1.4, 1, '#3d3632'], [-8, -1, 1.2, 1, '#3d3632']], name: 'Sanke koi' },
+    { body: '#b08a5a', fin: '#c9a77a', metal: true, name: 'Chagoi koi' },
+  ],
+  puffer: [
+    { body: '#c9cf6a', belly: '#fbf6e0', spot: '#5f6a3a', fin: 'rgba(240,248,236,0.75)', name: 'Pea puffer' },
+    { body: '#b8c86a', belly: '#fbf6e0', spot: '#4f5a2a', fin: 'rgba(240,248,236,0.75)', stripe: '#d9733a', name: 'Red-striped pea puffer' },
+  ],
+  axolotl: [
+    { body: '#f6c6c6', fin: '#f2b0b4', gill: '#e8475a', name: 'Pink axolotl' },
+    { body: '#8a8a5a', fin: '#7a7a4a', gill: '#6a4a3a', eye: '#3a2a1f', name: 'Wild axolotl' },
+    { body: '#f6d68a', fin: '#f0c46a', gill: '#f39a7a', eye: '#d9733a', name: 'Golden axolotl' },
+    { body: '#a8b0cc', fin: '#98a0bc', gill: '#8d6cc0', name: 'Lavender axolotl' },
+  ],
+  dragonfly: [
+    { body: '#4c8fd6', body2: '#3a6fb0', thorax: '#4c8fd6', eye: '#2f5d8a', nymph: '#8a7a4a', name: 'Azure dragonfly' },
+    { body: '#d9483b', body2: '#b8362c', thorax: '#a8743f', eye: '#9a2f2a', nymph: '#7a6a3a', name: 'Scarlet darter' },
+    { body: '#4fa86a', body2: '#3a8a50', thorax: '#4fa86a', eye: '#2f6a4a', nymph: '#6a7a3a', name: 'Emerald dragonfly' },
+    { body: '#e8b03a', body2: '#3d3632', thorax: '#8a5a2c', eye: '#4fa86a', nymph: '#8a6a3a', name: 'Golden-ringed dragonfly' },
+    { body: '#3f6aa8', body2: '#f3c43c', thorax: '#3f6aa8', eye: '#2a3a5a', nymph: '#7a6a3a', name: 'Mail dragonfly' },
+  ],
+  moth: [
+    { wing: '#c8e8a8', hind: '#c8e8a8', under: '#dff0c8', tails: true, eyespot: '#f6d64a', eyeCore: '#8a5a2c', edge: '#b0708a', body: '#fbf6ea', fur: '#fffdf6', cat: '#9cd27a', hair: '#e8f4c8', cocoon: '#ece2c0', name: 'Luna moth' },
+    { wing: '#f39ac0', hind: '#f6e08a', under: '#f8c6da', band: '#f6e08a', body: '#f6d64a', fur: '#f6d64a', edge: 'rgba(200,80,120,0.6)', cat: '#b8d27a', hair: '#5a4a3a', cocoon: '#efe2c4', name: 'Rosy maple moth' },
+    { wing: '#c9a06a', hind: '#b8865a', under: '#d9bc8a', eyespot: '#f6d64a', eyeCore: '#4c6fa8', edge: '#8a6a4a', body: '#b8865a', fur: '#c9a06a', cat: '#9cd27a', hair: '#f2d24a', cocoon: '#d9c8a0', name: 'Polyphemus moth' },
   ],
   frog: [
     { body: '#6fae4a', belly: '#d6e59a', spot: '#4f8a3c', sac: '#f4eeb0' },
@@ -68,11 +118,17 @@ export const PALETTES = {
     { shell: '#e8c53a', spots: true },
   ],
   aphid: [{ body: '#9cc95a' }, { body: '#c2d66a' }, { body: '#f0a0a8' }],
+  // 0-4 hatch anywhere; 5-7 are rare, and only come out of chrysalises in
+  // the butterfly house (see SPECIES.butterfly.rare)
   butterfly: [
-    { wing: '#f08a2c', border: '#2d2622', dots: '#ffffff', under: '#f4b26a', cat: '#f2d24a', catStripe: '#2d2622', chrys: '#7ccf9a' },
-    { wing: '#4f9be0', border: '#22304a', dots: '#d9ecff', under: '#a9c9e8', cat: '#8cc152', catStripe: '#f0bf45', chrys: '#a7d27a' },
-    { wing: '#f2d24a', border: '#2d2622', dots: '#ffffff', under: '#f6e38c', cat: '#9cd27a', catStripe: '#2d2622', chrys: '#c7d98a' },
-    { wing: '#f39ac0', border: '#7a3a5a', dots: '#ffffff', under: '#f7c6da', cat: '#f2b5c4', catStripe: '#7a3a5a', chrys: '#e8c7d6' },
+    { wing: '#f08a2c', border: '#2d2622', dots: '#ffffff', under: '#f4b26a', cat: '#f2d24a', catStripe: '#2d2622', chrys: '#7ccf9a', kind: 'monarch', name: 'Monarch' },
+    { wing: '#4f9be0', border: '#22304a', dots: '#d9ecff', under: '#a9a090', cat: '#8cc152', catStripe: '#f0bf45', chrys: '#a7d27a', kind: 'morpho', name: 'Blue morpho' },
+    { wing: '#f2d24a', border: '#2d2622', dots: '#ffffff', under: '#f6e38c', cat: '#9cd27a', catStripe: '#2d2622', chrys: '#c7d98a', kind: 'swallowtail', name: 'Tiger swallowtail' },
+    { wing: '#f39ac0', border: '#7a3a5a', dots: '#ffffff', under: '#f7c6da', cat: '#f2b5c4', catStripe: '#7a3a5a', chrys: '#e8c7d6', kind: 'rose', name: 'Pink rose' },
+    { wing: '#fbf8ee', border: '#8a8a8a', dots: '#3d3632', under: '#eef0c8', cat: '#9cd27a', catStripe: '#f6d64a', chrys: '#c7d98a', kind: 'white', name: 'Cabbage white' },
+    { wing: '#c9473a', border: '#3d2a24', dots: '#fffdf6', under: '#5a4a3a', cat: '#3d3632', catStripe: '#fffdf6', chrys: '#c9b07a', kind: 'peacock', name: 'Peacock butterfly' },
+    { wing: 'rgba(236,246,252,0.35)', border: '#5a3a2a', dots: '#fffdf6', under: 'rgba(236,246,252,0.4)', cat: '#a8d27a', catStripe: '#e8475a', chrys: '#d6e6c8', kind: 'glasswing', name: 'Glasswing' },
+    { wing: '#2d3a3a', border: '#1f2828', dots: '#7ce0a8', under: '#5a6a5a', cat: '#7cc06a', catStripe: '#2d3a3a', chrys: '#7ccf9a', kind: 'emerald', name: 'Emerald swallowtail' },
   ],
   snail: [
     { shell: '#d4a46a', band: '#a8743f', body: '#cdbba0' },
@@ -131,7 +187,17 @@ export function footOf(sp, stage) {
     case 'fruitfly':
       return 2.2;
     case 'goldfish':
+    case 'guppy':
+    case 'tetra':
+    case 'koi':
+    case 'puffer':
       return 0;
+    case 'axolotl':
+      return 5.4;
+    case 'dragonfly':
+      return stage === 'nymph' ? 3.6 : 3.6;
+    case 'moth':
+      return stage === 'caterpillar' ? 2.6 : stage === 'adult' ? 2.0 : 1.5;
     default:
       return 3;
   }
@@ -161,11 +227,16 @@ function drawAnt(g, o) {
     // wing stubs
     wing(g, -1.8, -3.4, 3.2, 1.2, -0.25, lw, 'rgba(214,236,250,0.55)');
   }
-  // gaster
-  const gx = q ? -5.6 : -4.3;
-  const grx = q ? 5.2 : 3.7;
-  const gry = q ? 3.8 : 2.9;
-  blob(g, gx, -0.2 * s, grx, gry, P.body, lw, -0.12);
+  // gaster (a honeypot ant full of nectar swells up into a golden bead)
+  const replete = o.acc === 'replete' && !q;
+  const gx = q ? -5.6 : replete ? -5.6 : -4.3;
+  const grx = q ? 5.2 : replete ? 5 : 3.7;
+  const gry = q ? 3.8 : replete ? 4.4 : 2.9;
+  blob(g, gx, -0.2 * s - (replete ? 0.8 : 0), grx, gry, replete ? P.gaster || '#f3c43c' : P.body, lw, -0.12);
+  if (replete) {
+    for (let i = 0; i < 3; i++) curve(g, gx - 2 + i * 2, -gry - 0.4, gx - 2.4 + i * 2, -0.8, gx - 2 + i * 2, gry - 1.4, lw * 0.45, 'rgba(122,74,34,0.5)');
+    highlight(g, gx - 1.6, -2.8, 2.2, 1.4, 0.7);
+  }
   highlight(g, gx - grx * 0.15, -0.2 * s - gry * 0.45, grx * 0.5, gry * 0.28, 0.4);
   if (q) {
     for (let i = 0; i < 3; i++) {
@@ -178,12 +249,17 @@ function drawAnt(g, o) {
   }
   blob(g, -0.9 * s, 0.3 * s, 0.9 * s, 0.75 * s, P.body, lw * 0.8);
   blob(g, 1.3 * s, 0.1 * s, 2.1 * s, 1.45 * s, P.body, lw, 0.1);
-  // head
-  const hx = 4.7 * s;
+  // head (a harvester's is big and square, for cracking seeds)
+  const big = P.kind === 'harvester' && !q ? 1.22 : 1;
+  const hx = 4.7 * s + (big - 1) * 2;
   const hy = -0.4 * s;
+  if (big > 1) {
+    line(g, hx + 2.2, hy + 0.9, hx + 3.8, hy + 1.8, lw * 1.2);
+    line(g, hx + 2.2, hy + 1.6, hx + 3.6, hy + 2.6, lw * 1.2);
+  }
   // antennae (back one first)
   bent(g, hx + 0.1 * s, hy - 2.0 * s, hx + 1.3 * s, hy - 5.6 * s, hx + 3.2 * s, hy - 5.0 * s, lw * 0.6);
-  blob(g, hx, hy, 2.5 * s, 2.3 * s, P.body, lw);
+  blob(g, hx, hy, 2.5 * s * big, 2.3 * s * big, P.body, lw);
   highlight(g, hx - 0.6 * s, hy - 1.1 * s, 1.0 * s, 0.6 * s, 0.4);
   bent(g, hx + 0.7 * s, hy - 2.0 * s, hx + 2.2 * s, hy - 5.4 * s, hx + 4.3 * s, hy - 4.2 * s, lw * 0.6);
   circ(g, hx + 4.3 * s, hy - 4.2 * s, 0.45 * s);
@@ -397,21 +473,36 @@ function drawFish(g, o) {
   }
   const f = o.frame % 4;
   const tail = [0.32, 0, -0.32, 0][f];
-  // tail
-  g.save();
-  g.translate(-8, 0);
-  g.rotate(tail);
-  paint(g, P.fin, lw, () => {
-    g.beginPath();
-    g.moveTo(0.5, -1.8);
-    g.quadraticCurveTo(-4.5, -8.5, -10.5, -8.8);
-    g.quadraticCurveTo(-7.5, -2.5, -8.8, 0);
-    g.quadraticCurveTo(-7.5, 2.5, -10.5, 8.8);
-    g.quadraticCurveTo(-4.5, 8.5, 0.5, 1.8);
-    g.closePath();
-  });
-  for (let i = -2; i <= 2; i++) curve(g, -1, 0, -5, i * 2.2, -8.4, i * 3.4, lw * 0.4, 'rgba(58,42,31,0.35)');
-  g.restore();
+  // body shapes: a slim comet with a long forked tail, a round fantail with
+  // a double tail (the black moor is one, with telescope eyes), or common
+  const form = P.form || 'common';
+  const fan = form === 'fantail' || form === 'moor';
+  const brx = form === 'comet' ? 9.6 : fan ? 8.4 : 9.5;
+  const bry = form === 'comet' ? 5.4 : fan ? 7.3 : 6.6;
+  const tailFan = (sx, sy, rot, alpha) => {
+    g.save();
+    g.translate(-brx + 1.5, 0);
+    g.rotate(tail + rot);
+    g.scale(sx, sy);
+    if (alpha < 1) g.globalAlpha *= alpha;
+    paint(g, P.fin, lw / Math.max(sx, sy), () => {
+      g.beginPath();
+      g.moveTo(0.5, -1.8);
+      g.quadraticCurveTo(-4.5, -8.5, -10.5, -8.8);
+      g.quadraticCurveTo(-7.5 + (form === 'comet' ? 2.5 : 0), -2.5, -8.8 + (form === 'comet' ? 3.5 : 0), 0);
+      g.quadraticCurveTo(-7.5 + (form === 'comet' ? 2.5 : 0), 2.5, -10.5, 8.8);
+      g.quadraticCurveTo(-4.5, 8.5, 0.5, 1.8);
+      g.closePath();
+    });
+    for (let i = -2; i <= 2; i++) curve(g, -1, 0, -5, i * 2.2, -8.4, i * 3.4, lw * 0.4, 'rgba(58,42,31,0.35)');
+    g.restore();
+  };
+  if (fan) {
+    // a flowing double tail: the far fan peeks out above
+    tailFan(1.1, 0.95, -0.28, 0.75);
+    tailFan(1.15, 1.0, 0.18, 1);
+  } else if (form === 'comet') tailFan(1.45, 0.85, 0, 1);
+  else tailFan(1, 1, 0, 1);
   // dorsal & belly fins
   paint(g, P.fin, lw, () => {
     g.beginPath();
@@ -428,14 +519,32 @@ function drawFish(g, o) {
     g.closePath();
   });
   // body
-  blob(g, 0, 0, 9.5, 6.6, P.body, lw);
-  ell(g, 1.5, 2.6, 7, 3.2);
+  blob(g, 0, 0, brx, bry, P.body, lw);
   g.save();
+  ell(g, 0, 0, brx, bry);
+  g.clip();
+  ell(g, 1.5, bry * 0.4, brx * 0.74, bry * 0.48);
   g.globalAlpha *= 0.6;
   fill(g, P.belly);
+  g.globalAlpha /= 0.6;
+  if (P.patches) {
+    // calico splashes (and a shubunkin's black freckles)
+    for (const [x, y, rx, ry] of [[-4, -2.4, 3.4, 2.6], [3.4, 1.4, 2.6, 2.2], [-1, 3.6, 2.4, 1.6]]) {
+      ell(g, x, y, rx, ry, 0.4);
+      fill(g, P.patches);
+    }
+    if (P.dots) {
+      for (const [x, y] of [[-5, 0.6], [-2, -3.4], [1.4, -1], [4, 3], [-6.4, -2.4], [0, 2.4]]) {
+        circ(g, x, y, 0.6);
+        fill(g, P.dots);
+      }
+    }
+  }
   g.restore();
+  ell(g, 0, 0, brx, bry);
+  stroke(g, lw);
   if (P.cap) {
-    paint(g, P.cap, 0, () => ell(g, 4.6, -3.6, 4.2, 2.6, 0.3));
+    paint(g, P.cap, 0, () => ell(g, 4.6, -3.6 - (fan ? 1.2 : 0), 4.2, 2.6, 0.3));
   }
   // scales
   for (let r = 0; r < 2; r++) {
@@ -451,7 +560,11 @@ function drawFish(g, o) {
   curve(g, 4.4, -4.6, 3.2, 0, 4.6, 4.6, lw * 0.6);
   // pectoral fin flutter
   paint(g, P.fin, lw * 0.8, () => ell(g, 2.4, 3.0, 2.6, 1.2, 0.5 + (f % 2 ? 0.3 : -0.1)));
-  eye(g, 6.0, -1.4, fry ? 2.8 : 2.2, lw, { closed: o.closed, pupil: 0.58, lookX: 0.5 });
+  if (form === 'moor') {
+    // telescope eyes on little bulges
+    paint(g, P.body, lw, () => circ(g, 6.6, -2.4, 2.9));
+    eye(g, 7.2, -2.6, 2.3, lw, { closed: o.closed, pupil: 0.62, lookX: 0.6, white: '#e8e2d6' });
+  } else eye(g, 6.0, -1.4, fry ? 2.8 : 2.2, lw, { closed: o.closed, pupil: 0.58, lookX: 0.5 });
   cheek(g, 7.4, 1.8, 1.2);
   if (o.pose === 'gasp') {
     ell(g, 9.4, 0.9, 1.1, 1.5);
@@ -956,38 +1069,111 @@ function drawButterfly(g, o) {
 }
 
 // Both butterfly wings (hind and fore) in body coordinates, hinged along y = -0.6.
+// Each kind has its own markings: a monarch's black veins, a swallowtail's
+// tiger stripes and tails, a peacock's eyespots, a glasswing's clear panes.
 export function drawButterflyWings(g, P, lw, col) {
-  // hind wing
-  paint(g, col, lw, () => {
+  const kind = P.kind || 'monarch';
+  const under = col === P.under;
+  const tails = kind === 'swallowtail' || kind === 'emerald' || kind === 'rose';
+  const glass = kind === 'glasswing';
+  const hindPath = () => {
     g.beginPath();
     g.moveTo(-0.8, -0.6);
     g.bezierCurveTo(-6, -2, -11, -8, -8.6, -11.4);
     g.bezierCurveTo(-5, -13.4, -1.6, -8, 1.2, -1);
     g.closePath();
-  });
-  // fore wing
-  paint(g, col, lw, () => {
+  };
+  const forePath = () => {
     g.beginPath();
     g.moveTo(0.2, -0.8);
     g.bezierCurveTo(-2.6, -7, -3.6, -16, 2.4, -17.2);
     g.bezierCurveTo(8.4, -18, 11, -13, 9.6, -10.4);
     g.bezierCurveTo(7.4, -6.6, 4.6, -3.4, 2.8, -0.8);
     g.closePath();
-  });
-  g.beginPath();
-  g.moveTo(-0.9, -14.4);
-  g.bezierCurveTo(0.6, -18.2, 8.6, -18.4, 9.7, -10.8);
-  stroke(g, lw * 2.4, P.border);
-  g.beginPath();
-  g.moveTo(-7.8, -11.8);
-  g.bezierCurveTo(-11, -9, -8, -4.6, -4, -2.2);
-  stroke(g, lw * 2.0, P.border);
-  for (const [x, y] of [[0.6, -16.4], [3.6, -17.2], [6.6, -16.4], [8.8, -13.2], [-8.8, -9.6], [-7.6, -6.6]]) {
-    circ(g, x, y, 0.5);
-    fill(g, P.dots);
+  };
+  if (tails) {
+    // swallowtails trail a little tail off each hind wing
+    paint(g, P.border, lw * 0.8, () => {
+      g.beginPath();
+      g.moveTo(-9.4, -8.6);
+      g.quadraticCurveTo(-12.4, -7.4, -13.4, -4.8);
+      g.quadraticCurveTo(-11, -6, -8.2, -7.4);
+      g.closePath();
+    });
   }
-  for (const [x2, y2] of [[3.6, -14.6], [7.4, -11.2], [-5.6, -9.4], [-1.6, -13]]) line(g, 1.2, -1.2, x2, y2, lw * 0.4, 'rgba(45,38,34,0.5)');
-  highlight(g, 2.2, -12.4, 2.4, 1.0, 0.3, -0.5);
+  paint(g, col, lw, hindPath);
+  paint(g, col, lw, forePath);
+  if (!under) {
+    g.save();
+    forePath();
+    hindPath();
+    g.clip();
+    if (kind === 'swallowtail') {
+      for (const [x1, y1, x2, y2] of [[-1, -15, 2, -9], [3, -16.6, 5, -10], [6.4, -16.4, 7, -11.6], [-6, -11, -3, -6]]) line(g, x1, y1, x2, y2, lw * 1.6, P.border);
+    } else if (kind === 'emerald') {
+      g.beginPath();
+      g.moveTo(-0.4, -13);
+      g.quadraticCurveTo(4, -12, 8.6, -12.6);
+      g.moveTo(-7.4, -9.8);
+      g.quadraticCurveTo(-4.6, -6, -2, -4);
+      stroke(g, lw * 2.6, P.dots);
+    } else if (kind === 'peacock') {
+      for (const [x, y, r] of [[5.4, -13.4, 2.6], [-6.2, -8.4, 2]]) {
+        paint(g, '#f6d64a', lw * 0.4, () => circ(g, x, y, r));
+        circ(g, x, y, r * 0.65);
+        fill(g, '#4c6fa8');
+        circ(g, x, y, r * 0.3);
+        fill(g, INK);
+        circ(g, x + r * 0.25, y - r * 0.25, r * 0.15);
+        fill(g, '#fff');
+      }
+    } else if (kind === 'white') {
+      ell(g, 8.6, -14.6, 3, 3.6, 0.4);
+      fill(g, '#9a9a9a');
+      circ(g, 5, -10.6, 1);
+      fill(g, P.dots);
+    } else if (kind === 'morpho') {
+      // an electric blue sheen
+      const grd = g.createRadialGradient(3, -10, 1, 3, -10, 10);
+      grd.addColorStop(0, 'rgba(200,240,255,0.7)');
+      grd.addColorStop(1, 'rgba(200,240,255,0)');
+      g.fillStyle = grd;
+      g.fillRect(-12, -19, 24, 19);
+    }
+    g.restore();
+  }
+  if (glass) {
+    // see-through panes framed in dark veins
+    forePath();
+    stroke(g, lw * 2.2, P.border);
+    hindPath();
+    stroke(g, lw * 2.2, P.border);
+    line(g, 1.2, -1.2, 5.6, -13.8, lw * 0.9, P.border);
+    line(g, 0.6, -1.2, -5.6, -9.8, lw * 0.9, P.border);
+    g.beginPath();
+    g.moveTo(8.4, -15);
+    g.quadraticCurveTo(10.6, -12.4, 9.6, -10.4);
+    stroke(g, lw * 2, '#f0913a');
+  } else {
+    g.beginPath();
+    g.moveTo(-0.9, -14.4);
+    g.bezierCurveTo(0.6, -18.2, 8.6, -18.4, 9.7, -10.8);
+    stroke(g, lw * 2.4, P.border);
+    g.beginPath();
+    g.moveTo(-7.8, -11.8);
+    g.bezierCurveTo(-11, -9, -8, -4.6, -4, -2.2);
+    stroke(g, lw * 2.0, P.border);
+  }
+  if (kind !== 'white' && !glass) {
+    for (const [x, y] of [[0.6, -16.4], [3.6, -17.2], [6.6, -16.4], [8.8, -13.2], [-8.8, -9.6], [-7.6, -6.6]]) {
+      circ(g, x, y, 0.5);
+      fill(g, P.dots);
+    }
+  }
+  const vein = kind === 'monarch' && !under ? lw * 0.9 : lw * 0.4;
+  const veinC = kind === 'monarch' && !under ? P.border : 'rgba(45,38,34,0.5)';
+  if (!glass) for (const [x2, y2] of [[3.6, -14.6], [7.4, -11.2], [-5.6, -9.4], [-1.6, -13]]) line(g, 1.2, -1.2, x2, y2, vein, veinC);
+  highlight(g, 2.2, -12.4, 2.4, 1.0, glass ? 0.5 : 0.3, -0.5);
 }
 
 // ---------------------------------------------------------------- SNAIL
@@ -1228,6 +1414,9 @@ export const WINGS = {
   firefly: { hx: 0.8, hy: -1.9, len: 6.0, wid: 1.9, base: -2.45, amp: 0.62, hz: 5.5, blur: 0.18, bob: 0.4 },
   fruitfly: { hx: 0.3, hy: -1.0, len: 3.3, wid: 1.25, base: -2.35, amp: 0.75, hz: 11, blur: 0.55, bob: 0.15 },
   butterfly: { hx: 0, hy: -0.6, hz: 2.4, bob: 1.5, butterfly: true },
+  moth: { hx: 0, hy: -0.6, hz: 3.2, bob: 1.1, butterfly: true, moth: true },
+  // two pairs, beating out of step, almost too fast to see
+  dragonfly: { hx: 1.6, hy: -1.6, len: 12.5, wid: 2.1, base: -2.75, amp: 0.55, hz: 13, blur: 0.4, bob: 0.2, quad: true },
 };
 
 // Wing angle at beat phase ph. The downstroke (rising sine) is a little
@@ -1290,7 +1479,7 @@ export const CREATURE_ART = {
   grasshopper: { box: () => [17, 14], lw: 0.85, draw: (g, o) => drawHopper(g, o, true) },
   gecko: { box: () => [28, 13], lw: 1.0, draw: drawGecko },
   beetle: { box: () => [13, 10], lw: 0.8, draw: drawBeetle },
-  goldfish: { box: () => [21, 14], lw: 0.9, draw: drawFish },
+  goldfish: { box: () => [25, 15], lw: 0.9, draw: drawFish },
   frog: { box: (st) => (st === 'adult' ? [22, 16] : [14, 8]), lw: 0.9, draw: drawFrog },
   turtle: { box: () => [31, 18], lw: 1.1, draw: drawTurtle },
   pondsnail: { box: () => [9, 9], lw: 0.65, draw: drawPondSnail },
@@ -1303,7 +1492,22 @@ export const CREATURE_ART = {
   firefly: { box: () => [10, 9], lw: 0.65, draw: drawFirefly },
   pillbug: { box: () => [10, 7], lw: 0.65, draw: drawPillbug },
   fruitfly: { box: () => [5, 5], lw: 0.4, draw: drawFruitfly },
+  guppy: { box: () => [14, 8], lw: 0.6, draw: drawGuppy },
+  tetra: { box: () => [10, 6], lw: 0.55, draw: drawTetra },
+  koi: { box: () => [25, 11], lw: 1.0, draw: drawKoi },
+  puffer: { box: () => [10, 9], lw: 0.6, draw: drawPuffer },
+  axolotl: { box: () => [19, 11], lw: 0.85, draw: drawAxolotl },
+  dragonfly: { box: (st) => (st === 'adult' ? [18, 8] : [9, 6]), lw: 0.7, draw: drawDragonfly },
+  moth: { box: (st) => (st === 'adult' ? [15, 20] : st === 'caterpillar' ? [12, 9] : [6, 11]), lw: 0.75, draw: drawMoth },
 };
+
+// A critter's variety name ("Blue morpho", "Kohaku koi"), if its species
+// comes in named varieties.
+export function varietyName(sp, palIdx) {
+  const pals = PALETTES[sp];
+  const P = pals && pals[palIdx % pals.length];
+  return (P && P.name) || '';
+}
 
 // Worms are soft-bodied and drawn live from their trail of body points.
 export function drawWorm(g, pts, pal, lw, closed, acc, accColor, thick = 3.4) {

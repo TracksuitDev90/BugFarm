@@ -2,7 +2,9 @@
 import { DISCOVERIES, DISC_BY_ID, lockedItems } from '../data/discoveries.js';
 import { Progress } from './progress.js';
 import { Orders } from './orders.js';
-import { ORDER_GIFTS } from '../data/neighbours.js';
+import { Dreams } from './dreams.js';
+import { ORDER_GIFTS, NEIGHBOURS } from '../data/neighbours.js';
+import { MARKET_LOCK, WARE_BY_ID } from '../data/market.js';
 
 export class Journal {
   constructor() {
@@ -20,6 +22,8 @@ export class Journal {
     this.offs = [];
     this.progress = new Progress();
     this.orders = this.newOrders();
+    this.dreams = new Dreams();
+    this.seenVar = {}; // 'sp:palIdx' -> true for every variety the keeper has met
   }
 
   newOrders() {
@@ -54,6 +58,7 @@ export class Journal {
     this.offs.push(world.events.on('birth', (d) => d.c && this.meet(d.c.sp)));
     this.progress.attach(world);
     this.orders.attach(world);
+    this.dreams.attach(world);
   }
 
   meet(sp) {
@@ -76,7 +81,10 @@ export class Journal {
         /* ignore */
       }
     }
-    for (const c of w.creatures) if (!this.met[c.sp]) this.met[c.sp] = true;
+    for (const c of w.creatures) {
+      if (!this.met[c.sp]) this.met[c.sp] = true;
+      if (c.isAdult && !c.dead) this.seenVar[c.sp + ':' + c.palIdx] = true;
+    }
   }
 
   flag(k) {
@@ -99,11 +107,21 @@ export class Journal {
   // kind: 'adopt' | 'feed' | 'plant' | 'decor'
   canUse(kind, id) {
     if (this.sandbox) return true;
+    if (kind === 'feed' && id === 'bun') return !!(this.world && this.world.stock.buns > 0);
+    const ware = MARKET_LOCK[kind] && MARKET_LOCK[kind][id];
+    if (ware && !(this.world && this.world.owns(ware))) return false;
     if (kind === 'decor' && !this.isDecorUnlocked(id)) return false;
     return this.progress.canUse(kind, id);
   }
   // Why something is locked, as a hint the keeper can act on.
   lockHint(kind, id) {
+    if (kind === 'feed' && id === 'bun') return 'buy a bag from Baker Bramble at the Busytown Market.';
+    const ware = MARKET_LOCK[kind] && MARKET_LOCK[kind][id];
+    if (ware && !(this.world && this.world.owns(ware))) {
+      const wr = WARE_BY_ID[ware];
+      const nb = NEIGHBOURS.find((n) => n.id === wr.who);
+      return `buy it from ${nb.name} at the Busytown Market (the coin purse, top right).`;
+    }
     if (kind === 'decor' && !this.isDecorUnlocked(id)) {
       const gift = ORDER_GIFTS.find((gf) => gf.decor === id);
       if (gift) return `send orders to Busytown: it's their thank-you gift at ★${gift.stars}.`;
@@ -137,7 +155,7 @@ export class Journal {
   }
 
   serialize() {
-    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), orders: this.orders.serialize() };
+    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), orders: this.orders.serialize(), dreams: this.dreams.serialize(), seenVar: this.seenVar };
   }
   load(d) {
     if (!d) return;
@@ -151,9 +169,12 @@ export class Journal {
     this.progress.load(d.progress);
     this.orders = this.newOrders();
     this.orders.load(d.orders);
+    this.dreams.load(d.dreams);
+    this.seenVar = d.seenVar || {};
     if (this.world) {
       this.progress.attach(this.world);
       this.orders.attach(this.world);
+      this.dreams.attach(this.world);
     }
   }
   // A brand-new farm: every zone back to level 1.

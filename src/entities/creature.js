@@ -22,6 +22,34 @@ function canGreet(o) {
   const c = greeter;
   return o !== c && o.sp === 'ant' && o.colonyId === c.colonyId && !o.dead && o.mode === 'crawl' && o.moving && o.carry !== 'sand' && (o.greetCD || 0) <= greetNow;
 }
+// How each flyer flies.
+//   top/band: cruising height as a band of the tank (from the lid down), or
+//   low: [a, b] above the ground; clear: how far it keeps above the ground
+//   ahead; reach: how far off a target has to be before it climbs to cruise;
+//   wob: flutter; glide: how often it glides on open wings; thermal: how much
+//   warm air under a lamp lifts it; jink: sudden swerves; dart: stops dead to
+//   hover; curve: how far its heading wanders; agile: how quickly it turns.
+const FLIGHT = {
+  butterfly: { top: 46, band: 150, clear: 52, reach: 55, wob: 0.75, glide: 0.9, thermal: 0.55, jink: 1.1, curve: 0.8, agile: 2.6, wind: 0.6, tilt: 0.35 },
+  moth: { top: 56, band: 170, clear: 44, reach: 60, wob: 0.6, glide: 0.6, thermal: 0.45, jink: 1.5, curve: 0.9, agile: 2.8, wind: 0.55, tilt: 0.35 },
+  dragonfly: { top: 46, band: 150, clear: 52, reach: 80, wob: 0.05, glide: 0.45, thermal: 0.25, jink: 0, dart: true, curve: 0.5, agile: 5.5, wind: 0.15, tilt: 0.25 },
+  bee: { low: [60, 170], clear: 28, reach: 130, wob: 0.22, glide: 0, thermal: 0.1, jink: 0, curve: 0.6, agile: 3.4, wind: 0.2, tilt: 0.4 },
+  firefly: { low: [30, 130], clear: 18, reach: 110, wob: 0.4, glide: 0.25, thermal: 0, jink: 0, curve: 0.9, agile: 2.4, wind: 0.35, tilt: 0.4 },
+  ladybug: { low: [50, 150], clear: 26, reach: 110, wob: 0.25, glide: 0, thermal: 0.15, jink: 0, curve: 0.6, agile: 3.2, wind: 0.35, tilt: 0.4 },
+  fruitfly: { low: [14, 70], clear: 10, reach: 70, wob: 0.35, glide: 0, thermal: 0.2, jink: 2, curve: 1, agile: 3.6, wind: 0.65, tilt: 0.4 },
+};
+export function flightOf(sp) {
+  return FLIGHT[sp] || FLIGHT.ladybug;
+}
+// Flyers stay below the lamps and gadgets hanging from the lid.
+export const CEIL = 44;
+// The highest thing under a flyer: the ground, or the pond's surface.
+export function airFloor(t, x) {
+  const gy = t.surfaceY(x);
+  const ws = t.waterSurfaceAt(x);
+  return ws > 0 ? Math.min(gy, ws) : gy;
+}
+
 let ID = 1;
 export function setNextId(n) {
   ID = Math.max(ID, n);
@@ -57,7 +85,14 @@ export class Creature {
     this.stageAge = opts.stageAge || 0;
     this.lifespan = opts.lifespan || rrange(def.lifespan[0], def.lifespan[1]) * DAY_LEN;
     const pals = PALETTES[sp] || [{}];
-    this.palIdx = opts.palIdx != null ? opts.palIdx % pals.length : rint(0, pals.length - 1);
+    // (rare looks, and looks kept for a special job, aren't handed out at random)
+    if (opts.palIdx != null) this.palIdx = opts.palIdx % pals.length;
+    else {
+      const skip = (def.rarePals || []).concat(def.specialPals || []);
+      const ok = [];
+      for (let i = 0; i < pals.length; i++) if (!skip.includes(i)) ok.push(i);
+      this.palIdx = ok.length ? ok[rint(0, ok.length - 1)] : 0;
+    }
     this.acc = opts.acc !== undefined ? opts.acc : Math.random() < (def.accessoryChance || 0) ? ACCESSORIES[rint(0, ACCESSORIES.length - 1)] : null;
     this.accSeed = opts.accSeed || rint(1, 99999);
     this.traits = opts.traits || {
@@ -166,6 +201,16 @@ export class Creature {
     this.burst = 0;
     this.glide = Math.random();
     this.tempo = rrange(0.75, 1.3);
+    // in flight: a moment of lift after take-off, gliding on open wings, a
+    // dragonfly's hover, and how high this trip is flown
+    this.liftT = 0;
+    this.soarT = 0;
+    this.hoverT = 0;
+    this.cruise = null;
+    // working double-time after a busy bun
+    this.busyT = 0;
+    this.restBonus = 1; // a nap beside the park bench
+    this.flapPh = Math.random() * 6.28; // wing-beat phase as drawn
     this.whim = null;
     // Home life: the shelter it's tucked up inside right now (if any), a
     // moment peeking out of the front door, and a moment just after coming
@@ -181,6 +226,14 @@ export class Creature {
   get stageDef() {
     const i = this.def.stageIndex[this.stage];
     return i != null ? this.def.stages[i] : this.def.stages[this.def.stages.length - 1];
+  }
+  // Wrapped up and changing: a butterfly's chrysalis or a moth's cocoon.
+  get pupa() {
+    return this.stage === 'chrysalis' || this.stage === 'cocoon';
+  }
+  // Grubs that will one day fly: caterpillars of both kinds.
+  get larva() {
+    return this.stage === 'caterpillar';
   }
   get isAdult() {
     return this.stage === this.def.adultStage || this.stage === 'queen' || this.stage === 'worker';
@@ -219,9 +272,10 @@ export class Creature {
     const s = this.def.size;
     if (this.sp === 'ant') return this.stage === 'queen' ? 18 : 13;
     if (this.sp === 'frog') return this.stage === 'adult' ? 30 : this.stage === 'froglet' ? 16 : 13;
-    if (this.sp === 'butterfly') return this.stage === 'caterpillar' ? 18 : this.stage === 'adult' ? 26 : 10;
+    if (this.sp === 'butterfly' || this.sp === 'moth') return this.stage === 'caterpillar' ? 18 : this.stage === 'adult' ? 26 : 10;
+    if (this.sp === 'dragonfly' && this.stage === 'nymph') return 14;
+    if (this.def.fish && this.stage === 'fry') return s * 0.5;
     if (this.sp === 'turtle' && this.stage === 'hatchling') return 22;
-    if (this.sp === 'goldfish' && this.stage === 'fry') return 12;
     if (this.stage === 'egg') return 8;
     if (this.stage === 'baby' || this.stage === 'nymph' || this.stage === 'young') return s * 0.6;
     return s;
@@ -526,77 +580,133 @@ export class Creature {
     if (!this.canFly) return;
     this.mode = 'fly';
     this.climb = null;
-    this.vy = -this.def.speed.fly * 0.6;
-    this.vx = this.facing * this.def.speed.fly * 0.3;
+    // straight up and away, like lifting off a leaf
+    this.vy = -this.def.speed.fly * 0.9;
+    this.vx = this.facing * this.def.speed.fly * 0.2;
+    this.liftT = 0.5;
+    this.cruise = null;
   }
 
   land(w) {
     // drop to the ground below as a walker
     this.mode = 'walk';
     this.vx = this.vy = 0;
+    this.soarT = 0;
     this.y = this.groundAt(w, this.x);
+  }
+
+  // How high this flyer likes to travel, picked fresh for each trip: up near
+  // the lid for butterflies and dragonflies, flower height for bees, down
+  // low for fireflies and fruit flies.
+  cruiseHeight(w) {
+    const F = flightOf(this.sp);
+    if (F.top != null) return rrange(F.top, F.top + F.band);
+    return airFloor(w.terrain, this.x) - rrange(F.low[0], F.low[1]);
   }
 
   moveFly(w, dt) {
     const t = w.terrain;
-    const sp = (this.def.speed.fly || 30) * this.speedFactor();
-    let tp = this.targetPos(w);
+    const F = flightOf(this.sp);
+    let sp = (this.def.speed.fly || 30) * this.speedFactor();
+    const tg = this.target;
+    if (tg && tg.speedMul) sp *= tg.speedMul;
+    const tp = this.targetPos(w);
     let tx;
     let ty;
+    // somewhere it means to touch down (a flower, a snack, a perch)
+    const settle = tg && (tg.kind === 'plant' || tg.kind === 'food' || tg.ground || tg.near || tg.kind === 'creature');
     if (tp) {
       tx = tp[0];
       ty = tp[1];
-      if (this.target.kind === 'food' || (this.target.kind === 'point' && this.target.ground)) ty -= this.foot + 2;
+      if (tg.kind === 'food' || (tg.kind === 'point' && tg.ground)) ty -= this.foot + 2;
     } else {
-      tx = this.x + this.facing * 20;
-      ty = this.y + Math.sin(w.time * 1.3 + this.id) * 10;
+      tx = this.x + this.facing * 30;
+      ty = this.cruise ? this.cruise.y : this.y;
     }
+    if (!this.cruise || this.cruise.for !== tg) this.cruise = { for: tg, y: this.cruiseHeight(w) };
+    const dxT = tx - this.x;
+    // On a long trip, climb up to cruising height first and only come down
+    // near the end, so flights arc over the tank instead of skimming it.
+    if (Math.abs(dxT) > F.reach) ty = Math.min(ty, this.cruise.y + Math.abs(dxT) * 0.04);
+    // Look ahead: keep clear of the ground (and the water) under the way
+    // it's going, so hills and banks are flown over, not into.
+    const ahead = clamp(this.vx * 0.9, -90, 90);
+    const floor = Math.min(airFloor(t, this.x), airFloor(t, this.x + ahead), airFloor(t, this.x + ahead * 2)) - F.clear;
+    const dGoal = tp ? Math.hypot(tx - this.x, ty - this.y) : 999;
+    if (!(settle && dGoal < F.clear + 40) && ty > floor) ty = floor;
+    ty = Math.max(ty, CEIL);
     let dx = tx - this.x;
     let dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
     const arrive = Math.min(1, d / 40);
     // a heading of its own that wanders, so flights loop and curve
     this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 5 - this.wan * dt * 0.2, -1, 1);
-    const off = this.wan * 0.7 * clamp((d - 20) / 90, 0, 1);
+    const off = this.wan * F.curve * clamp((d - 20) / 90, 0, 1);
     const ux = (dx / d) * Math.cos(off) - (dy / d) * Math.sin(off);
     const uy = (dx / d) * Math.sin(off) + (dy / d) * Math.cos(off);
-    let dvx = ux * sp * Math.max(0.25, arrive);
-    let dvy = uy * sp * Math.max(0.25, arrive);
-    // flutter / wobble
-    const wob = this.sp === 'butterfly' ? 0.9 : this.sp === 'firefly' ? 0.4 : 0.25;
+    // Butterflies and moths flap, then glide on open wings for a moment,
+    // sinking gently; a dragonfly stops dead now and then to hover.
+    if (this.soarT > 0) this.soarT -= dt;
+    else if (F.glide && d > 60 && this.liftT <= 0 && Math.random() < dt * F.glide) this.soarT = rrange(0.4, 1.3);
+    const gliding = this.soarT > 0;
+    let thrust = gliding ? 0.8 : 1;
+    if (F.dart) {
+      this.hoverT = (this.hoverT || 0) - dt;
+      if (this.hoverT < -rrange(1.5, 4) && d > 50 && Math.random() < dt * 2) this.hoverT = rrange(0.35, 1.1);
+      if (this.hoverT > 0) thrust = 0.06;
+    }
+    let dvx = ux * sp * Math.max(0.25, arrive) * thrust;
+    let dvy = uy * sp * Math.max(0.25, arrive) * thrust;
+    if (gliding && dvy > -sp * 0.2) dvy += sp * 0.12;
+    // the flutter of beating wings
+    const wob = F.wob * (gliding ? 0.25 : 1);
     dvy += Math.sin(w.time * 6 + this.id * 1.7) * sp * wob;
     dvx += Math.cos(w.time * 3.1 + this.id) * sp * wob * 0.4;
-    // butterflies jink about, and anything light gets pushed by a gust
-    if (this.sp === 'butterfly' && Math.random() < dt * 1.4) {
-      this.vx += rrange(-0.7, 0.7) * sp;
-      this.vy += rrange(-0.8, 0.5) * sp;
+    // butterflies jink about
+    if (F.jink && !gliding && Math.random() < dt * F.jink) {
+      this.vx += rrange(-0.6, 0.6) * sp;
+      this.vy += rrange(-0.7, 0.4) * sp;
     }
-    const gust = breeze.wind(this.x);
-    dvx += gust * sp * (this.sp === 'butterfly' || this.sp === 'fruitfly' ? 0.65 : this.sp === 'bee' ? 0.2 : 0.35);
-    // obstacle avoidance
+    // warm air rises under a heat lamp: light flyers drift up in it
+    if (F.thermal) {
+      const lamp = w.env.lampAt(this.x);
+      const k = lamp.power * (1 - smoothstep(20, 110, Math.abs(this.x - lamp.x)));
+      if (k > 0.05 && this.y > CEIL + 30) dvy -= k * sp * F.thermal;
+    }
+    // and anything light gets pushed by a gust
+    dvx += breeze.wind(this.x) * sp * F.wind;
+    // just off the ground: lift!
+    if (this.liftT > 0) {
+      this.liftT -= dt;
+      dvy = Math.min(dvy, -sp * 0.7);
+    }
+    // obstacle avoidance: never into the ground or the water
     const px = this.x + this.vx * 0.3;
     const py = this.y + this.vy * 0.3 + 4;
     if (t.solidAt(px, py) || t.waterAt(px, py)) {
       dvy = -sp;
       dvx *= 0.3;
     }
-    const ground = t.surfaceY(this.x);
-    if (this.y > ground - 6 && !(tp && d < 12)) dvy = Math.min(dvy, -sp * 0.6);
-    if (this.x < 16) dvx += sp;
-    if (this.x > W - 16) dvx -= sp;
-    if (this.y < 18) dvy += sp;
-    const k = Math.min(1, dt * 3.2);
+    const ground = airFloor(t, this.x);
+    if (this.y > ground - 6 && !(settle && dGoal < 14)) dvy = Math.min(dvy, -sp * 0.6);
+    // soft walls: the glass and the lid
+    if (this.x < 24) dvx += sp * (24 - this.x) / 12;
+    if (this.x > W - 24) dvx -= sp * (this.x - W + 24) / 12;
+    if (this.y < CEIL) dvy += sp * (CEIL - this.y) / 12;
+    const k = Math.min(1, dt * F.agile);
     this.vx += (dvx - this.vx) * k;
     this.vy += (dvy - this.vy) * k;
     this.x = clamp(this.x + this.vx * dt, 6, W - 6);
     this.y = clamp(this.y + this.vy * dt, 8, H - 8);
     if (Math.abs(this.vx) > 2) this.facing = this.vx > 0 ? 1 : -1;
-    this.angle = clamp(this.vy / sp, -0.5, 0.5) * 0.4 * this.facing;
+    // bank into turns and tip up as it climbs
+    this.angle = clamp(this.vy / sp, -0.6, 0.6) * F.tilt * this.facing;
+    this.moving = true;
     if (tp && d < 4 + this.size * 0.15) {
-      const tg = this.target;
       if (tg.kind === 'plant') {
         this.climb = { plant: tg.plant, slot: tg.slot, t: 1, dir: 0 };
         this.mode = 'climb';
+        this.soarT = 0;
         this.arrived = true;
       } else if (tg.kind === 'food' || tg.ground) {
         this.land(w);
@@ -1217,7 +1327,7 @@ export class Creature {
       const { lx, ly } = this.climbPoint(1);
       this.climb.plant.toWorld(lx, ly, w.time, XY);
       this.x = XY[0];
-      this.y = XY[1] + (this.stage === 'chrysalis' ? 9 : 0);
+      this.y = XY[1] + (this.pupa ? 9 : 0);
       return;
     }
     if (this.memory.floats) {
@@ -1252,7 +1362,7 @@ export class Creature {
   updateNeeds(w, dt) {
     const d = this.def;
     const st = this.stage;
-    if (st === 'egg' || st === 'chrysalis') return;
+    if (st === 'egg' || this.pupa) return;
     // metabolism scales with warmth for cold-blooded critters
     let meta = 1;
     if (d.ecto) meta = clamp(0.35 + (this.T - 8) / 22, 0.3, 1.5);
@@ -1265,7 +1375,8 @@ export class Creature {
     else this.plump += (1 - this.plump) * dt * 0.00012;
     // energy
     const sleeping = this.pose === 'sleep';
-    if (sleeping) this.energy = Math.min(1, this.energy + dt / (DAY_LEN * 0.12));
+    // (the crickets' night chorus and a nap by the bench both help)
+    if (sleeping) this.energy = Math.min(1, this.energy + (dt / (DAY_LEN * 0.12)) * this.restBonus * (1 + w.chorus * 0.5));
     else if (!this.moving && this.mode !== 'fly' && (this.pose === 'idle' || this.pose === 'bask')) this.energy = Math.min(1, this.energy + dt / (DAY_LEN * 0.4));
     else this.energy = Math.max(0, this.energy - (dt / (DAY_LEN * 0.55)) * (this.moving ? 1.2 : 0.7) * (0.7 + this.traits.lazy * 0.6));
     this.fear = Math.max(0, this.fear - dt * 0.35);
@@ -1292,6 +1403,7 @@ export class Creature {
     if (w.gentle && dh < 0 && w.awayMode) dh *= 0.1;
     this.health = clamp(this.health + dh * dt, 0, 1);
     if (this.mateCD > 0) this.mateCD -= dt;
+    if (this.busyT > 0) this.busyT -= dt;
     if (this.hopCD > 0) this.hopCD -= dt;
     if (this.health <= 0) {
       const cause = tf <= 0.05 ? (this.T < d.temp[1] ? 'cold' : 'hot') : mf <= 0.05 ? 'dry' : oxy < 0.3 ? 'air' : this.hunger >= 1 ? 'hungry' : 'poorly';
@@ -1303,11 +1415,15 @@ export class Creature {
     // development speeds up with warmth (cold-blooded), like real tadpoles
     let dev = 1;
     if (this.def.ecto) dev = clamp((this.T - 6) / 18, 0.25, 1.5);
+    // (the schoolhouse helps the young grow up twice as fast)
+    if (w.has.school && !this.isAdult) dev *= 2;
     this.age += dt;
     this.stageAge += dt * dev;
     if (this.stageAge >= this.stageDur) w.advanceStage(this);
-    if (this.isAdult && this.age > this.lifespan && !this.dead) {
-      if (!w.awayMode || !w.gentle || this.age > this.lifespan * 1.15) this.die(w, 'old');
+    // the critter clinic adds a third to every life
+    const span = this.lifespan * (w.has.clinic ? 1.33 : 1);
+    if (this.isAdult && this.age > span && !this.dead) {
+      if (!w.awayMode || !w.gentle || this.age > span * 1.15) this.die(w, 'old');
     }
   }
 
@@ -1353,6 +1469,8 @@ export class Creature {
     if (this.memory.underground) o.ug = 1;
     if (this.memory.young) o.yg = this.memory.young;
     if (this.memory.made) o.mk = this.memory.made;
+    if (this.memory.dream) o.dr = [this.memory.dream.i, +this.memory.dream.n.toFixed(2)];
+    if (this.memory.master) o.ms = this.memory.master;
     if (this.memory.home) o.ho = this.memory.home;
     if (this.carryBrood) o.cb = { s: this.carryBrood.stage, t: Math.round(this.carryBrood.t) };
     if (this.climb && this.climb.plant) o.cl = { p: this.climb.plant.id, k: this.climb.slot.kind, i: this.climb.slot.i };
@@ -1386,6 +1504,8 @@ export class Creature {
     if (o.ug) c.memory.underground = true;
     if (o.yg) c.memory.young = o.yg;
     if (o.mk) c.memory.made = o.mk;
+    if (o.dr) c.memory.dream = { i: o.dr[0], n: o.dr[1] };
+    if (o.ms) c.memory.master = o.ms;
     if (o.ho) c.memory.home = o.ho;
     if (o.m && ['walk', 'swim', 'fly', 'crawl', 'burrow', 'still', 'glass'].includes(o.m)) c.mode = o.m;
     c._climbRef = o.cl || null;

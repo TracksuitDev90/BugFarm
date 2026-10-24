@@ -266,6 +266,22 @@ function flower(g, f, def, lw) {
       }
       break;
     }
+    case 'moon': {
+      // a wide white moonflower with a pale five-pointed star
+      paint(g, pc, lw, () => circ(g, f.x, f.y, r * 1.15));
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i / 10) * TAU;
+        const rr = i % 2 ? r * 0.35 : r * 1.05;
+        g.lineTo(f.x + Math.cos(a) * rr, f.y + Math.sin(a) * rr);
+      }
+      g.closePath();
+      fill(g, 'rgba(232,236,200,0.75)');
+      circ(g, f.x, f.y, r * 0.3);
+      fill(g, cc);
+      highlight(g, f.x - r * 0.4, f.y - r * 0.4, r * 0.35, r * 0.2, 0.5);
+      break;
+    }
     case 'tulip': {
       paint(g, pc, lw, () => {
         g.beginPath();

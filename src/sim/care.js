@@ -30,7 +30,7 @@ function listWords(a) {
 export function residents(w, z) {
   const out = [];
   for (const c of w.creatures) {
-    if (c.dead || c.stage === 'egg' || c.stage === 'chrysalis' || c.sp === 'fruitfly') continue;
+    if (c.dead || c.stage === 'egg' || c.pupa || c.sp === 'fruitfly') continue;
     if (c.canFly) {
       if (c.def.zone === z) out.push(c);
     } else if (w.env.zoneAt(c.x) === z) out.push(c);
@@ -149,7 +149,7 @@ export function zoneStatus(w, z, band = zoneBand(w, z)) {
 export function favouriteFoods(sps, canUse = () => true, n = 2) {
   const score = {};
   for (const id of FOOD_ORDER) {
-    if (!canUse('feed', id)) continue;
+    if (FOODS[id].busy || !canUse('feed', id)) continue;
     let s = 0;
     for (const sp of sps) {
       const d = SPECIES[sp];

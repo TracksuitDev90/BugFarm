@@ -24,7 +24,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['beetle'],
+      critters: ['beetle', 'harvesterAnt'],
       foods: ['corn', 'sunflower', 'carrot', 'pumpkin'],
       plants: ['succulent', 'marigold'],
       decor: ['flatRock'],
@@ -35,7 +35,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['gecko'],
+      critters: ['gecko', 'honeypotAnt'],
       foods: ['bugbites', 'banana', 'cookie', 'grape'],
       decor: ['feeder'],
     },
@@ -53,7 +53,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['shrimp'],
+      critters: ['shrimp', 'guppy'],
       foods: ['pellets', 'pea', 'bread'],
       plants: ['eelgrass'],
       decor: ['bubbler'],
@@ -64,7 +64,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['frog'],
+      critters: ['frog', 'tetra'],
       foods: ['spinach', 'broccoli'],
       decor: ['castle'],
       goals: [
@@ -74,7 +74,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['turtle'],
+      critters: ['turtle', 'dragonfly'],
       foods: ['sticks', 'tomato'],
     },
   ],
@@ -102,7 +102,7 @@ export const ZONE_PLAN = {
       ],
     },
     {
-      critters: ['aphid', 'ladybug'],
+      critters: ['aphid', 'ladybug', 'moth'],
       foods: ['honey', 'pollen'],
       plants: ['tulip', 'strawberry', 'bromeliad'],
       goals: [

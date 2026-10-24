@@ -42,6 +42,9 @@ export const FOODS = {
   sticks: { name: 'Turtle sticks', tags: ['pellet', 'protein'], amount: 1.2, shape: 'sticks', colors: ['#c98f4a', '#e8603c'], decay: 3, rot: 'cloudy', size: 1, float: 90 },
   bugbites: { name: 'Bug bites', tags: ['protein'], amount: 0.7, shape: 'pellets', colors: ['#c9a46a', '#a9825a'], decay: 4, rot: 'mold', size: 0.8 },
   eggshell: { name: 'Eggshell bits', tags: ['calcium'], amount: 0.5, shape: 'shards', colors: ['#fbf6ea', '#e9dcc0'], decay: 60, rot: 'mold', size: 0.9 },
+  // from Baker Bramble at the Busytown Market: whoever nibbles one works
+  // double-time for half a day (bought by the bag, see world.stock)
+  bun: { name: 'Busy bun', tags: ['sweet', 'grain', 'nectar', 'protein', 'flake', 'veg', 'pellet'], amount: 1.4, shape: 'bun', colors: ['#e8a85a', '#f6c83a', '#9a5a2a'], decay: 3, rot: 'mold', size: 1, busy: true, float: 30 },
   leaves: { name: 'Fallen leaves', tags: ['leaflitter', 'decay'], amount: 1.5, shape: 'deadleaf', colors: ['#c98a4a', '#a9682f'], decay: 25, rot: 'mold', size: 1.2, float: 120 },
 };
 

@@ -36,6 +36,7 @@ export const SPECIES = {
     ecto: true,
     predators: ['gecko'],
     colony: true,
+    specialPals: [3, 4], // harvester and honeypot colonies
     accessoryChance: 0,
   },
   cricket: {
@@ -191,6 +192,7 @@ export const SPECIES = {
     lifespan: [30, 50],
     maxPop: 10,
     ecto: true,
+    fish: true,
     schools: true,
     breed: { mode: 'pair', clutch: [2, 4], cooldown: 4, place: 'water' },
     accessoryChance: 0,
@@ -418,6 +420,7 @@ export const SPECIES = {
     maxPop: 6,
     ecto: true,
     breed: { mode: 'pair', clutch: [1, 3], cooldown: 2.5, place: 'leaf' },
+    rarePals: [5, 6, 7], // only hatch in the butterfly house
     accessoryChance: 0.25,
   },
   snail: {
@@ -569,6 +572,241 @@ export const SPECIES = {
     breed: { mode: 'pair', clutch: [2, 4], cooldown: 3, place: 'live' },
     accessoryChance: 0,
   },
+  guppy: {
+    name: 'Guppy',
+    plural: 'Guppies',
+    zone: 'pond',
+    habitat: 'water',
+    size: 12,
+    blurb: 'Teeny fish with enormous rainbow tails. They whizz about near the top of the pond snapping up stray flies and floating flakes.',
+    facts: [
+      'Guppies have live babies instead of laying eggs.',
+      'No two guppy tails are quite the same.',
+      'They are sometimes called "millions fish" because they have so many babies!',
+    ],
+    stages: [
+      { id: 'fry', loco: 'swim', days: [1.5, 2.2], scale: 0.6 },
+      { id: 'adult', loco: 'swim', scale: 1 },
+    ],
+    speed: { swim: 36 },
+    diet: { flake: 1, protein: 0.85, pellet: 0.6, algae: 0.4, veg: 0.3 },
+    prey: ['fruitfly'],
+    appetite: 0.08,
+    hungerDays: 1.4,
+    temp: [10, 20, 30, 35],
+    moist: [-1, -1, 2, 2],
+    oxygen: 0.4,
+    activity: 'day',
+    sight: 110,
+    lifespan: [14, 22],
+    maxPop: 10,
+    ecto: true,
+    fish: true,
+    schools: true,
+    skimmer: true, // likes the top of the water
+    breed: { mode: 'pair', clutch: [2, 4], cooldown: 2.5, place: 'live' },
+    accessoryChance: 0,
+  },
+  tetra: {
+    name: 'Neon tetra',
+    plural: 'Neon tetras',
+    zone: 'pond',
+    habitat: 'water',
+    size: 11,
+    blurb: 'Little fish with a shining blue stripe. They swim in tight, twinkly schools that turn all at once, and glow softly after dark.',
+    facts: [
+      'The neon stripe helps the school find each other in dark water.',
+      'Tetras feel safest in a big group.',
+      'A school of tetras turns together without anyone in charge.',
+    ],
+    stages: [
+      { id: 'egg', loco: 'still', days: [0.4, 0.7], scale: 0.3 },
+      { id: 'fry', loco: 'swim', days: [1.5, 2.5], scale: 0.5 },
+      { id: 'adult', loco: 'swim', scale: 1 },
+    ],
+    speed: { swim: 42 },
+    diet: { flake: 1, pellet: 0.75, protein: 0.85, algae: 0.3 },
+    appetite: 0.06,
+    hungerDays: 1.5,
+    temp: [14, 21, 29, 34],
+    moist: [-1, -1, 2, 2],
+    oxygen: 0.45,
+    activity: 'day',
+    sight: 120,
+    lifespan: [16, 26],
+    maxPop: 12,
+    ecto: true,
+    fish: true,
+    schools: true,
+    tight: true, // swims shoulder to shoulder
+    breed: { mode: 'pair', clutch: [3, 5], cooldown: 3, place: 'water' },
+    accessoryChance: 0,
+  },
+  koi: {
+    name: 'Koi',
+    plural: 'Koi',
+    zone: 'pond',
+    habitat: 'water',
+    size: 34,
+    blurb: 'Big, gentle pond fish splashed with red, white and gold. They rummage in the gravel with their whiskers, and now and then turn up a lost coin!',
+    facts: [
+      'Koi can live for a very long time, some for over 100 years!',
+      'Their whiskers are called barbels. They feel about in the mud with them.',
+      'In Japan, koi stand for good luck.',
+    ],
+    stages: [
+      { id: 'egg', loco: 'still', days: [0.6, 0.9], scale: 0.3 },
+      { id: 'fry', loco: 'swim', days: [3, 4], scale: 0.5 },
+      { id: 'adult', loco: 'swim', scale: 1 },
+    ],
+    speed: { swim: 30 },
+    diet: { pellet: 1, flake: 0.9, veg: 0.7, protein: 0.6, algae: 0.5, leaf: 0.4, grain: 0.6 },
+    appetite: 0.6,
+    hungerDays: 2.4,
+    temp: [2, 14, 27, 32],
+    moist: [-1, -1, 2, 2],
+    oxygen: 0.5,
+    activity: 'day',
+    sight: 130,
+    lifespan: [60, 90],
+    maxPop: 4,
+    ecto: true,
+    fish: true,
+    schools: true,
+    breed: { mode: 'pair', clutch: [1, 2], cooldown: 8, place: 'water' },
+    accessoryChance: 0,
+  },
+  puffer: {
+    name: 'Pea puffer',
+    plural: 'Pea puffers',
+    zone: 'pond',
+    habitat: 'water',
+    size: 12,
+    blurb: 'The smallest pufferfish in the world. They hover like little helicopters, roll their eyes in every direction, and puff up into a prickly ball when startled.',
+    facts: [
+      'Pea puffers can move each eye on its own!',
+      'They love to crunch on snails.',
+      'A puffed-up puffer is far too round and prickly to swallow.',
+    ],
+    stages: [
+      { id: 'egg', loco: 'still', days: [0.5, 0.8], scale: 0.3 },
+      { id: 'fry', loco: 'swim', days: [2, 3], scale: 0.5 },
+      { id: 'adult', loco: 'swim', scale: 1 },
+    ],
+    speed: { swim: 22 },
+    diet: { protein: 1, pellet: 0.8, flake: 0.5 },
+    prey: ['pondsnail'],
+    appetite: 0.08,
+    hungerDays: 1.8,
+    temp: [12, 21, 29, 33],
+    moist: [-1, -1, 2, 2],
+    oxygen: 0.4,
+    activity: 'day',
+    sight: 120,
+    lifespan: [20, 30],
+    maxPop: 6,
+    ecto: true,
+    fish: true,
+    puffs: true,
+    breed: { mode: 'pair', clutch: [2, 3], cooldown: 4, place: 'water' },
+    accessoryChance: 0,
+  },
+  axolotl: {
+    name: 'Axolotl',
+    plural: 'Axolotls',
+    zone: 'pond',
+    habitat: 'water',
+    size: 26,
+    blurb: 'A smiling pink salamander with frilly gills who never quite grows up. It strolls along the bottom of the pond, and everyone in Busytown adores it.',
+    facts: [
+      'Axolotls breathe through the feathery gills on their heads.',
+      'They can grow back a lost leg!',
+      'Axolotls keep their baby looks their whole lives.',
+    ],
+    stages: [{ id: 'adult', loco: 'walk', scale: 1 }],
+    speed: { walk: 7, swim: 16 },
+    swimHop: true,
+    diet: { protein: 1, pellet: 1, flake: 0.6, decay: 0.5 },
+    appetite: 0.35,
+    hungerDays: 3,
+    temp: [4, 13, 24, 29],
+    moist: [-1, -1, 2, 2],
+    oxygen: 0.3,
+    activity: 'dusk',
+    sight: 80,
+    lifespan: [70, 100],
+    maxPop: 2,
+    ecto: true,
+    accessoryChance: 0.7,
+  },
+  dragonfly: {
+    name: 'Dragonfly',
+    plural: 'Dragonflies',
+    zone: 'pond',
+    habitat: 'air',
+    size: 30,
+    blurb: 'Starts life underwater as a nymph, then climbs out up a reed, splits its skin and zooms off on four glittering wings. The fastest flyer in the tank!',
+    facts: [
+      'Dragonflies can fly backwards and hover in one spot.',
+      'Their huge eyes see almost all the way round.',
+      'A dragonfly catches its food in the air with its legs, like a basket.',
+    ],
+    stages: [
+      { id: 'egg', loco: 'still', days: [0.8, 1.2], scale: 0.3, aquatic: true },
+      { id: 'nymph', loco: 'walk', days: [3, 4], scale: 1, aquatic: true, activity: 'any', diet: { protein: 1, pellet: 0.75, flake: 0.6, decay: 0.55 }, appetite: 0.1, hungerDays: 3 },
+      { id: 'adult', loco: 'fly', scale: 1 },
+    ],
+    speed: { walk: 7, swim: 14, fly: 74 },
+    canFly: true,
+    diet: { protein: 1, sweet: 0.3 },
+    prey: ['fruitfly'],
+    appetite: 0.12,
+    hungerDays: 1.6,
+    temp: [8, 18, 32, 38],
+    moist: [-1, 0.1, 1.01, 2],
+    activity: 'day',
+    sight: 260,
+    lifespan: [8, 14],
+    maxPop: 4,
+    ecto: true,
+    specialPals: [4], // the mail dragonfly's uniform
+    breed: { mode: 'pair', clutch: [1, 2], cooldown: 3, place: 'water' },
+    accessoryChance: 0,
+  },
+  moth: {
+    name: 'Moth',
+    plural: 'Moths',
+    zone: 'jungle',
+    habitat: 'land',
+    size: 26,
+    blurb: 'The butterfly\'s night-time cousin: fluffy, feathery and drawn to every light. Moths sip from flowers after dark, and their caterpillars spin cocoons of silk.',
+    facts: [
+      'Moths find their way by the moon, so lamps muddle them.',
+      'Moths smell with their feathery antennae.',
+      'Silk comes from the cocoons of silk moths!',
+    ],
+    stages: [
+      { id: 'egg', loco: 'still', days: [0.8, 1.1], scale: 1 },
+      { id: 'caterpillar', loco: 'walk', days: [2.5, 3.5], scale: 1, activity: 'any', diet: { leaf: 1, veg: 0.85 }, appetite: 0.4, hungerDays: 0.8, canClimb: true },
+      { id: 'cocoon', loco: 'still', days: [1.4, 2], scale: 1 },
+      { id: 'adult', loco: 'fly', scale: 1 },
+    ],
+    speed: { walk: 4, fly: 28 },
+    canFly: true,
+    canClimb: true,
+    diet: { nectar: 1, sweet: 0.9, fruit: 0.6 },
+    appetite: 0.12,
+    hungerDays: 1.8,
+    temp: [6, 14, 30, 36],
+    moist: [-1, 0.2, 0.95, 1.01],
+    activity: 'night',
+    sight: 180,
+    lifespan: [6, 10],
+    maxPop: 6,
+    ecto: true,
+    breed: { mode: 'pair', clutch: [1, 3], cooldown: 2.5, place: 'leaf' },
+    accessoryChance: 0,
+  },
   fruitfly: {
     name: 'Fruit fly',
     plural: 'Fruit flies',
@@ -598,8 +836,8 @@ export const SPECIES = {
 
 export const SPECIES_ORDER = [
   'ant', 'cricket', 'gecko', 'beetle',
-  'goldfish', 'frog', 'turtle', 'pondsnail', 'shrimp',
-  'ladybug', 'aphid', 'butterfly', 'snail', 'bee', 'worm', 'firefly', 'pillbug', 'grasshopper',
+  'goldfish', 'guppy', 'tetra', 'koi', 'puffer', 'axolotl', 'frog', 'turtle', 'pondsnail', 'shrimp', 'dragonfly',
+  'ladybug', 'aphid', 'butterfly', 'moth', 'snail', 'bee', 'worm', 'firefly', 'pillbug', 'grasshopper',
   'fruitfly',
 ];
 
@@ -626,6 +864,7 @@ export function stageName(sp, stage) {
     hatchling: 'Hatchling',
     caterpillar: 'Caterpillar',
     chrysalis: 'Chrysalis',
+    cocoon: 'Cocoon',
   };
   if (sp === 'frog' && stage === 'egg') return 'Frogspawn';
   return names[stage] || stage;
@@ -633,8 +872,30 @@ export function stageName(sp, stage) {
 
 // What each species is called when you adopt it from the menu.
 export function adoptLabel(sp) {
-  if (sp === 'ant') return 'Ant colony';
+  if (ANT_KINDS[sp]) return ANT_KINDS[sp].label;
   if (sp === 'frog') return 'Tadpoles';
   if (sp === 'butterfly') return 'Caterpillar';
+  if (sp === 'moth') return 'Moth caterpillar';
+  if (sp === 'dragonfly') return 'Dragonfly nymphs';
   return SPECIES[sp].name;
+}
+
+// Ant colonies come in kinds. They all dig, forage and look after their
+// queen, and each kind has its own extra job. Adopting a kind the tank
+// doesn't have yet starts a new colony of it.
+//   pal: the colony's palette in PALETTES.ant
+export const ANT_KINDS = {
+  ant: { kind: 'garden', label: 'Garden ants', name: 'Garden ant', pal: [0, 1, 2], blurb: 'The all-rounders: they dig deep nests, herd aphids for honeydew, and their tunnels let air into the sand so desert plants grow better.' },
+  harvesterAnt: { kind: 'harvester', label: 'Harvester ants', name: 'Harvester ant', pal: [3], blurb: 'Big-headed seed collectors. They carry seeds and grain down to their granary, and pile the spares by the door as seed heads for the basket.' },
+  honeypotAnt: { kind: 'honeypot', label: 'Honeypot ants', name: 'Honeypot ant', pal: [4], blurb: 'Some of these ants are living honey jars: their tummies swell up golden with nectar. When the store is full, there\'s a jar of desert honey by the door.' },
+};
+export function antKindOf(kind) {
+  for (const id of Object.keys(ANT_KINDS)) if (ANT_KINDS[id].kind === kind) return id;
+  return 'ant';
+}
+// What can be adopted, in tray order: species, with the ant kinds in place
+// of plain ants.
+export const ADOPT_ORDER = SPECIES_ORDER.flatMap((sp) => (sp === 'ant' ? Object.keys(ANT_KINDS) : sp === 'fruitfly' ? [] : [sp]));
+export function adoptSpecies(id) {
+  return ANT_KINDS[id] ? 'ant' : id;
 }

@@ -56,6 +56,9 @@ function wireWorld() {
   journal.onUnlock = (d) => ui && ready && ui.discovery(d);
   journal.progress.onLevel = (z, lv, unlocks) => ui && ready && ui.levelUp(z, lv, unlocks);
   journal.orders.onOrder = (o) => ui && ready && !w.awayMode && ui.newLetter(o);
+  w.events.on('coins', ({ n, x, y }) => ui && ready && !w.awayMode && game.renderer.coinFloat(x, y, n));
+  // the delivery van posts orders by itself: the thank-yous still pop up
+  w.events.on('van', ({ sent }) => ui && ready && !w.awayMode && sent.forEach((r) => ui.thanked(r)));
   w.events.on('sound', ({ name, x, y, p }) => {
     const cam = game.cam;
     const v = cam.view(20);

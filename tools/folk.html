@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Busytown neighbours</title>
+<style>body{margin:0;background:#f7eed6;font:14px sans-serif}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// Every Busytown neighbour's portrait, asking and delighted.
+import { NEIGHBOURS } from '../src/data/neighbours.js';
+import { drawFolk, FOLK_BOX } from '../src/art/townsfolk.js';
+import { finishSprite } from '../src/art/paper.js';
+const c = document.getElementById('c');
+const S = 2.6;
+const [x0, y0, x1, y1] = FOLK_BOX;
+const cw = (x1 - x0) * S + 16, ch = (y1 - y0) * S + 30;
+const cols = 6;
+c.width = cols * cw + 20;
+c.height = Math.ceil((NEIGHBOURS.length * 2) / cols) * ch + 20;
+const g = c.getContext('2d');
+g.fillStyle = '#f7eed6';
+g.fillRect(0, 0, c.width, c.height);
+let i = 0;
+for (const nb of NEIGHBOURS) {
+  for (const mood of ['ask', 'happy']) {
+    const px = 10 + (i % cols) * cw, py = 10 + Math.floor(i / cols) * ch;
+    const sub = document.createElement('canvas');
+    sub.width = (x1 - x0) * S;
+    sub.height = (y1 - y0) * S;
+    const sg = sub.getContext('2d');
+    sg.setTransform(S, 0, 0, S, -x0 * S, -y0 * S);
+    drawFolk(sg, nb.look, mood);
+    finishSprite(sg, FOLK_BOX);
+    g.drawImage(sub, px + 8, py);
+    g.fillStyle = '#3a2a1f';
+    g.fillText(nb.name + (mood === 'happy' ? ' :)' : ''), px + 12, py + (y1 - y0) * S + 18);
+    i++;
+  }
+}
+</script>
+</body>
+</html>

@@ -24,6 +24,7 @@ export class Good {
     this.plant = opts.plant || ''; // plant type a seed head would sow
     this.fi = opts.fi || 0; // which flower of its plant it grew from
     this.gone = false;
+    this.claim = 0; // the mail dragonfly on its way to fetch it
   }
 
   get name() {

@@ -45,9 +45,28 @@ export class Food {
     this.angle = rrange(-0.3, 0.3);
     this.px = x;
     this.py = y;
+    // who it was dropped for (it falls their way), who's carrying it (state
+    // 'held'), whose stash it is, and who it's a present for
+    this.aim = null;
+    this.holder = null;
+    this.owner = opts.owner || 0;
+    this.giftFor = 0;
+    this.giftBy = '';
   }
   get name() {
     return this.def.name;
+  }
+  // Lying (or floating) somewhere a critter could take a bite.
+  get loose() {
+    return this.state !== 'fall' && this.state !== 'held';
+  }
+  // Let go of it: it drops from wherever it is.
+  drop(w) {
+    this.holder = null;
+    this.state = w.terrain.waterAt(this.x, this.y) ? 'sink' : 'fall';
+    this.inWater = this.state === 'sink';
+    this.vx = 0;
+    this.vy = 0;
   }
   get rot() {
     return this.fresh > 0.35 ? 0 : this.fresh > 0 ? 1 : 2;
@@ -72,9 +91,24 @@ export class Food {
     this.py = this.y;
     this.shown += (this.amount - this.shown) * Math.min(1, dt * 4);
     if (this.biteT > 0) this.biteT -= dt;
+    const aim = this.aim && !this.aim.dead && !this.aim.removed ? this.aim : (this.aim = null);
     switch (this.state) {
+      case 'held': {
+        // in a critter's mouth (or jaws, or arms)
+        const h = this.holder;
+        if (!h || h.dead || h.removed || h.carrying !== this) {
+          this.drop(w);
+          break;
+        }
+        this.x = clamp(h.x + h.facing * h.size * 0.42, 4, W - 4);
+        this.y = h.y - h.size * 0.08;
+        this.inWater = t.waterAt(this.x, this.y);
+        break;
+      }
       case 'fall': {
         this.vy = Math.min(420, this.vy + 520 * dt);
+        // (the keeper's aim: it drifts over toward whoever it was meant for)
+        if (aim) this.vx += (clamp((aim.x - this.x) * 3, -90, 90) - this.vx) * Math.min(1, dt * 6);
         let nx = this.x + this.vx * dt;
         if (nx < 6 || nx > W - 6) {
           this.vx = -this.vx * 0.3;
@@ -84,10 +118,14 @@ export class Food {
         this.y += this.vy * dt;
         if (t.waterAt(this.x, this.y)) {
           this.inWater = true;
+          // flakes float (a hungry fish comes up for them), unless they
+          // were meant for a snail or a shrimp down on the bottom
+          if (aim && aim.mode !== 'swim' && aim.y > this.y + 40) this.floatT = Math.min(this.floatT, 0.8);
           this.state = this.floatT > 0 ? 'float' : 'sink';
           w.splash(this.x, t.waterSurfY(this.x), 0.5);
           w.sound('plop', this.x, this.y);
           w.addNovelty(this.x, this.y + 20, 0.8);
+          w.foodArrived(this);
           this.vy = 0;
           break;
         }
@@ -97,9 +135,11 @@ export class Food {
           if (t.solidAt(this.x, this.y)) this.y = gy;
           this.state = 'rest';
           this.vx = 0;
+          this.aim = null;
           w.dust(this.x, this.y, 2);
           w.sound('tap', this.x, this.y);
           w.addNovelty(this.x, this.y, 0.7);
+          w.foodArrived(this);
         }
         break;
       }
@@ -117,7 +157,10 @@ export class Food {
       case 'sink': {
         breeze.current(this.x, this.y, CUR);
         this.y += (16 + CUR[1] * 0.3) * dt;
-        const nx = this.x + (CUR[0] * 0.3 + Math.sin(w.time * 1.1 + this.id) * 4) * dt;
+        let sway = CUR[0] * 0.3 + Math.sin(w.time * 1.1 + this.id) * 4;
+        // sinking toward whoever it was dropped for
+        if (aim) sway += clamp((aim.x - this.x) * 1.5, -24, 24);
+        const nx = this.x + sway * dt;
         if (openWater(t, nx, this.y, nx < this.x ? -1 : 1)) this.x = nx;
         const gy = t.surfaceY(this.x);
         if (this.y >= gy - 1) {
@@ -185,15 +228,16 @@ export class Food {
       a: +this.amount.toFixed(3),
       f: +this.fresh.toFixed(3),
       ag: Math.round(this.age),
-      s: this.state === 'fall' ? 'rest' : this.state,
+      s: this.state === 'fall' || this.state === 'held' ? 'rest' : this.state,
       w: this.inWater ? 1 : 0,
       ft: Math.round(this.floatT),
       m: this.max !== this.def.amount ? +this.max.toFixed(3) : undefined,
       bs: this.biteSide || undefined,
+      ow: this.owner || undefined,
     };
   }
   static load(o) {
-    return new Food(o.t, o.x, o.y, { id: o.id, amount: o.a, max: o.m, biteSide: o.bs, fresh: o.f, age: o.ag, state: o.s, inWater: !!o.w, floatT: o.ft, vx: 0 });
+    return new Food(o.t, o.x, o.y, { id: o.id, amount: o.a, max: o.m, biteSide: o.bs, fresh: o.f, age: o.ag, state: o.s, inWater: !!o.w, floatT: o.ft, vx: 0, owner: o.ow });
   }
 }
 

@@ -128,6 +128,9 @@ export function think(c, w) {
     const cool = c.memory.cool;
     if (cool && cool[b.id] > w.time) continue;
     let s = b.score(c, w);
+    // (an errand under way holds its own against idle thoughts, even once
+    // it's put itself on cooldown; anything more pressing still wins)
+    if (b === cur && b.hold) s = Math.max(s, b.hold);
     if (s <= 0) continue;
     if (b.id === wh.id) s += wh.b * c.act;
     if (b === cur) s += cur.stick != null ? cur.stick : 0.12; // commitment

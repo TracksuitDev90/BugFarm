@@ -223,6 +223,8 @@ export class UI {
     }
     if (this.tool === id && id !== 'look' && !this.sheet.classList.contains('hidden')) id = 'look';
     this.tool = id;
+    // the fish can see the keeper getting the food out
+    this.world.keeperFeeding = id === 'feed';
     for (const [k, b] of Object.entries(this.toolBtns)) b.classList.toggle('on', k === id);
     this.moving = null;
     this.r.ghost = null;

@@ -7,7 +7,7 @@ import { randomName } from '../data/names.js';
 import { DAY_LEN, W, H, CELL, GW } from '../config.js';
 import { clamp, clamp01, band, lerp, angleDiff, smoothstep } from '../util/math.js';
 import { rrange, rint, chance } from '../util/rng.js';
-import { nearestWalkable } from '../world/pathfind.js';
+import { nearestWalkable, lineOfWater, findWaterPath } from '../world/pathfind.js';
 import { breeze } from '../world/breeze.js';
 
 const GRAV = 620;
@@ -89,6 +89,12 @@ export class Creature {
     this.pathI = 0;
     this.carry = null;
     this.carryBrood = null; // a nurse ant carrying an egg or baby
+    this.carrying = null; // a bit of food held in the mouth (see the gather behaviour)
+    // a swimmer's route round corners: waypoints through the water
+    this.nav = null;
+    this.navI = 0;
+    this.navFor = null;
+    this.navT = 0;
     this.pose = 'idle';
     this.anim = Math.random() * 10;
     this.frame = 0;
@@ -330,6 +336,8 @@ export class Creature {
         return this.moveCrawl(w, dt);
       case 'still':
         return this.moveStill(w, dt);
+      case 'glass':
+        return this.moveGlass(w, dt);
       default:
         return undefined;
     }
@@ -342,13 +350,27 @@ export class Creature {
   moveWalk(w, dt) {
     const t = w.terrain;
     const tp = this.targetPos(w);
+    // a pond snail glides up the glass to get anywhere off the floor
+    if (this.def.glass && tp && this.target.kind !== 'plant' && tp[1] < this.groundAt(w, tp[0]) - 8 && t.waterAt(tp[0], tp[1])) {
+      this.mode = 'glass';
+      return;
+    }
     const surf = t.surfaceY(this.x);
     const surfWet = t.waterAt(this.x, surf - 2);
     // aquatic walkers must stay underwater; land walkers on land.
     if (this.aquatic && !surfWet) {
       if (!t.waterAt(this.x, this.y)) {
+        // stranded: wriggle back to the nearest water if there's any close by
+        const back = this.nearestWetFloor(t, 64);
+        if (back != null) {
+          this.x += Math.sign(back - this.x) * Math.min(Math.abs(back - this.x), this.walkSpeed() * 0.8 * dt);
+          this.y = this.groundAt(w, this.x);
+          this.facing = back >= this.x ? 1 : -1;
+          this.moving = true;
+        }
         this.distress(w, dt, 'dry');
         if (this.dead) return;
+        if (back != null) return;
       }
     } else if (!this.aquatic && surfWet && !this.amphibious) {
       // swept into water: paddle to shore
@@ -430,6 +452,17 @@ export class Creature {
 
   walkSpeed() {
     return this.def.speed.walk || 8;
+  }
+
+  // The nearest x (within reach) where the floor is under water.
+  nearestWetFloor(t, reach) {
+    for (let d = 4; d <= reach; d += 4) {
+      for (const s of [1, -1]) {
+        const x = this.x + s * d;
+        if (t.waterAt(x, t.surfaceY(x) - 2)) return x;
+      }
+    }
+    return null;
   }
 
   tryHop(w, dir, dist) {
@@ -604,6 +637,38 @@ export class Creature {
     let sp = (this.def.speed.swim || this.def.speed.walk * 2 || 20) * this.speedFactor() * (this.paddling ? 0.8 : 1);
     if (this.target && this.target.speedMul) sp *= this.target.speedMul;
     let tp = this.targetPos(w);
+    // a shrimp's swim is a hop: once it gets there (or has nowhere to go) it
+    // drifts back down to settle on the floor
+    if (this.aquatic && this.stageDef.loco === 'walk' && (!tp || this.arrived)) {
+      this.vx *= 1 - Math.min(1, dt * 2.5);
+      this.vy = Math.min(this.vy + 70 * dt, 24);
+      const gy = this.groundAt(w, this.x);
+      const ny = this.y + this.vy * dt;
+      if (ny >= gy || !t.waterAt(this.x, ny)) {
+        // (never settle anywhere dry, like a pocket against the rocks: drift
+        // on out toward the open water instead)
+        if (!t.waterAt(this.x, t.surfaceY(this.x) - 2)) {
+          const dir = this.x < 810 ? 1 : -1;
+          if (t.waterAt(this.x + dir * 3, this.y)) this.x += dir * 20 * dt;
+          else if (t.waterAt(this.x, this.y - 3)) this.y -= 10 * dt;
+          this.vy = 0;
+          return;
+        }
+        this.y = Math.min(gy, this.y + this.vy * dt);
+        if (this.y >= gy - 0.5 || !t.waterAt(this.x, ny)) {
+          this.y = gy;
+          this.mode = 'walk';
+          this.vx = this.vy = 0;
+          this.landT = 0.18;
+        }
+        return;
+      }
+      this.y = ny;
+      if (t.waterAt(this.x + this.vx * dt, this.y)) this.x += this.vx * dt;
+      this.angle += angleDiff(this.angle, 0.25 * this.facing) * Math.min(1, dt * 4);
+      this.moving = false;
+      return;
+    }
     // non-swimmers and amphibians heading to land: make for the shore
     let wantLand = false;
     if (this.paddling) wantLand = true;
@@ -616,8 +681,11 @@ export class Creature {
     let tx;
     let ty;
     if (tp) {
-      tx = tp[0];
-      ty = tp[1];
+      // round a corner (along a channel, into a flooded tunnel) by way of a
+      // route through the water; anywhere in plain sight, straight there
+      const way = wantLand ? tp : this.swimRoute(w, tp);
+      tx = way[0];
+      ty = way[1];
     } else {
       tx = this.x + this.facing * 15;
       ty = this.y;
@@ -625,6 +693,7 @@ export class Creature {
     const dx = tx - this.x;
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
+    const dGoal = tp ? Math.hypot(tp[0] - this.x, tp[1] - this.y) : d;
     // Tail beats: fish and tadpoles swim in little bursts and coast in
     // between (now and then darting off), a turtle in slow strong strokes.
     let thrust = 1;
@@ -701,13 +770,112 @@ export class Creature {
     if (Math.abs(this.vx) > 1.5) this.facing = this.vx > 0 ? 1 : -1;
     const a = Math.atan2(this.vy, Math.abs(this.vx) + 6) * 0.6 * this.facing;
     this.angle += angleDiff(this.angle, a) * Math.min(1, dt * 5);
-    if (tp && d < 3 + this.size * 0.3) {
+    if (tp && dGoal < 3 + this.size * 0.3) {
       if (this.target && this.target.kind === 'plant' && this.canClimb) {
         this.climb = { plant: this.target.plant, slot: this.target.slot, t: 1, dir: 0 };
         this.mode = 'climb';
       }
       this.arrived = true;
     }
+  }
+
+  // The next point to steer for on the way to tp: tp itself if there's open
+  // water all the way, otherwise the next turn of a route through the water.
+  swimRoute(w, tp) {
+    const t = w.terrain;
+    const tg = this.target;
+    if (tg !== this.navFor || (tg && tg.kind === 'creature' && w.time > this.navT) || (this.blocked && w.time > this.navT)) {
+      this.navFor = tg;
+      this.navT = w.time + 2;
+      this.nav = null;
+      this.navI = 0;
+      this.blocked = false;
+      if (t.waterAt(tp[0], tp[1]) && !lineOfWater(t, this.x, this.y, tp[0], tp[1], CELL)) {
+        const p = findWaterPath(t, Math.floor(this.x / CELL), Math.floor(this.y / CELL), Math.floor(tp[0] / CELL), Math.floor(tp[1] / CELL), 5000);
+        if (p && p.length > 3) {
+          const pts = [];
+          for (let i = 2; i < p.length - 1; i += 2) pts.push((p[i] % GW) * CELL + CELL / 2, ((p[i] / GW) | 0) * CELL + CELL / 2);
+          this.nav = pts;
+        }
+      }
+    }
+    const nav = this.nav;
+    if (!nav) return tp;
+    const n = nav.length >> 1;
+    // reached this turn: on to the next (and skip any already in plain sight)
+    while (this.navI < n && Math.hypot(nav[this.navI * 2] - this.x, nav[this.navI * 2 + 1] - this.y) < 9) this.navI++;
+    if (this.navI < n - 3 && lineOfWater(t, this.x, this.y, nav[(this.navI + 3) * 2], nav[(this.navI + 3) * 2 + 1], CELL)) this.navI += 3;
+    if (this.navI >= n) {
+      this.nav = null;
+      return tp;
+    }
+    XY[0] = nav[this.navI * 2];
+    XY[1] = nav[this.navI * 2 + 1];
+    return XY;
+  }
+
+  // Pond snails glide about on the glass of the tank, anywhere in the
+  // water, and hang upside down under its skin, just like aquarium snails.
+  moveGlass(w, dt) {
+    const t = w.terrain;
+    if (!t.waterAt(this.x, this.y)) {
+      // the water's gone from round it (or it reached the very top)
+      if (t.waterAt(this.x, this.y + 4)) this.y += 4;
+      else {
+        this.mode = 'walk';
+        this.y = this.groundAt(w, this.x);
+        return;
+      }
+    }
+    if (this.inside) return;
+    const tp = this.targetPos(w);
+    let moving = false;
+    let want = this.angle;
+    if (tp && !this.arrived) {
+      const tx = tp[0];
+      const ty = Math.max(tp[1], t.waterSurfY(tp[0]) + 3);
+      const dx = tx - this.x;
+      const dy = ty - this.y;
+      const d = Math.hypot(dx, dy);
+      const floorY = this.groundAt(w, this.x);
+      if (d < 2 + this.size * 0.2) {
+        this.arrived = true;
+        if (ty >= this.groundAt(w, tx) - 3) {
+          this.mode = 'walk';
+          this.y = this.groundAt(w, this.x);
+          return;
+        }
+      } else {
+        const step = Math.min(d, this.walkSpeed() * this.speedFactor() * 1.25 * dt);
+        let nx = this.x + (dx / d) * step;
+        let ny = Math.min(this.y + (dy / d) * step, floorY);
+        if (!t.waterAt(nx, ny)) {
+          if (t.waterAt(nx, this.y)) ny = this.y;
+          else if (t.waterAt(this.x, ny)) nx = this.x;
+          else {
+            nx = this.x;
+            ny = this.y;
+            this.blocked = true;
+          }
+        }
+        if (nx !== this.x || ny !== this.y) moving = true;
+        this.x = nx;
+        this.y = ny;
+        if (Math.abs(dx) > 0.5) this.facing = dx > 0 ? 1 : -1;
+        // the body turns the way it's gliding
+        want = Math.atan2(dy * this.facing, dx * this.facing);
+        // back on the floor and heading along it: walking again
+        if (ny >= floorY - 0.5 && ty >= this.groundAt(w, tx) - 3) {
+          this.mode = 'walk';
+          this.y = floorY;
+          return;
+        }
+      }
+    }
+    // hanging under the water's skin, a snail turns right over
+    if (!moving && this.y < t.waterSurfY(this.x) + 6) want = Math.PI * 0.92;
+    this.angle += angleDiff(this.angle, want) * Math.min(1, dt * 3);
+    this.moving = moving;
   }
 
   startClimb(plant, slot) {
@@ -919,13 +1087,15 @@ export class Creature {
         step = 0;
       }
     }
-    // food carriers leave a scent trail home
-    if (this.carry === 'food') {
-      const idx = Math.floor(this.y / CELL) * GW + Math.floor(this.x / CELL);
-      if (idx !== this.lastCell) {
-        this.lastCell = idx;
-        const col = w.colony(this.colonyId);
-        if (col) col.mark(idx);
+    // ants keep track of where they've been, and food carriers leave a
+    // scent trail home
+    const idx = Math.floor(this.y / CELL) * GW + Math.floor(this.x / CELL);
+    if (idx !== this.lastCell) {
+      this.lastCell = idx;
+      const col = w.colony(this.colonyId);
+      if (col) {
+        col.visit(idx % GW, (idx / GW) | 0, w.time);
+        if (this.carry === 'food') col.mark(idx);
       }
     }
     if (mvx || mvy) {
@@ -1217,7 +1387,7 @@ export class Creature {
     if (o.yg) c.memory.young = o.yg;
     if (o.mk) c.memory.made = o.mk;
     if (o.ho) c.memory.home = o.ho;
-    if (o.m && ['walk', 'swim', 'fly', 'crawl', 'burrow', 'still'].includes(o.m)) c.mode = o.m;
+    if (o.m && ['walk', 'swim', 'fly', 'crawl', 'burrow', 'still', 'glass'].includes(o.m)) c.mode = o.m;
     c._climbRef = o.cl || null;
     setNextId(o.id + 1);
     return c;

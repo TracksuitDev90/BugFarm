@@ -61,6 +61,18 @@ export class World {
     this.plantTick = 0;
     this.homeT = 99; // who-lives-where is refreshed every second
     this.moveLogT = -99;
+    // The water as the swimmers know it: every patch of open water, which
+    // body of water it belongs to and how deep in it, redrawn whenever the
+    // water moves (so a newly dug channel or a flooded tunnel is somewhere
+    // to go).
+    this.waterMap = null;
+    this.waterMapVer = -1;
+    this.waterMapT = -99;
+    // Where (and at what time of day) the keeper usually feeds the pond:
+    // the fish learn it.
+    this.feedMem = { x: 810, hours: new Array(24).fill(0) };
+    this.keeperFeeding = false; // the Feed tool is out
+    this.shareLogT = -99;
     this.seed = 1;
   }
 
@@ -598,21 +610,136 @@ export class World {
   sound(name, x, y, p) {
     if (!this.awayMode) this.events.emit('sound', { name, x, y, p });
   }
-  addNovelty(x, y, strength = 1) {
-    this.novelty.push({ x, y, t: this.time, strength });
-    if (this.novelty.length > 12) this.novelty.shift();
+  // Something new to look at. kind: 'thing' (food, a plant, a decoration,
+  // a newcomer), 'dig' / 'fill' (the ground changed shape) or 'water' (new
+  // water appeared somewhere). Changes to the tank itself stay interesting
+  // for longer.
+  addNovelty(x, y, strength = 1, kind = 'thing') {
+    const life = kind === 'thing' ? 25 : 90;
+    this.novelty.push({ x, y, t: this.time, strength, kind, life, seen: 0 });
+    if (this.novelty.length > 16) this.novelty.shift();
   }
-  noveltyNear(c) {
+  noveltyNear(c, kinds) {
     let best = null;
     for (const n of this.novelty) {
       const age = this.time - n.t;
-      if (age > 25 || (n.seen || 0) > 4) continue;
+      if (age > n.life || (n.seen || 0) > 4 || (kinds && !kinds.includes(n.kind))) continue;
       const d = Math.hypot(n.x - c.x, n.y - c.y);
-      if (d > c.def.sight * 1.5 || d < 10) continue;
-      if (!best || d < best.d) best = { x: n.x, y: n.y, d, strength: n.strength * (1 - age / 25), ref: n };
+      // (the tank changing shape is worth a longer walk than a new snack)
+      if (d > c.def.sight * (n.kind === 'thing' ? 1.5 : 3) || d < 10) continue;
+      if (!best || d < best.d) best = { x: n.x, y: n.y, d, strength: n.strength * (1 - age / n.life), ref: n };
     }
     if (best) best.ref.seen = best.ref.seen || 0;
     return best ? Object.assign(best.ref, { strength: best.strength }) : null;
+  }
+  // The ground changed shape here (the keeper's spade or brush): note it so
+  // critters come and see, merging strokes made close together.
+  noteChange(x, y, r, kind) {
+    for (const n of this.novelty) {
+      if (n.kind === kind && Math.abs(n.x - x) < 60 && Math.abs(n.y - y) < 60 && this.time - n.t < 8) {
+        n.t = this.time;
+        n.x += (x - n.x) * 0.2;
+        n.y += (y - n.y) * 0.2;
+        if (r >= (n.r || 0)) {
+          n.r = r;
+          n.bx = x;
+          n.by = y;
+        }
+        n.seen = 0;
+        return n;
+      }
+    }
+    this.addNovelty(x, y, 1, kind);
+    const n = this.novelty[this.novelty.length - 1];
+    n.r = r;
+    n.bx = x;
+    n.by = y;
+    return n;
+  }
+
+  // ------------------------------------------------------------------ the water, as swimmers know it
+  // Sample every other cell of open water, label each separate body of
+  // water, and note how deep in its column each sample is (0 at the top of
+  // the water, 1 at the bottom). Any patch that has newly filled with water
+  // is noted as something to explore.
+  buildWaterMap() {
+    const t = this.terrain;
+    const N = GW * GH;
+    const prev = this.waterMap;
+    // (two label grids take turns, so the last one is there to compare with;
+    // the rest is reused, to spare the garbage collector while water flows)
+    const bufs = this.waterBufs || (this.waterBufs = { a: new Int16Array(N), b: new Int16Array(N), queue: new Int32Array(N), dep: new Float32Array(N) });
+    const comp = prev && prev.comp === bufs.a ? bufs.b : bufs.a;
+    comp.fill(-1);
+    const queue = bufs.queue;
+    let nComp = 0;
+    for (let i = 0; i < N; i++) {
+      if (t.water[i] !== 1 || comp[i] >= 0) continue;
+      let qh = 0;
+      let qt = 0;
+      queue[qt++] = i;
+      comp[i] = nComp;
+      while (qh < qt) {
+        const k = queue[qh++];
+        const cx = k % GW;
+        const cy = (k / GW) | 0;
+        if (cx > 0 && t.water[k - 1] === 1 && comp[k - 1] < 0) (comp[k - 1] = nComp), (queue[qt++] = k - 1);
+        if (cx < GW - 1 && t.water[k + 1] === 1 && comp[k + 1] < 0) (comp[k + 1] = nComp), (queue[qt++] = k + 1);
+        if (cy > 0 && t.water[k - GW] === 1 && comp[k - GW] < 0) (comp[k - GW] = nComp), (queue[qt++] = k - GW);
+        if (cy < GH - 1 && t.water[k + GW] === 1 && comp[k + GW] < 0) (comp[k + GW] = nComp), (queue[qt++] = k + GW);
+      }
+      nComp++;
+    }
+    const spots = [];
+    for (let c = 0; c < nComp; c++) spots.push([]);
+    const dep = bufs.dep;
+    for (let cx = 0; cx < GW; cx++) {
+      let cy = 0;
+      while (cy < GH) {
+        if (t.water[cy * GW + cx] !== 1) {
+          cy++;
+          continue;
+        }
+        let b = cy;
+        while (b + 1 < GH && t.water[(b + 1) * GW + cx] === 1) b++;
+        const n = b - cy + 1;
+        for (let y = cy; y <= b; y++) {
+          const k = y * GW + cx;
+          dep[k] = n > 1 ? (y - cy) / (n - 1) : 0.5;
+          if (((cx | y) & 1) === 0) spots[comp[k]].push(k);
+        }
+        cy = b + 1;
+      }
+    }
+    // newly flooded patches are worth a look
+    if (prev) {
+      const sum = new Float64Array(nComp * 3);
+      for (let i = 0; i < N; i += 2) {
+        if (comp[i] < 0 || prev.comp[i] >= 0) continue;
+        const c = comp[i] * 3;
+        sum[c] += i % GW;
+        sum[c + 1] += (i / GW) | 0;
+        sum[c + 2]++;
+      }
+      for (let c = 0; c < nComp; c++) {
+        if (sum[c * 3 + 2] < 20) continue;
+        const x = (sum[c * 3] / sum[c * 3 + 2]) * CELL;
+        const y = (sum[c * 3 + 1] / sum[c * 3 + 2]) * CELL;
+        if (t.waterAt(x, y)) this.addNovelty(x, y, 1, 'water');
+      }
+    }
+    this.waterMap = { comp, spots, dep, nComp };
+    this.waterMapVer = t.waterVersion;
+    this.waterMapT = this.time;
+  }
+  // Which body of water this point is in (-1 if it's dry).
+  waterBody(x, y) {
+    const m = this.waterMap;
+    if (!m) return -1;
+    const cx = Math.floor(x / CELL);
+    const cy = Math.floor(y / CELL);
+    if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) return -1;
+    return m.comp[cy * GW + cx];
   }
 
   // ------------------------------------------------------------------ interactions used by AI
@@ -957,8 +1084,106 @@ export class World {
     y = Math.min(y, H - 6);
     const f = this.addFood(type, x, y, Object.assign({ vy: 30 }, opts));
     this.stats.fed++;
+    // the keeper drops it for whoever nearby is hungriest for it, and it
+    // falls (or sinks) right by them
+    const aim = this.hungryFor(f, x, y);
+    if (aim) {
+      f.aim = aim;
+      aim.memory.tip = { food: f, t: this.time };
+      aim.brain.think = Math.min(aim.brain.think, 0.2);
+    }
+    if (x > ZONE_X.pond[0] && x < ZONE_X.pond[1]) {
+      // the fish remember where and when the food comes
+      const fm = this.feedMem;
+      fm.x += (x - fm.x) * 0.3;
+      fm.hours[Math.floor(this.env.hour) % 24] += 0.35;
+    }
     this.events.emit('feed', { food: f });
     return f;
+  }
+  // The critter near this spot that would most like this food right now
+  // (and that the food can reach by falling or sinking).
+  hungryFor(f, x, y) {
+    const t = this.terrain;
+    let best = null;
+    let bs = 0;
+    for (const c of this.creatures) {
+      // (someone tucked up indoors counts: it lands by their door, and the
+      // smell brings them out)
+      if (c.dead || (c.hidden && !c.inside) || c.stage === 'egg' || c.stage === 'chrysalis' || c.hunger < 0.3 || c.sp === 'ant') continue;
+      const dx = Math.abs(c.x - x);
+      if (dx > 160 || c.y < y - 40) continue;
+      if (c.mode === 'burrow' || (c.mode !== 'swim' && c.mode !== 'glass' && t.isUnderground(c.x, c.y + 2))) continue;
+      let like = 0;
+      for (const tg of f.tags) like = Math.max(like, c.diet[tg] || 0);
+      if (like < 0.4) continue;
+      // land critters can't get at food in the pond and vice versa
+      const wetC = t.waterAt(c.x, c.y) || c.aquatic;
+      const wetF = t.waterSurfaceAt(c.x) > 0 && t.waterAt(c.x, t.surfaceY(c.x) - 2);
+      if (wetC !== wetF && !c.amphibious) continue;
+      const s = (c.hunger * like) / (1 + dx / 70);
+      if (s > bs) {
+        bs = s;
+        best = c;
+      }
+    }
+    return best;
+  }
+  // Food has landed (or plopped into the pond): hungry critters within
+  // smelling distance notice and come.
+  foodArrived(f) {
+    const t = this.terrain;
+    const wet = t.waterAt(f.x, f.y + 1);
+    const body = wet ? this.waterBody(f.x, f.y + 1) : -1;
+    const near = this.hashC.query(f.x, f.y, 320);
+    for (let i = 0; i < near.length; i++) {
+      const c = near[i];
+      if (c.dead || c.hunger < 0.35 || c.sp === 'ant' || c.stage === 'egg') continue;
+      if (wet ? this.waterBody(c.x, c.y) !== body : t.waterAt(c.x, c.y) || this.regionOf(c.x) !== this.regionOf(f.x)) continue;
+      const d = Math.hypot(c.x - f.x, c.y - f.y);
+      if (d > c.def.sight * (wet ? 2.6 : 1.8)) continue;
+      let like = 0;
+      for (const tg of f.tags) like = Math.max(like, c.diet[tg] || 0);
+      if (like < 0.3) continue;
+      c.memory.tip = { food: f, t: this.time };
+      c.brain.think = Math.min(c.brain.think, 0.1 + d / 400);
+    }
+  }
+  // A critter has started eating: hungry friends of its own kind nearby
+  // see and come to join in.
+  tipOff(c, f) {
+    const near = this.hashC.query(c.x, c.y, 220);
+    for (let i = 0; i < near.length; i++) {
+      const o = near[i];
+      if (o === c || o.dead || o.sp !== c.sp || o.hunger < 0.35 || o.hidden) continue;
+      const b = o.brain.b;
+      if (b && (b.id === 'forage' || b.id === 'rest' || b.id === 'flee')) continue;
+      o.memory.tip = { food: f, t: this.time, by: c };
+      o.brain.think = Math.min(o.brain.think, 0.3 + Math.random() * 0.5);
+    }
+  }
+  // Break off a mouthful for a critter to carry (or take the whole thing,
+  // if it's only a crumb).
+  takePiece(f, c) {
+    if (f.gone || f.amount <= 0.01) return null;
+    const bite = clamp(c.size * 0.012, 0.06, 0.35);
+    let piece = f;
+    if (f.amount - bite > 0.04) {
+      f.amount -= bite;
+      this.nibbled(f, c);
+      piece = this.addFood(f.type, f.x, f.y, { amount: bite, max: f.max, fresh: f.fresh, age: f.age, state: 'held', inWater: f.inWater, vx: 0 });
+    }
+    piece.state = 'held';
+    piece.holder = c;
+    piece.aim = null;
+    piece.owner = 0;
+    piece.giftFor = 0;
+    return piece;
+  }
+  foodById(id) {
+    if (!id) return null;
+    for (const f of this.foods) if (f.id === id) return f;
+    return null;
   }
 
   // The sex a newcomer should be so the tank's grown-ups pair up.
@@ -1122,6 +1347,7 @@ export class World {
     }
     if (n) {
       this.sculpted = true;
+      this.noteChange(x, mode === 'dig' ? y : Math.min(y, t.surfaceY(x)), r, mode === 'dig' ? 'dig' : 'fill');
       // keep decor sitting on the ground
       for (const d of this.decor) if (d.def.place !== 'top') d.y = t.surfaceY(d.x);
       for (const p of this.plants) {
@@ -1288,6 +1514,7 @@ export class World {
       this.regionT = this.time;
       this.computeRegions();
     }
+    if (t.waterVersion !== this.waterMapVer && this.time - this.waterMapT > 1.5) this.buildWaterMap();
 
     // spatial hashes
     this.hashC.clear();
@@ -1385,6 +1612,7 @@ export class World {
     const hour = env.hour;
     if (hour < this.lastHour) {
       this.stats.days++;
+      for (let i = 0; i < 24; i++) this.feedMem.hours[i] *= 0.75;
       this.events.emit('newDay', { day: env.day });
     }
     if (this.lastHour < 8 && hour >= 8) this.runFeeders();
@@ -1500,6 +1728,7 @@ export class World {
       stats: this.stats,
       history: this.history,
       log: this.log.slice(0, 60),
+      feed: { x: Math.round(this.feedMem.x), h: this.feedMem.hours.map((v) => +v.toFixed(2)) },
     };
   }
 
@@ -1513,6 +1742,7 @@ export class World {
     this.history = d.history || [];
     this.log = d.log || [];
     this.lastHour = this.env.hour;
+    if (d.feed && d.feed.h && d.feed.h.length === 24) this.feedMem = { x: d.feed.x, hours: d.feed.h.slice() };
     for (const pd of d.plants || []) {
       const p = Plant.load(pd);
       p.id = pd.id || nextId();

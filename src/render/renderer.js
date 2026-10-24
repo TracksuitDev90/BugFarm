@@ -646,7 +646,8 @@ export class Renderer {
     const s = this.sprites.get('f|' + f.type + '|' + rot + '|' + bites, Math.min(this.bucket, 3), [-10, -12, 10, 3], (gg) => drawFood(gg, f.def, rot, 0.7, bites));
     const x = f.px + (f.x - f.px) * alpha;
     const y = f.py + (f.y - f.py) * alpha;
-    const sc = f.scale;
+    // (a bit being carried is sized to the critter carrying it)
+    const sc = f.state === 'held' && f.holder ? f.scale * clamp(f.holder.size / 30, 0.35, 0.9) : f.scale;
     // a little squash-and-wobble on every chomp
     const chomp = f.biteT > 0 ? Math.sin(f.biteT * 40) * f.biteT * 0.3 : 0;
     this.put(g, x, y + 0.5, f.state === 'fall' ? f.angle : chomp * 0.6, sc * (f.biteSide < 0 ? -1 : 1) * (1 + chomp), sc * (1 - chomp));

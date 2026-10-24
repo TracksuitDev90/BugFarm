@@ -9,10 +9,12 @@ export class SpatialHash {
     this.rows = Math.ceil((H + 200) / cell);
     this.buckets = [];
     for (let i = 0; i < this.cols * this.rows; i++) this.buckets.push([]);
+    this.used = []; // buckets with something in (so clearing skips the empty ones)
     this.out = [];
   }
   clear() {
-    for (let i = 0; i < this.buckets.length; i++) this.buckets[i].length = 0;
+    for (let i = 0; i < this.used.length; i++) this.buckets[this.used[i]].length = 0;
+    this.used.length = 0;
   }
   key(x, y) {
     let cx = Math.floor((x + 100) / this.cell);
@@ -24,7 +26,10 @@ export class SpatialHash {
     return cy * this.cols + cx;
   }
   insert(obj) {
-    this.buckets[this.key(obj.x, obj.y)].push(obj);
+    const k = this.key(obj.x, obj.y);
+    const b = this.buckets[k];
+    if (!b.length) this.used.push(k);
+    b.push(obj);
   }
   // Returns objects within radius r (shared array, copy if you keep it).
   query(x, y, r, filter) {

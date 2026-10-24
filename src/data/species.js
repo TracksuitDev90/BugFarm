@@ -277,6 +277,7 @@ export const SPECIES = {
     ],
     speed: { walk: 3.5 },
     canClimb: true,
+    glass: true, // glides about on the tank's glass
     diet: { algae: 1, decay: 0.9, veg: 0.8, flake: 0.5, leaf: 0.5, calcium: 0.7 },
     appetite: 0.08,
     hungerDays: 2.2,
@@ -306,6 +307,7 @@ export const SPECIES = {
     ],
     speed: { walk: 10, swim: 22 },
     canClimb: true,
+    swimHop: true, // swims up in short hops, then settles back down
     diet: { decay: 1, algae: 0.8, flake: 0.85, pellet: 0.85, grain: 0.5, veg: 0.6 },
     appetite: 0.08,
     hungerDays: 2.2,

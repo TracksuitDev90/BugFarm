@@ -34,6 +34,10 @@ export class Colony {
     this.pherT = 0;
     this.pherActive = new Set();
     this.lastQueenSeen = 0;
+    // when an ant last walked through each little patch of ground (so scouts
+    // go where nobody's been lately, or ever: a tunnel the keeper dug, say)
+    this.seen = new Float32Array((GW >> 1) * (GH >> 1)).fill(-1e6);
+    this._guards = 0;
     this.initFronts();
   }
 
@@ -286,6 +290,14 @@ export class Colony {
       }
     }
     this._nurses = 0;
+    // who's on guard at the door
+    this.guardT = (this.guardT || 0) - dt;
+    if (this.guardT <= 0) {
+      this.guardT = 2;
+      let n = 0;
+      for (const c of w.creatures) if (c.colonyId === this.id && c.brain.b && c.brain.b.id === 'antGuard') n++;
+      this._guards = n;
+    }
     // food spots fade
     for (let i = this.foodSpots.length - 1; i >= 0; i--) {
       const s = this.foodSpots[i];
@@ -315,6 +327,53 @@ export class Colony {
         } else this.fronts.push({ cx: this.chamber.cx, cy: this.chamber.cy - 3, ang: -Math.PI / 2, turn: 0, kind: 'exit', len: 0, fail: 0 });
       }
     }
+  }
+
+  // An ant went past here.
+  visit(cx, cy, time) {
+    this.seen[(cy >> 1) * (GW >> 1) + (cx >> 1)] = time;
+  }
+  lastVisit(cx, cy) {
+    return this.seen[(cy >> 1) * (GW >> 1) + (cx >> 1)];
+  }
+
+  // Somewhere new underground the ants can reach (a hollow the keeper dug,
+  // say) that's roomy enough: the colony moves in and makes it a room.
+  adoptRoom(w, cx, cy) {
+    const t = w.terrain;
+    if (cy <= t.groundTop[clamp(cx, 0, GW - 1)] + 3) return null;
+    // find the floor under here
+    let fy = cy;
+    while (fy < GH - 2 && !t.solid(cx, fy + 1)) fy++;
+    if (!t.walkable(cx, fy)) return null;
+    // how high the ceiling is, and how wide it is just above the floor (a
+    // dug hollow is usually round, so its very bottom is narrow)
+    let h = 0;
+    while (h < 8 && !t.solid(cx, fy - h - 1) && !t.isWater(cx, fy - h - 1)) h++;
+    let a = cx;
+    let b = cx;
+    for (let r = 0; r <= Math.min(3, h); r++) {
+      const y = fy - r;
+      let ra = cx;
+      let rb = cx;
+      while (ra > 1 && !t.solid(ra - 1, y) && cx - ra < 14) ra--;
+      while (rb < GW - 2 && !t.solid(rb + 1, y) && rb - cx < 14) rb++;
+      if (rb - ra > b - a) {
+        a = ra;
+        b = rb;
+      }
+    }
+    const rx = Math.floor((b - a) / 2);
+    if (rx < 2 || h < 3) return null;
+    const mx = Math.round((a + b) / 2);
+    for (const ch of this.chambers) if (Math.abs(ch.cx - mx) < ch.rx + rx && Math.abs(ch.cy + ch.ry - 1 - fy) < 4) return null;
+    const ry = Math.min(4, h);
+    const room = { cx: mx, cy: fy - ry + 1, rx, ry };
+    this.chambers.push(room);
+    if (this.chambers.length > 12) this.chambers.splice(1, 1); // (the first room is the oldest, and stays)
+    w.events.emit('antAdopt', { colony: this, room });
+    w.addLog('The ants explored the hollow you dug and made it into a new room for the nest.', 'crown');
+    return room;
   }
 
   serialize() {
@@ -512,7 +571,7 @@ def('antForage', {
     if (d.phase === 'out') {
       if (c.arrived || !antMoving(c, w)) {
         // look around for food
-        const f = w.hashF.nearest(c.x, c.y, 80, (o) => !o.gone && o.state !== 'fall' && !o.inWater && o.amount > 0.001 && o.tags.some((tg) => (c.def.diet[tg] || 0) > 0.3) && w.regionOf(o.x) === w.regionOf(c.x));
+        const f = w.hashF.nearest(c.x, c.y, 80, (o) => !o.gone && o.loose && !o.inWater && o.amount > 0.001 && o.tags.some((tg) => (c.def.diet[tg] || 0) > 0.3) && w.regionOf(o.x) === w.regionOf(c.x));
         if (f) {
           d.food = f;
           d.phase = 'toFood';
@@ -1033,4 +1092,215 @@ def('antLost', {
   thought: () => 'Where is my colony? I feel a bit lost...',
 });
 
-SPECIES_BEHAVIORS.ant = ['antDeliver', 'antForage', 'antDig', 'antNurse', 'antRest', 'antEat', 'antFlee', 'antLost', 'antQueen'];
+// ------------------------------------------------------------------ scouting
+// Scouts keep the colony's map of its world up to date: they patrol the
+// tunnels and the ground round the nest, go first to wherever nobody has
+// been for longest, and rush to anything new (a hole the keeper dug, a hill
+// of fresh sand, water where there wasn't any). A hollow underground that's
+// big enough becomes a new room.
+function scoutGoal(c, w, col) {
+  const t = w.terrain;
+  // something new nearby beats everything
+  for (const n of w.novelty) {
+    if (n.kind === 'thing' || w.time - n.t > n.life || (n.antSeen || 0) > 3) continue;
+    if (Math.abs(n.x - col.entrance.cx * CELL) > 420) continue;
+    // (the biggest stroke of a dig is where the hollow is)
+    const st = nearestWalkable(t, Math.floor((n.bx || n.x) / CELL), Math.floor((n.by || n.y) / CELL), 6);
+    if (st) return { cx: st[0], cy: st[1], n };
+  }
+  // otherwise, the corner of the nest (or of the ground round it) visited
+  // least lately (only down in the cool, when the sand up top is baking)
+  let best = null;
+  let bt = Infinity;
+  const ex = col.entrance.cx;
+  const baking = surfaceHot(c, w) > 34;
+  for (let i = 0; i < 14; i++) {
+    let cx;
+    let cy;
+    if ((baking || chance(0.65)) && col.chambers.length) {
+      const ch = rpick(col.chambers);
+      cx = ch.cx + rint(-24, 24);
+      cy = ch.cy + rint(-12, 16);
+    } else {
+      cx = clamp(ex + rint(-70, 70), 2, GW - 3);
+      cy = t.top[cx] - 1;
+    }
+    const st = nearestWalkable(t, clamp(cx, 2, GW - 3), clamp(cy, 2, GH - 3), 3);
+    if (!st) continue;
+    const seen = col.lastVisit(st[0], st[1]);
+    if (seen < bt) {
+      bt = seen;
+      best = { cx: st[0], cy: st[1], n: null };
+    }
+  }
+  return best && w.time - bt > 40 ? best : null;
+}
+def('antExplore', {
+  hold: 0.5,
+  score(c, w) {
+    if (c.stage !== 'worker') return 0;
+    const col = colonyOf(c, w);
+    if (!col) return 0;
+    const m = c.memory;
+    if (!m.exT || w.time - m.exT > 6) {
+      m.exT = w.time;
+      m.ex = scoutGoal(c, w, col);
+    }
+    if (!m.ex) return 0;
+    const news = m.ex.n ? 2 : 1;
+    return (0.32 + c.traits.curious * 0.5) * news * (0.5 + 0.5 * w.env.sun) * (1 - c.traits.lazy * 0.3);
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.g = c.memory.ex;
+    c.memory.ex = null;
+    c.memory.exT = w.time;
+    if (!d.g || !antTo(c, w, d.g.cx, d.g.cy)) {
+      if (d.g && d.g.n) d.g.n.antSeen = (d.g.n.antSeen || 0) + 2; // can't get there from here
+      d.fail = true;
+    }
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (d.fail) return false;
+    if (c.arrived || !antMoving(c, w)) {
+      if (!d.look) {
+        d.look = true;
+        d.t = 0;
+        if (d.g.n) {
+          d.g.n.antSeen = (d.g.n.antSeen || 0) + 1;
+          c.emote('?', 1.2);
+          w.events.emit('antScout', { c, kind: d.g.n.kind });
+          // a roomy hollow underground: the colony takes it over
+          const col = colonyOf(c, w);
+          if (col && d.g.n.kind === 'dig') col.adoptRoom(w, Math.floor((d.g.n.bx || c.x) / CELL), Math.floor((d.g.n.by || c.y) / CELL));
+        }
+      }
+      // antennae up, having a good feel about
+      c.pose = 'idle';
+      d.t += dt;
+      if (chance(dt * 1.5)) c.facing = -c.facing;
+      return d.t < 2.2;
+    }
+    return c.brain.t < 45;
+  },
+  thought: (c) => {
+    const g = c.brain.data.g;
+    if (g && g.n) return g.n.kind === 'dig' ? 'Somebody dug a new hole! Scouting it out for the colony.' : g.n.kind === 'water' ? 'Water where there was none! I must tell the others.' : 'The ground has changed round here. Checking it out.';
+    return rpick(['On patrol. Checking every tunnel.', 'Scouting. Nobody has been down here for ages.', 'Keeping our map of the nest up to date.']);
+  },
+});
+
+// ------------------------------------------------------------------ guarding the door
+// A couple of older ants stand guard just inside the entrance and see off
+// any big visitor who wanders too close.
+def('antGuard', {
+  hold: 0.5,
+  score(c, w) {
+    if (c.stage !== 'worker') return 0;
+    const col = colonyOf(c, w);
+    if (!col || col._guards >= 2 || col.workers(w) < 5) return 0;
+    const older = clamp01(c.age / DAY_LEN);
+    // (nobody stands about at the door when the sand is baking)
+    if (surfaceHot(c, w) > 35) return 0;
+    // there's nearly always somebody on the door by day
+    return (col._guards ? 0.3 : 0.8) * (0.6 + c.traits.bold * 0.8) * (0.2 + 0.8 * w.env.sun) * (0.5 + older * 0.5);
+  },
+  start(c, w) {
+    const col = colonyOf(c, w);
+    const d = c.brain.data;
+    d.dur = rrange(25, 55);
+    col._guards++;
+    // (a guard waits just inside the door, a little further down if it's hot)
+    const st = nearestWalkable(w.terrain, col.entrance.cx + rint(-1, 1), col.entrance.cy + (surfaceHot(c, w) > 32 ? 4 : 1), 3);
+    if (!st || !antTo(c, w, st[0], st[1])) d.fail = true;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const col = colonyOf(c, w);
+    if (d.fail || !col) return false;
+    if (surfaceHot(c, w) > 36) return false; // too hot up there: back down
+    if (c.arrived || !antMoving(c, w)) {
+      c.pose = 'idle';
+      if (chance(dt * 0.5)) c.facing = -c.facing;
+      d.look = (d.look || 0) - dt;
+      if (d.look <= 0) {
+        d.look = 0.8;
+        const ex = col.entrance.cx * CELL;
+        const ey = col.entrance.cy * CELL;
+        const o = w.hashC.nearest(ex, ey, 46, (q) => q.sp !== 'ant' && !q.dead && !q.hidden && (q.mode === 'walk' || q.mode === 'crawl') && q.size >= 12);
+        if (o) {
+          // shoo!
+          c.facing = o.x >= c.x ? 1 : -1;
+          c.emote('!', 1);
+          o.fear = Math.min(1, o.fear + 0.55);
+          o.memory.scare = { x: c.x, y: c.y, t: w.time };
+          o.brain.think = 0;
+          d.shoo = (d.shoo || 0) + 1;
+          w.events.emit('antShoo', { c, o });
+        }
+      }
+    }
+    return c.brain.t < d.dur;
+  },
+  thought: (c) => (c.brain.data.shoo ? 'Shoo! This is our nest, thank you very much.' : 'On guard at the front door.'),
+});
+
+// ------------------------------------------------------------------ sharing food
+// An ant with a full tummy shares it mouth to mouth with a hungry sister
+// (or the queen): ants really do keep each other fed this way.
+def('antShare', {
+  hold: 0.6,
+  score(c, w) {
+    if (c.stage !== 'worker' || c.hunger > 0.3) return 0;
+    const col = colonyOf(c, w);
+    if (!col) return 0;
+    const m = c.memory;
+    if (!m.shQ || w.time - m.shQ > 3) {
+      m.shQ = w.time;
+      const q = col.queen(w);
+      m.sh = q && !q.dead && q.hunger > 0.35 && Math.hypot(q.x - c.x, q.y - c.y) < 200 ? q : w.hashC.nearest(c.x, c.y, 170, (o) => o !== c && o.sp === 'ant' && o.colonyId === c.colonyId && !o.dead && o.hunger > 0.45 && o.mode === 'crawl');
+    }
+    return m.sh ? (0.45 + c.traits.social * 0.6) * m.sh.hunger : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.o = c.memory.sh;
+    c.memory.sh = null;
+    d.re = 0;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const o = d.o;
+    if (!o || o.dead || o.removed) return false;
+    const dist = Math.hypot(o.x - c.x, o.y - c.y);
+    if (dist < 8) {
+      if (!d.t) {
+        d.t = 0.001;
+        c.pauseT = o.pauseT = 2.2;
+        c.facing = o.x >= c.x ? 1 : -1;
+        o.facing = -c.facing;
+      }
+      d.t += dt;
+      if (d.t > 2) {
+        const amt = Math.min(0.35, o.hunger);
+        o.hunger -= amt;
+        c.hunger = Math.min(1, c.hunger + amt * 0.4);
+        c.emote('heart', 1.2);
+        o.emote('heart', 1.2);
+        w.events.emit('antShare', { c, o });
+        return false;
+      }
+      return true;
+    }
+    d.re -= dt;
+    if (d.re <= 0) {
+      d.re = 1.5;
+      if (!antTo(c, w, Math.floor(o.x / CELL), Math.floor(o.y / CELL))) return false;
+    }
+    return c.brain.t < 30;
+  },
+  thought: (c) => (c.brain.data.o && c.brain.data.o.stage === 'queen' ? 'Bringing Her Majesty a tummyful of food.' : 'Sharing a tummyful of food with a hungry sister.'),
+});
+
+SPECIES_BEHAVIORS.ant = ['antDeliver', 'antForage', 'antDig', 'antNurse', 'antRest', 'antEat', 'antFlee', 'antLost', 'antQueen', 'antExplore', 'antGuard', 'antShare'];

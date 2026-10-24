@@ -186,3 +186,72 @@ export function smoothPath(terrain, path, CELL) {
   }
   return out;
 }
+
+// ------------------------------------------------------------------ swimming
+// Is there open water all the way along this line? (Swimmers head straight
+// for anywhere they can see; only round a corner do they need a route.)
+export function lineOfWater(terrain, x0, y0, x1, y1, CELL) {
+  const d = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.ceil(d / (CELL * 0.75));
+  for (let i = 1; i < n; i++) {
+    const u = i / n;
+    if (!terrain.isWater(Math.floor((x0 + (x1 - x0) * u) / CELL), Math.floor((y0 + (y1 - y0) * u) / CELL))) return false;
+  }
+  return true;
+}
+
+// A* through water cells, for a fish finding its way along a channel or
+// into a flooded tunnel. Returns cell indices, start to goal, or null.
+export function findWaterPath(terrain, sx, sy, tx, ty, maxExpand = 6000) {
+  if (!terrain.isWater(sx, sy) || !terrain.isWater(tx, ty)) return null;
+  gen++;
+  if (gen > 4e9) {
+    gen = 1;
+    stamp.fill(0);
+    closed.fill(0);
+  }
+  hn = 0;
+  const s = sy * GW + sx;
+  const t = ty * GW + tx;
+  g[s] = 0;
+  stamp[s] = gen;
+  came[s] = -1;
+  push(heur(sx, sy, tx, ty), s);
+  let expanded = 0;
+  while (hn > 0) {
+    const cur = pop();
+    if (cur === t) {
+      const path = [];
+      let k = cur;
+      while (k !== -1) {
+        path.push(k);
+        k = came[k];
+      }
+      path.reverse();
+      return path;
+    }
+    if (closed[cur] === gen) continue;
+    closed[cur] = gen;
+    if (++expanded > maxExpand) break;
+    const cx = cur % GW;
+    const cy = (cur / GW) | 0;
+    const gc = g[cur];
+    for (let d = 0; d < 8; d++) {
+      const nx = cx + DX[d];
+      const ny = cy + DY[d];
+      if (!terrain.isWater(nx, ny)) continue;
+      if (d >= 4 && !(terrain.isWater(cx + DX[d], cy) && terrain.isWater(cx, cy + DY[d]))) continue;
+      const ni = ny * GW + nx;
+      if (closed[ni] === gen) continue;
+      // keep off the walls where there's room
+      const ng = gc + COST[d] * (terrain.isWater(nx, ny + 1) && terrain.isWater(nx, ny - 1) ? 1 : 1.3);
+      if (stamp[ni] !== gen || ng < g[ni]) {
+        stamp[ni] = gen;
+        g[ni] = ng;
+        came[ni] = cur;
+        push(ng + heur(nx, ny, tx, ty), ni);
+      }
+    }
+  }
+  return null;
+}

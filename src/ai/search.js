@@ -20,8 +20,9 @@ export function reachable(c, w, x, y) {
     case 'fly':
       return !wet || c.sp === 'goldfish';
     case 'swim':
+    case 'glass':
       if (wet) return true;
-      return c.amphibious && y < t.waterLevel + 20;
+      return c.mode === 'swim' && c.amphibious && y < t.waterLevel + 20;
     case 'burrow':
       return x > 1040 && !wet;
     case 'climb':
@@ -48,9 +49,18 @@ function likeOf(c, tags) {
   return best;
 }
 
+// Where to check a critter could get to a bit of food: just above it on
+// land, just under it in the water (a flake floats at the very top).
+export function foodReach(c, w, f) {
+  return reachable(c, w, f.x, f.inWater ? f.y + 2 : f.y - 2);
+}
+
 // Best food the critter knows about: food items, plant parts or algae.
 export function findFood(c, w) {
-  const sight = c.def.sight * (c.hunger > 0.6 ? 1.6 : 1);
+  // swimmers smell food right across the water, and see flakes floating at
+  // the top against the light
+  const wet = c.mode === 'swim' || c.mode === 'glass' || c.inWater;
+  const sight = c.def.sight * (c.hunger > 0.6 ? 1.6 : 1) * (wet ? 1.8 : 1);
   let best = null;
   let bestS = 0;
   const diet = c.diet;
@@ -58,18 +68,35 @@ export function findFood(c, w) {
   const foods = w.hashF.query(c.x, c.y, sight);
   for (let i = 0; i < foods.length; i++) {
     const f = foods[i];
-    if (f.gone || f.amount <= 0.001) continue;
-    if (f.state === 'fall') continue;
+    if (f.gone || f.amount <= 0.001 || !f.loose) continue;
     const like = likeOf(c, f.tags);
     if (like <= 0.05) continue;
-    if (!reachable(c, w, f.x, f.y - 2)) continue;
+    if (!foodReach(c, w, f)) continue;
     // fresh food is nicer, except for tidy-uppers who love it squishy
     const fresh = f.rot === 2 ? 1 : f.rot === 1 ? 0.85 : 1;
+    // another critter's stash is mostly left be (unless it's starving); its
+    // own is a treat
+    const own = f.owner ? (f.owner === c.id ? 1.6 : c.hunger > 0.8 ? 0.8 : 0.3) : 1;
     const d = Math.hypot(f.x - c.x, f.y - c.y);
-    const s = (like * fresh) / (1 + d / 90);
+    const s = (like * fresh * own) / (1 + d / 90);
     if (s > bestS) {
       bestS = s;
       best = { kind: 'food', food: f, value: like, name: f.def.name };
+    }
+  }
+  // a tip-off: food it heard land nearby, or saw a friend tucking into
+  const tip = c.memory.tip;
+  if (tip) {
+    const f = tip.food;
+    if (w.time - tip.t > 25 || f.gone || f.amount <= 0.001) c.memory.tip = null;
+    else if (f.loose && foodReach(c, w, f)) {
+      const like = likeOf(c, f.tags);
+      const d = Math.hypot(f.x - c.x, f.y - c.y);
+      const s = (like * 1.1) / (1 + d / 160);
+      if (like > 0.05 && s > bestS) {
+        bestS = s;
+        best = { kind: 'food', food: f, value: like, name: f.def.name, tip: tip.by || null };
+      }
     }
   }
   // plant parts
@@ -431,16 +458,58 @@ export function swimSpot(c, w, range) {
     const x = clamp(c.x + rrange(-range, range) * 0.6, 520, 1100);
     if (t.waterAt(x, t.waterLevel + 5)) return { kind: 'point', x, y: t.waterLevel + rrange(4, 9) };
   }
-  // mostly short trips, sometimes a long cruise right across the pond
-  const reach = chance(0.22) ? range * rrange(1.6, 3) : range * rrange(0.3, 1);
-  const dep = favDepth(c);
-  for (let i = 0; i < 10; i++) {
-    const x = clamp(c.x + rrange(-reach, reach), 520, 1100);
-    const p = waterAtDepth(w, x, dep + gauss() * 0.3);
-    if (p) return { kind: 'point', x: p[0], y: p[1] };
+  // new water (a channel the keeper dug, a tunnel that flooded, a pond that
+  // grew) is the most interesting place there is
+  const body = w.waterBody(c.x, c.y);
+  if (body >= 0 && chance(0.25 + c.traits.curious * 0.5)) {
+    const n = w.noveltyNear(c, ['water', 'dig']);
+    if (n && w.waterBody(n.x, n.y) === body) {
+      n.seen++;
+      return { kind: 'point', x: n.x, y: n.y, explore: true };
+    }
   }
+  // mostly short trips, sometimes a long cruise right across the water;
+  // picked from wherever there really is water, whatever shape it's in
+  const reach = chance(0.22) ? range * rrange(1.6, 3) : range * rrange(0.3, 1);
+  const pt = waterSpot(c, w, body, favDepth(c) + gauss() * 0.3, reach);
+  if (pt) return { kind: 'point', x: pt[0], y: pt[1] };
   const p = w.randomWaterPoint(c.x, range, false);
   return p ? { kind: 'point', x: p[0], y: p[1] } : null;
+}
+
+// A spot in this body of water at about this depth (0 top .. 1 bottom),
+// preferably within reach of here.
+export function waterSpot(c, w, body, depth, reach) {
+  const m = w.waterMap;
+  if (!m || body < 0 || !m.spots[body] || !m.spots[body].length) return null;
+  const list = m.spots[body];
+  let best = -1;
+  let bs = -1e9;
+  for (let i = 0; i < 12; i++) {
+    const k = list[(Math.random() * list.length) | 0];
+    const x = (k % GW) * CELL + CELL / 2;
+    const s = -Math.abs(m.dep[k] - depth) * 2.5 - Math.max(0, Math.abs(x - c.x) - reach) / 60 + Math.random() * 0.4;
+    if (s > bs) {
+      bs = s;
+      best = k;
+    }
+  }
+  if (best < 0) return null;
+  const x = (best % GW) * CELL + CELL / 2;
+  let y = ((best / GW) | 0) * CELL + CELL / 2;
+  // (not hard down against the floor)
+  if (m.dep[best] > 0.9 && w.terrain.waterAt(x, y - 6)) y -= 6;
+  return [x, y];
+}
+
+// Where a pond snail glides to on the glass: up under the water's skin,
+// anywhere in the open water, or back down to the floor.
+export function glassSpot(c, w) {
+  const body = w.waterBody(c.x, c.y - 2);
+  const r = Math.random();
+  const depth = r < 0.35 ? rrange(0, 0.08) : r < 0.75 ? rrange(0.15, 0.85) : 1;
+  const pt = waterSpot(c, w, body, depth, 150);
+  return pt ? { kind: 'point', x: pt[0], y: pt[1] } : null;
 }
 
 // A quiet place for a swimmer to hover and doze: in among the weeds, or out
@@ -454,11 +523,12 @@ export function restSpot(c, w) {
       const x = p.x + rrange(-14, 14);
       const fy = t.surfaceY(x);
       const top = p.def.place === 'surface' ? t.waterLevel + 10 : Math.max(t.waterLevel + 8, p.y - p.def.h * p.growth * 0.85);
-      const y = clamp(rrange(top, fy - 20), t.waterLevel + 8, fy - 18);
+      // (up among the leaves, not down at the roots)
+      const y = clamp(rrange(top, top + (fy - top) * 0.6), t.waterLevel + 8, fy - 24);
       if (t.waterAt(x, y)) return { kind: 'point', x, y };
     }
   }
-  const dep = night ? rrange(0.45, 0.85) : clamp(favDepth(c) + gauss() * 0.2, 0.1, 0.8);
+  const dep = night ? rrange(0.25, 0.62) : clamp(favDepth(c) + gauss() * 0.2, 0.1, 0.75);
   for (let i = 0; i < 8; i++) {
     const x = clamp(c.x + rrange(-150, 150), 520, 1100);
     const p = waterAtDepth(w, x, dep);

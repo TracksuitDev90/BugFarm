@@ -6,7 +6,7 @@ import { clamp, clamp01, smoothstep } from '../util/math.js';
 import { rrange, rint, chance, rpick } from '../util/rng.js';
 import {
   cachedFood, validFood, findPrey, findMate, wanderTarget, nearestPlantSlot, comfortSpot, lampSpot,
-  pickFlower, reachable, preyValue, homeKind, findHome, snugSpot, shelterNear, swimSpot, restSpot,
+  pickFlower, reachable, preyValue, homeKind, findHome, snugSpot, shelterNear, swimSpot, restSpot, foodReach, glassSpot, waterSpot,
 } from './search.js';
 
 function hungerScore(c) {
@@ -163,6 +163,20 @@ def('idle', {
 // sets off on a proper expedition.
 function roam(c, w) {
   const far = chance(0.18) ? rrange(1.6, 2.6) : rrange(0.4, 1.1);
+  // pond snails glide off up the glass more often than not
+  if (c.def.glass && (c.mode === 'glass' || chance(0.6))) {
+    const g = glassSpot(c, w);
+    if (g) return g;
+  }
+  // shrimp swim up in a hop now and then, to a weed or across the pond
+  if (c.def.swimHop && c.mode === 'walk' && chance(0.4)) {
+    const g = swimSpot(c, w, 130);
+    if (g) {
+      c.mode = 'swim';
+      c.vy = -28;
+      return g;
+    }
+  }
   if (c.mode === 'swim') return swimSpot(c, w, (c.sp === 'turtle' ? 200 : 150) * (0.7 + c.traits.curious * 0.6));
   const range = c.mode === 'fly' ? 220 : (60 + c.traits.curious * 140) * far;
   return wanderTarget(c, w, range);
@@ -270,8 +284,17 @@ def('forage', {
         d.phase = 'eat';
         d.t = 0;
         if (c.mode !== 'climb') c.halt();
-        if (d.tgt.kind === 'food') c.facing = d.tgt.food.x >= c.x ? 1 : -1;
-      } else if ((c.blocked && c.mode !== 'swim' && c.mode !== 'fly') || c.brain.t > 30) return false;
+        if (d.tgt.kind === 'food') {
+          const f = d.tgt.food;
+          c.facing = f.x >= c.x ? 1 : -1;
+          // tucking in where friends can see: they come and join in
+          if (c.def.schools || c.traits.social > 0.45) w.tipOff(c, f);
+          if (f.giftFor === c.id) {
+            c.emote('heart', 1.4);
+            w.events.emit('thanks', { c, food: f });
+          }
+        }
+      } else if ((c.blocked && c.mode !== 'swim' && c.mode !== 'fly' && c.mode !== 'glass') || c.brain.t > 30) return false;
       return true;
     }
     c.pose = 'eat';
@@ -302,6 +325,10 @@ def('forage', {
   thought(c) {
     const d = c.brain.data;
     const n = d.tgt ? d.tgt.name : 'food';
+    const f = d.tgt && d.tgt.food;
+    if (f && f.giftFor === c.id) return d.phase === 'eat' ? `${f.giftBy} brought me some ${n.toLowerCase()}. Thank you!` : `Ooh, ${f.giftBy} has brought me something!`;
+    if (f && f.owner === c.id) return d.phase === 'eat' ? 'Munching the snack I put by for later.' : 'Time for the snack I saved!';
+    if (d.phase !== 'eat' && d.tgt && d.tgt.tip) return `${d.tgt.tip.name} has found food! Wait for me!`;
     if (d.phase === 'eat') return rpick(['Nom nom nom...', `Mmm, ${n.toLowerCase()}!`, 'Delicious!', 'Munch munch.']);
     return c.hunger > 0.7 ? `So hungry! Heading for the ${n.toLowerCase()}.` : `Ooh, I spy some ${n.toLowerCase()}.`;
   },
@@ -311,8 +338,8 @@ def('forage', {
 def('snack', {
   score(c, w) {
     if (c.hunger > 0.2 || c.hunger < 0.01 || c.mode === 'burrow') return 0;
-    const f = w.hashF.nearest(c.x, c.y, 70, (o) => !o.gone && o.state !== 'fall' && o.rot === 0 && o.tags.some((t) => (c.diet[t] || 0) >= 0.8));
-    if (!f || !reachable(c, w, f.x, f.y - 2)) return 0;
+    const f = w.hashF.nearest(c.x, c.y, 70, (o) => !o.gone && o.loose && !(o.owner && o.owner !== c.id) && o.rot === 0 && o.tags.some((t) => (c.diet[t] || 0) >= 0.8));
+    if (!f || !foodReach(c, w, f)) return 0;
     c.memory.snack = f;
     const p = c.plump > 1.4 ? 0.2 : 1;
     return (0.12 + c.traits.greedy * 0.35) * p * (0.5 + 0.5 * c.act);
@@ -451,6 +478,19 @@ def('flee', {
         d.dur = rrange(6, 12);
         headInside(c, sh, 1.5);
         if (chance(0.7)) c.emote('!', 1.2);
+        return;
+      }
+    }
+    if (c.def.swimHop && c.mode === 'walk') {
+      // a shrimp flicks its tail and shoots off backwards
+      const sx = src ? src.x : c.x - c.facing;
+      const dir = c.x >= sx ? 1 : -1;
+      const p = w.randomWaterPoint(c.x + dir * 70, 30, false);
+      if (p) {
+        c.mode = 'swim';
+        c.vx = dir * 90;
+        c.vy = -50;
+        c.seekPoint(p[0], Math.min(p[1], c.y - 20), { speedMul: 1.6 });
         return;
       }
     }
@@ -671,7 +711,12 @@ def('rest', {
       } else if (r === 'go') return true;
     }
     if (c.inside || c.arrived || d.here || (c.blocked && c.mode !== 'fly')) {
-      if (c.mode !== 'climb' && c.mode !== 'swim') c.halt();
+      if (c.mode !== 'climb' && c.mode !== 'swim' && c.mode !== 'glass') c.halt();
+      if (!d.den) {
+        // where it beds down is where it'll keep its snacks
+        d.den = true;
+        c.memory.den = { x: c.x, y: c.y };
+      }
       c.pose = 'sleep';
       d.zz = (d.zz || 0) - dt;
       if (d.zz <= 0) {
@@ -1190,6 +1235,12 @@ def('graze', {
     return (0.12 + hungerScore(c) * 0.7) * Math.min(1, a * 4) * (c.def.grazer ? 1.2 : 0.7);
   },
   start(c, w) {
+    // a pond snail scrapes the green off the glass as often as the gravel
+    const g = c.def.glass && chance(0.6) ? glassSpot(c, w) : null;
+    if (g) {
+      c.seek(g);
+      return;
+    }
     const p = w.randomWaterPoint(c.x, 90, c.mode === 'walk');
     if (p) c.seekPoint(p[0], p[1]);
     else c.brain.data.here = true;
@@ -1395,41 +1446,76 @@ def('surface', {
 });
 
 // --------------------------------------------------------------------- investigate (curious critters check out new things)
+// Where a new thing (or a change to the tank) is, for this critter: on the
+// ground above a hole for a walker, in the water for a swimmer.
+function lookSpot(c, w, n) {
+  const t = w.terrain;
+  if (c.mode === 'swim' || c.mode === 'glass') return t.waterAt(n.x, n.y) ? [n.x + rrange(-10, 10), n.y + rrange(-8, 8)] : null;
+  const x = clamp(n.x + rrange(-14, 14), 10, W - 10);
+  return [x, t.surfaceY(x)];
+}
 def('investigate', {
   score(c, w) {
     const n = w.noveltyNear(c);
     if (!n) return 0;
     c.memory.nov = n;
-    return c.traits.curious * 0.55 * n.strength * c.act;
+    // the tank itself changing shape gets everyone's attention, not just
+    // the curious ones
+    const change = n.kind !== 'thing';
+    return (change ? 0.2 + c.traits.curious * 0.6 : c.traits.curious * 0.55) * n.strength * c.act;
   },
   start(c, w) {
+    const d = c.brain.data;
     const n = c.memory.nov;
-    c.brain.data.n = n;
+    d.n = n;
     if (!n) return;
-    if (reachable(c, w, n.x, n.y)) c.seekPoint(n.x + rrange(-14, 14), n.y);
-    else c.brain.data.look = true;
+    const p = lookSpot(c, w, n);
+    if (p && reachable(c, w, p[0], p[1] - (c.mode === 'swim' ? 0 : 3))) c.seekPoint(p[0], p[1]);
+    else d.look = true;
   },
   tick(c, w, dt) {
     const d = c.brain.data;
     if (!d.n) return false;
-    if (c.arrived || d.look || c.blocked) {
+    if (c.arrived || d.look || (c.blocked && c.mode !== 'swim')) {
       d.t = (d.t || 0) + dt;
       if (!d.em) {
         d.em = true;
         c.emote('?', 1.4);
         d.n.seen = (d.n.seen || 0) + 1;
+        if (d.n.kind !== 'thing') w.events.emit('explore', { c, kind: d.n.kind });
       }
+      // a new hill, a hole or new water is worth poking about in properly
+      if (d.n.kind !== 'thing' && !d.look && d.t > 1.6 && !d.more) {
+        d.more = true;
+        d.t = 0;
+        const p = lookSpot(c, w, { x: d.n.x + rrange(-50, 50), y: d.n.y + rrange(-20, 20) });
+        if (p && reachable(c, w, p[0], p[1] - (c.mode === 'swim' ? 0 : 3))) {
+          c.seekPoint(p[0], p[1]);
+          return true;
+        }
+      }
+      if (c.mode === 'walk' && chance(dt * 0.8)) c.pose = c.pose === 'eat' ? 'idle' : 'eat'; // a good sniff
       c.facing = d.n.x >= c.x ? 1 : -1;
-      return d.t < 2;
+      return d.t < (d.n.kind === 'thing' ? 2 : 3);
     }
-    return c.brain.t < 12;
+    return c.brain.t < 14;
   },
-  thought: () => rpick(['Ooh! What is that?', 'Something new! Let me look.', 'Curiouser and curiouser...']),
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
+  },
+  thought: (c) => {
+    const k = c.brain.data.n ? c.brain.data.n.kind : 'thing';
+    if (k === 'dig') return rpick(['Somebody has been digging here!', 'A brand-new hole! What is down there?', 'The ground has changed. Let me have a look.']);
+    if (k === 'fill') return rpick(['Ooh, a new hill!', 'This bit of ground was not here before.', 'Fresh sand! Let me have a sniff.']);
+    if (k === 'water') return rpick(['New water! Where does it go?', 'Exploring the new bit of the pond.', 'Ooh, somewhere new to swim!']);
+    return rpick(['Ooh! What is that?', 'Something new! Let me look.', 'Curiouser and curiouser...']);
+  },
 });
 
 // --------------------------------------------------------------------- home (pop home for a bit, or go house-hunting)
 def('home', {
   can: (c) => !!homeKind(c) && c.mode !== 'climb' && c.mode !== 'burrow',
+  hold: 0.42,
   score(c, w) {
     if (c.hunger > 0.55 || c.fear > 0.3 || c.discomfort > 0.3) return 0;
     const m = c.memory;
@@ -1480,6 +1566,7 @@ def('home', {
 // --------------------------------------------------------------------- socialize (say hello to a friend, or swim along together)
 def('socialize', {
   can: (c) => (c.mode === 'walk' || c.mode === 'swim') && !c.def.colony,
+  hold: 0.42,
   score(c, w) {
     if (c.hunger > 0.5 || c.fear > 0.3 || c.act < 0.4) return 0;
     const m = c.memory;
@@ -1550,6 +1637,7 @@ def('socialize', {
 
 def('greeted', {
   score: () => 0,
+  hold: 0.45,
   start(c) {
     if (c.mode === 'walk') c.halt();
   },
@@ -1564,6 +1652,308 @@ def('greeted', {
     if (c.pose === 'eat') c.pose = 'idle';
   },
   thought: (c) => `Oh hello, ${c.brain.data.pal ? c.brain.data.pal.name : 'you'}!`,
+});
+
+// --------------------------------------------------------------------- gather (spare food: keep it, give it, or leave it)
+// A critter that isn't hungry right now may pick up a bit of spare food and
+// take it home to keep for later, carry it over to someone who's hungry, or
+// just leave it where it is. Which it does comes down to character:
+// sociable ones share, greedy ones squirrel it away, lazy ones leave it.
+const NO_CARRY = { ant: 1, bee: 1, butterfly: 1, aphid: 1, worm: 1, fruitfly: 1, firefly: 1, frog: 1 };
+function canCarry(c) {
+  return !NO_CARRY[c.sp] && c.stage !== 'egg' && c.stage !== 'chrysalis' && c.stage !== 'caterpillar' && (c.mode === 'walk' || c.mode === 'swim' || c.mode === 'glass');
+}
+function likes(c, f) {
+  let like = 0;
+  for (const tg of f.tags) like = Math.max(like, c.diet[tg] || 0);
+  return like;
+}
+// The hungry critter (not necessarily its own kind) who'd most welcome
+// this food, and that this one can carry it to.
+function hungryFriend(c, w, f, range) {
+  let best = null;
+  let bs = 0;
+  const near = w.hashC.query(c.x, c.y, range);
+  for (let i = 0; i < near.length; i++) {
+    const o = near[i];
+    if (o === c || o.dead || o.hidden || o.hunger < 0.5 || o.stage === 'egg' || o.stage === 'chrysalis' || o.sp === 'ant') continue;
+    const like = likes(o, f);
+    if (like < 0.4 || !reachable(c, w, o.x, o.y - 2) || !reachable(o, w, o.x, o.y - 2)) continue;
+    const kin = o.sp === c.sp ? 1.3 : 1;
+    const young = o.isAdult ? 1 : 1.3;
+    const s = (o.hunger * like * kin * young) / (1 + Math.hypot(o.x - c.x, o.y - c.y) / 150);
+    if (s > bs) {
+      bs = s;
+      best = o;
+    }
+  }
+  return best;
+}
+// Where it keeps its snacks: by its front door, or wherever it beds down.
+function larderSpot(c, w) {
+  const h = w.homeOf(c);
+  if (h && reachable(c, w, h.doorX, h.doorY - 3)) return { x: h.doorX + (h.doorX >= h.x ? 6 : -6), y: h.doorY, home: h };
+  const den = c.memory.den;
+  if (den && reachable(c, w, den.x, den.y - 3) && Math.abs(den.x - c.x) < 400) return { x: den.x, y: den.y };
+  return null;
+}
+def('gather', {
+  can: canCarry,
+  hold: 0.5,
+  score(c, w) {
+    if (c.hunger > 0.45 || c.fear > 0.3 || c.act < 0.35) return 0;
+    const m = c.memory;
+    if (m.gT && w.time - m.gT < 4) return m.gPlan && !m.gPlan.f.gone && m.gPlan.f.loose ? m.gPlan.s : 0;
+    m.gT = w.time;
+    m.gPlan = null;
+    if (m.gCD && w.time < m.gCD) return 0;
+    const f = w.hashF.nearest(c.x, c.y, c.def.sight, (o) => !o.gone && o.loose && o.amount > 0.04 && o.fresh > 0 && !(o.owner && o.owner !== c.id) && likes(c, o) >= 0.4 && foodReach(c, w, o));
+    if (!f) return 0;
+    const friend = hungryFriend(c, w, f, 260);
+    const give = friend ? (0.3 + c.traits.social * 0.8) * friend.hunger * (1.1 - c.hunger) : 0;
+    // (fish don't hoard: food left lying in the pond would only go off)
+    const spot = f.owner === c.id || c.mode === 'swim' ? null : larderSpot(c, w);
+    const stash = w.foodById(m.stash);
+    const keep = spot && Math.hypot(spot.x - f.x, spot.y - f.y) > 30 ? (0.15 + c.traits.greedy * 0.5 + (1 - c.traits.social) * 0.12) * (stash && !stash.gone ? 0.3 : 1) * (f.inWater ? 0.7 : 1) : 0;
+    const leave = 0.12 + c.traits.lazy * 0.25 + Math.random() * 0.15;
+    if (Math.max(give, keep) <= leave) {
+      // it'll leave that be, and not think about it again for a while
+      m.gCD = w.time + rrange(20, 50);
+      return 0;
+    }
+    m.gPlan = give >= keep ? { f, kind: 'give', to: friend, s: 0.32 + give * 0.5 } : { f, kind: 'keep', to: spot, s: 0.24 + keep * 0.5 };
+    return m.gPlan.s * (0.5 + 0.5 * c.act);
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const p = c.memory.gPlan;
+    c.memory.gPlan = null;
+    c.memory.gCD = w.time + (p && p.kind === 'keep' ? rrange(40, 90) : rrange(15, 35));
+    if (!p) return;
+    d.f = p.f;
+    d.kind = p.kind;
+    d.to = p.to;
+    d.phase = 'go';
+    c.seek({ kind: 'food', food: d.f });
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!d.f) return false;
+    if (d.phase === 'go') {
+      if (d.f.gone || !d.f.loose) return false;
+      if (c.arrived) {
+        d.phase = 'pick';
+        d.t = 0;
+        if (c.mode === 'walk') c.halt();
+      } else if ((c.blocked && c.mode === 'walk') || c.brain.t > 20) return false;
+      return true;
+    }
+    if (d.phase === 'pick') {
+      c.pose = 'eat';
+      d.t += dt;
+      if (d.t < 0.7) return true;
+      c.pose = 'idle';
+      if (d.f.gone || !d.f.loose) return false;
+      const piece = w.takePiece(d.f, c);
+      if (!piece) return false;
+      c.carrying = piece;
+      d.phase = 'carry';
+      d.t0 = c.brain.t;
+      if (d.kind === 'give') c.seek({ kind: 'creature', c: d.to });
+      else c.seekPoint(d.to.x, d.to.y);
+      return true;
+    }
+    // carrying it
+    const piece = c.carrying;
+    if (!piece || piece.gone || piece.holder !== c) return false;
+    if (c.brain.t - d.t0 > 35) return false; // (stop() drops it)
+    if (d.kind === 'give') {
+      const o = d.to;
+      if (o.dead || o.removed || o.hidden || o.hunger < 0.25) {
+        // they've eaten (or gone in): someone else, or keep it, or leave it
+        const other = hungryFriend(c, w, piece, 220);
+        if (other) {
+          d.to = other;
+          c.seek({ kind: 'creature', c: other });
+        } else return false;
+        return true;
+      }
+      if (Math.hypot(o.x - c.x, o.y - c.y) < (c.size + o.size) * 0.5 + 8) {
+        // set it down right in front of them
+        c.facing = o.x >= c.x ? 1 : -1;
+        c.carrying = null;
+        piece.x = o.x - c.facing * o.size * 0.3;
+        piece.drop(w);
+        piece.giftFor = o.id;
+        piece.giftBy = c.name;
+        o.memory.tip = { food: piece, t: w.time };
+        o.brain.think = Math.min(o.brain.think, 0.2);
+        c.emote('heart', 1.4);
+        w.events.emit('gift', { c, to: o, food: piece });
+        if (w.time - w.shareLogT > 60 && !w.awayMode) {
+          w.shareLogT = w.time;
+          w.addLog(`${c.name} the ${c.def.name.toLowerCase()} brought some ${piece.def.name.toLowerCase()} to hungry ${o.name} the ${o.def.name.toLowerCase()}.`, 'heart');
+        }
+        return false;
+      }
+      if (!c.target || c.arrived) c.seek({ kind: 'creature', c: o });
+      return true;
+    }
+    // keeping it: put it down by the door (or the bed)
+    if (c.arrived || Math.hypot(d.to.x - c.x, d.to.y - c.y) < 8) {
+      c.carrying = null;
+      piece.drop(w);
+      piece.owner = c.id;
+      c.memory.stash = piece.id;
+      w.events.emit('stash', { c, food: piece });
+      return false;
+    }
+    if (c.blocked && c.mode === 'walk') return false;
+    return true;
+  },
+  // with a mouthful, it sees the errand through (unless something scares it)
+  lock(c) {
+    const d = c.brain.data;
+    return (d.phase === 'pick' || d.phase === 'carry') && c.fear < 0.4 && c.hunger < 0.75;
+  },
+  stop(c, w) {
+    if (c.pose === 'eat') c.pose = 'idle';
+    // whatever happened, it lets go of what it was carrying
+    if (c.carrying) {
+      c.carrying.drop(w);
+      c.carrying = null;
+    }
+  },
+  thought(c) {
+    const d = c.brain.data;
+    const n = d.f ? d.f.def.name.toLowerCase() : 'food';
+    if (d.kind === 'give') return d.phase === 'carry' ? `Taking some ${n} to ${d.to.name}. They look hungry!` : `${d.to ? d.to.name : 'My friend'} looks hungry. I'll bring them some ${n}.`;
+    return d.phase === 'carry' ? `Taking this ${n} home for later.` : `I'm full, but I'll keep some ${n} for later.`;
+  },
+});
+
+// --------------------------------------------------------------------- beg (fish know the keeper means food)
+// Goldfish learn when and where the food comes. With the keeper's Feed
+// tool out they crowd up to the top, mouths open; and around the time of
+// day they're usually fed, the hungry ones wait at the usual spot.
+function mealWord(h) {
+  return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 20 ? 'dinner' : 'supper';
+}
+def('beg', {
+  can: (c) => c.sp === 'goldfish' && c.mode === 'swim' && c.stage !== 'egg',
+  score(c, w) {
+    if (c.hunger < 0.12 || c.fear > 0.3) return 0;
+    if (w.keeperFeeding) return 0.5 + c.hunger * 0.6;
+    if (c.hunger < 0.3) return 0;
+    const fm = w.feedMem;
+    const h = Math.floor(w.env.hour);
+    const habit = fm.hours[h % 24] + fm.hours[(h + 1) % 24] * 0.7;
+    const f = cachedFood(c, w);
+    if (habit < 0.9 || (f && f.kind === 'food')) return 0;
+    return 0.25 + Math.min(0.35, habit * 0.12);
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const t = w.terrain;
+    d.keeper = w.keeperFeeding;
+    const x = clamp(w.feedMem.x + rrange(-45, 45), 10, W - 10);
+    d.x = t.waterAt(x, t.waterSurfY(x) + 6) ? x : c.x;
+    c.seekPoint(d.x, t.waterSurfY(d.x) + 5, { speedMul: 1.2 });
+    if (d.keeper) c.emote('food', 1.4);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (c.arrived) {
+      // mouth at the surface, gulping hopefully
+      c.pose = 'gasp';
+      d.t = (d.t || 0) + dt;
+      if (chance(dt * 0.8)) w.bubble(c.x + c.facing * c.size * 0.4, c.y - 2);
+      if (chance(dt * 0.4)) c.seekPoint(d.x + rrange(-12, 12), w.terrain.waterSurfY(d.x) + rrange(4, 7));
+      if (!d.told && d.t > 1.5) {
+        d.told = true;
+        w.events.emit('beg', { c, keeper: d.keeper });
+      }
+    }
+    const f = cachedFood(c, w);
+    if (f && f.kind === 'food' && c.hunger > 0.2) return false; // food! off to get it
+    return c.brain.t < (d.keeper ? 25 : 14) && (d.keeper ? w.keeperFeeding : true);
+  },
+  stop(c) {
+    if (c.pose === 'gasp') c.pose = 'idle';
+  },
+  thought: (c, w) => (c.brain.data.keeper ? rpick(['Food? Is that food? Food!', 'Ooh, ooh, me first!', 'I know that hand. That hand means food!']) : `It's nearly ${mealWord(w.env.hour)} time. The keeper always feeds us about now...`),
+});
+
+// --------------------------------------------------------------------- chase (playing tag in the water)
+def('chase', {
+  can: (c) => (c.sp === 'goldfish' || (c.sp === 'frog' && c.stage === 'tadpole')) && c.mode === 'swim',
+  hold: 0.5,
+  score(c, w) {
+    if (c.hunger > 0.5 || c.fear > 0.2 || c.act < 0.5) return 0;
+    const m = c.memory;
+    if (m.chaseT && w.time - m.chaseT < 70) return 0;
+    if (!m.playQ || w.time - m.playQ > 5) {
+      m.playQ = w.time;
+      m.playmate = w.hashC.nearest(c.x, c.y, 180, (o) => o !== c && o.sp === c.sp && o.stage === c.stage && !o.dead && !o.hidden && o.mode === 'swim' && (!o.brain.b || o.brain.b.id === 'wander' || o.brain.b.id === 'idle' || o.brain.b.id === 'socialize'));
+    }
+    return m.playmate ? (0.06 + (c.traits.curious + c.traits.social) * 0.14) * c.act : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.p = c.memory.playmate;
+    c.memory.chaseT = w.time;
+    d.dur = rrange(4, 7);
+    if (!d.p) return;
+    switchTo(d.p, w, 'chased', { by: c });
+    d.p.memory.chaseT = w.time;
+    c.seek({ kind: 'creature', c: d.p, speedMul: 1.35 });
+    c.burst = 0.5;
+  },
+  tick(c, w) {
+    const d = c.brain.data;
+    const p = d.p;
+    if (!p || p.dead || p.hidden) return false;
+    if (!c.target || c.arrived) c.seek({ kind: 'creature', c: p, speedMul: 1.35 });
+    if (Math.hypot(p.x - c.x, p.y - c.y) < (c.size + p.size) * 0.4 && !d.tag) {
+      // tag!
+      d.tag = true;
+      c.emote('note', 1);
+      if (chance(0.4) && p.brain.b && p.brain.b.id === 'chased') {
+        // ...and now it's their turn to be "it"
+        p.memory.playmate = c;
+        switchTo(p, w, 'chase', {});
+        return true;
+      }
+    }
+    return c.brain.t < d.dur;
+  },
+  thought: (c) => `Tag! Catching ${c.brain.data.p ? c.brain.data.p.name : 'you'}!`,
+});
+def('chased', {
+  score: () => 0,
+  hold: 0.55,
+  start(c) {
+    c.brain.data.re = 0;
+    c.burst = 0.5;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const by = d.by;
+    if (!by || by.dead || !by.brain.b || by.brain.b.id !== 'chase') return c.brain.t < 1;
+    d.re -= dt;
+    if (d.re <= 0) {
+      // zip off the other way, with a jink now and then
+      d.re = rrange(0.6, 1.2);
+      const dir = c.x >= by.x ? 1 : -1;
+      const body = w.waterBody(c.x, c.y);
+      const p = waterSpot(c, w, body, rrange(0.1, 0.8), 120) || [c.x + dir * 60, c.y];
+      const tx = Math.abs(p[0] - by.x) > Math.abs(c.x - by.x) ? p[0] : c.x + dir * 60;
+      c.seekPoint(tx, p[1], { speedMul: 1.3 });
+      if (chance(0.5)) c.burst = 0.4;
+    }
+    return c.brain.t < 9;
+  },
+  thought: (c) => `Can't catch me, ${c.brain.data.by ? c.brain.data.by.name : 'slowcoach'}!`,
 });
 
 // --------------------------------------------------------------------- breathe (air-breathers pop up to the surface)
@@ -1590,7 +1980,13 @@ def('breathe', {
       else c.seekPoint(c.x, t.waterLevel + 3);
       return;
     }
-    // a pond snail climbs a stem to the top (a lily pad is perfect)
+    // a pond snail glides up the glass to the water's skin
+    if (c.def.glass) {
+      const x = clamp(c.x + rrange(-50, 50), 10, W - 10);
+      c.seekPoint(t.waterAt(x, t.waterSurfY(x) + 4) ? x : c.x, t.waterSurfY(c.x) + 3);
+      return;
+    }
+    // (otherwise it climbs a stem to the top; a lily pad is perfect)
     const s = nearestPlantSlot(c, w, 300, ['pad', 'leaf', 'flower', 'stem'], (p) => p.def.aquatic);
     if (s) {
       let top = s;
@@ -1607,6 +2003,10 @@ def('breathe', {
     }
     if (c.y < t.waterSurfY(c.x) + 8 || (c.mode === 'climb' && c.arrived)) {
       d.t = (d.t || 0) + dt;
+      if (c.mode === 'glass' && d.t > 4) {
+        c.memory.airT = w.time;
+        return false;
+      }
       if (!d.gulp) {
         d.gulp = true;
         if (w.fx) w.fx.ripples.push({ x: c.x, t: 0, s: 0.3 });
@@ -1623,18 +2023,18 @@ def('breathe', {
 });
 
 // Which behaviours each species knows.
-const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize'];
+const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize', 'gather'];
 export const SPECIES_BEHAVIORS = {
   default: BASE,
   cricket: [...BASE, 'chirp', 'hide'],
   grasshopper: [...BASE, 'chirp'],
   gecko: [...BASE, 'hunt', 'bask', 'hide'],
   beetle: [...BASE, 'headstand', 'hide', 'recycle'],
-  goldfish: [...BASE, 'hunt', 'graze'],
-  frog: [...BASE, 'hunt', 'croak', 'graze', 'breathe'],
+  goldfish: [...BASE, 'hunt', 'graze', 'beg', 'chase'],
+  frog: [...BASE, 'hunt', 'croak', 'graze', 'breathe', 'chase'],
   turtle: [...BASE, 'bask', 'breathe'],
-  pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'home', 'breathe'],
-  shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize'],
+  pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'home', 'breathe', 'investigate', 'gather'],
+  shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize', 'gather'],
   ladybug: [...BASE, 'hunt', 'huddle'],
   aphid: ['idle', 'sap', 'mate', 'comfort'],
   butterfly: [...BASE, 'pollinate', 'pupate'],

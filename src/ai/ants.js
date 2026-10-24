@@ -14,7 +14,10 @@ export class Colony {
   constructor(id, entrance, chamber, style) {
     this.id = id;
     this.entrance = { ...entrance };
+    // the royal chamber's floor (where the queen holds court and lays her
+    // eggs; she moves it now and then), and the larder, which stays put
     this.chamber = { cx: chamber.cx, cy: chamber.cy };
+    this.larder = { cx: chamber.cx, cy: chamber.cy };
     const ry = chamber.ry || 3;
     this.chambers = [{ cx: chamber.cx, cy: chamber.cy - (ry - 1), rx: chamber.rx || 6, ry }];
     // every colony has its own way of digging, so no two nests look alike
@@ -319,6 +322,7 @@ export class Colony {
       id: this.id,
       entrance: this.entrance,
       chamber: this.chamber,
+      larder: this.larder,
       chambers: this.chambers,
       food: +this.food.toFixed(3),
       brood: this.brood.map((b) => ({ s: b.stage, t: Math.round(b.t), x: Math.round(b.x), y: Math.round(b.y) })),
@@ -335,6 +339,7 @@ export class Colony {
   static load(d) {
     const c = new Colony(d.id, d.entrance, d.chamber, d.style);
     c.chambers = d.chambers || c.chambers;
+    if (d.larder) c.larder = { ...d.larder };
     c.food = d.food;
     c.brood = (d.brood || []).map((b) => ({ stage: b.s, t: b.t, x: b.x, y: b.y, a: 0 }));
     c.fronts = d.fronts && d.fronts.length ? d.fronts : c.fronts;
@@ -410,7 +415,7 @@ function def(id, b) {
 }
 
 def('antDeliver', {
-  score: (c) => (c.carry ? 3 : 0),
+  score: (c) => (c.carry && c.carry !== 'brood' ? 3 : 0),
   start(c, w) {
     const col = colonyOf(c, w);
     if (!col) return;
@@ -672,24 +677,99 @@ def('antDig', {
   thought: (c) => (c.brain.data.phase === 'dig' ? 'Dig dig dig! Making the tunnel longer.' : 'Off to the dig site with my hard hat.'),
 });
 
+// Nurses tend the brood, wait on the queen (grooming and feeding her, and
+// escorting her when she moves rooms), and carry eggs and babies along to
+// wherever she's holding court.
 def('antNurse', {
   score(c, w) {
     if (c.stage !== 'worker') return 0;
     const col = colonyOf(c, w);
-    if (!col || !col.brood.length) return 0;
+    if (!col) return 0;
     const young = 1 - clamp01(c.age / (DAY_LEN * 1.5));
-    return col.needs(w).nurse * (0.35 + young * 0.5) * (0.5 + c.traits.social * 0.6);
+    const q = col.queen(w);
+    // a queen on the move gathers an escort
+    const court = q && !q.dead ? (q.brain.b && q.brain.b.id === 'antQueen' && q.moving ? 0.6 : 0.16) : 0;
+    const need = col.brood.length ? col.needs(w).nurse : 0;
+    const s = Math.max(need, court);
+    if (s <= 0) return 0;
+    return s * (0.35 + young * 0.5) * (0.5 + c.traits.social * 0.6);
   },
   start(c, w) {
     const col = colonyOf(c, w);
+    const d = c.brain.data;
+    const q = col.queen(w);
+    const t = w.terrain;
+    // brood left behind in another room: fetch it to the queen
+    if (col.brood.length && chance(0.45)) {
+      const far = col.brood.filter((b) => Math.abs(b.x - col.chamber.cx * CELL) > 26 || Math.abs(b.y - col.chamber.cy * CELL) > 14);
+      if (far.length) {
+        const b = rpick(far);
+        const st = nearestWalkable(t, Math.floor(b.x / CELL), Math.floor(b.y / CELL), 4);
+        if (st && antTo(c, w, st[0], st[1])) {
+          d.fetch = b;
+          d.phase = 'fetch';
+          return;
+        }
+      }
+    }
+    if (q && !q.dead && (chance(0.35) || !col.brood.length || (q.brain.b && q.brain.b.id === 'antQueen'))) {
+      d.queen = q;
+      d.re = 0;
+      return;
+    }
     const b = rpick(col.brood);
     const [x, y] = b ? [Math.floor(b.x / CELL) + rint(-1, 1), Math.floor(b.y / CELL)] : chamberCell(col);
-    const st = nearestWalkable(w.terrain, x, y, 4);
-    if (!st || !antTo(c, w, st[0], st[1])) c.brain.data.fail = true;
+    const st = nearestWalkable(t, x, y, 4);
+    if (!st || !antTo(c, w, st[0], st[1])) d.fail = true;
   },
   tick(c, w, dt) {
     const col = colonyOf(c, w);
-    if (!col || c.brain.data.fail) return false;
+    const d = c.brain.data;
+    if (!col || d.fail) return false;
+    const t = w.terrain;
+    if (d.phase === 'fetch') {
+      if (c.arrived || !antMoving(c, w)) {
+        const i = col.brood.indexOf(d.fetch);
+        if (i < 0) return false; // hatched, or someone else got it
+        col.brood.splice(i, 1);
+        c.carry = 'brood';
+        c.carryBrood = d.fetch;
+        d.phase = 'bring';
+        const [x, y] = [col.chamber.cx + rint(-3, 3), col.chamber.cy];
+        const st = nearestWalkable(t, x, y, 4);
+        if (!st || !antTo(c, w, st[0], st[1])) d.phase = 'drop';
+      }
+      return c.brain.t < 60;
+    }
+    if (d.phase === 'bring') {
+      c.pose = 'carry';
+      if (c.arrived || !antMoving(c, w)) d.phase = 'drop';
+      else return c.brain.t < 90;
+    }
+    if (d.phase === 'drop') {
+      dropBrood(c, col);
+      return false;
+    }
+    if (d.queen) {
+      // in the queen's retinue: stay close, follow her if she moves on
+      const q = d.queen;
+      if (q.dead || q.removed) return false;
+      d.re -= dt;
+      const qx = Math.floor(q.x / CELL);
+      const qy = Math.floor(q.y / CELL);
+      const far = Math.abs(q.x - c.x) > 14 || Math.abs(q.y - c.y) > 10;
+      if (d.re <= 0 && far && (!c.antGoal || Math.abs(c.antGoal[0] - qx) > 2 || Math.abs(c.antGoal[1] - qy) > 2)) {
+        d.re = 1.5;
+        const st = nearestWalkable(t, qx + (chance(0.5) ? 2 : -2), qy, 3);
+        if (!st || !antTo(c, w, st[0], st[1])) return false;
+      }
+      if (!far && (c.arrived || !c.path)) {
+        c.pose = 'idle';
+        c.facing = q.x >= c.x ? 1 : -1;
+        if (chance(dt * 0.08)) c.emote('heart', 1);
+      }
+      return c.brain.t < 25;
+    }
     if (c.arrived || !antMoving(c, w)) {
       col._nurses = (col._nurses || 0) + 1;
       c.pose = 'idle';
@@ -698,7 +778,149 @@ def('antNurse', {
     }
     return c.brain.t < 20;
   },
-  thought: () => 'Looking after the eggs and babies.',
+  stop(c, w) {
+    if (c.carry === 'brood') dropBrood(c, colonyOf(c, w));
+  },
+  thought: (c) => {
+    const d = c.brain.data;
+    if (d.phase === 'fetch') return 'Fetching an egg to bring to the queen.';
+    if (d.phase === 'bring') return 'Carrying a baby along to the royal chamber. Careful now!';
+    if (d.queen) return d.queen.moving ? 'Escorting Her Majesty to her new room!' : rpick(['Grooming the queen.', 'Bringing the queen a snack.', 'Waiting on Her Majesty.']);
+    return 'Looking after the eggs and babies.';
+  },
+});
+
+// Put a carried egg or baby down where the nurse is standing.
+function dropBrood(c, col) {
+  const b = c.carryBrood;
+  c.carry = null;
+  c.carryBrood = null;
+  if (!b || !col) return;
+  b.x = c.x + rrange(-2, 2);
+  b.y = Math.floor(c.y / CELL) * CELL + 1.5;
+  col.brood.push(b);
+}
+
+// The queen holds court in the royal chamber, but she isn't stuck there.
+// Like real queens, she moves to whichever room is the best warmth for her
+// eggs (deeper down when the sand above bakes, nearer the top when it's
+// cool), and now and then she takes a slow turn round her rooms. Her
+// workers escort her and carry the brood along after her.
+const BROOD_T = 27;
+function roomFloor(ch) {
+  return [ch.cx, ch.cy + Math.max(0, ch.ry - 1)];
+}
+function roomTemp(w, ch) {
+  const [x, y] = roomFloor(ch);
+  return w.env.tempAt(x * CELL, y * CELL, w.terrain);
+}
+// The room she's holding court in (the one her spot is inside, or nearest).
+function royalRoom(col) {
+  let best = col.chambers[0];
+  let bd = 1e9;
+  for (const ch of col.chambers) {
+    const [x, y] = roomFloor(ch);
+    const dx = Math.max(0, Math.abs(x - col.chamber.cx) - ch.rx);
+    const d = dx + Math.abs(y - col.chamber.cy) * 2 + Math.abs(x - col.chamber.cx) * 0.01;
+    if (d < bd) {
+      bd = d;
+      best = ch;
+    }
+  }
+  return best;
+}
+def('antQueen', {
+  can: (c) => c.stage === 'queen',
+  score(c, w) {
+    const col = colonyOf(c, w);
+    if (!col || c.hunger > 0.75) return 0;
+    const m = c.memory;
+    if (!m.qT || w.time - m.qT > 15) {
+      // weigh up the rooms every so often
+      m.qT = w.time;
+      const here = royalRoom(col);
+      const hereT = Math.abs(roomTemp(w, here) - BROOD_T);
+      let best = null;
+      let bd = hereT - 1.5; // only worth the trek if it's clearly better
+      for (const ch of col.chambers) {
+        if (ch === here) continue;
+        const dT = Math.abs(roomTemp(w, ch) - BROOD_T);
+        if (dT < bd) {
+          bd = dT;
+          best = ch;
+        }
+      }
+      m.qRoom = best;
+      m.qWhy = best ? 'comfort' : null;
+      if (!best && w.env.sun > 0.2 && (!m.qRoundT || w.time - m.qRoundT > (m.qGap || 60))) {
+        m.qGap = rrange(40, 130);
+        // a turn round the other rooms now and then (anywhere not much
+        // worse than here), otherwise a slow turn about her own
+        const ok = col.chambers.filter((ch) => ch !== here && Math.abs(roomTemp(w, ch) - BROOD_T) < hereT + 3.5);
+        if (ok.length && chance(0.4)) {
+          m.qRoom = rpick(ok);
+          m.qWhy = 'rounds';
+        } else {
+          m.qRoom = here;
+          m.qWhy = 'pace';
+        }
+      }
+    }
+    if (!m.qRoom || !col.chambers.includes(m.qRoom)) return 0;
+    return m.qWhy === 'comfort' ? 1.3 : (m.qWhy === 'rounds' ? 1.2 : 1.08) * (0.5 + 0.5 * c.energy);
+  },
+  lock: (c) => c.moving,
+  start(c, w) {
+    const col = colonyOf(c, w);
+    const d = c.brain.data;
+    const m = c.memory;
+    d.room = m.qRoom;
+    d.why = m.qWhy;
+    d.from = royalRoom(col);
+    m.qRoom = null;
+    m.qRoundT = w.time;
+    let [x, y] = roomFloor(d.room);
+    if (d.why === 'pace') {
+      // somewhere else along her own floor, among the eggs
+      const span = Math.max(1, d.room.rx - 1);
+      const cx = Math.floor(c.x / CELL);
+      for (let i = 0; i < 4; i++) {
+        x = d.room.cx + rint(-span, span);
+        if (Math.abs(x - cx) >= 2) break;
+      }
+    } else x += rint(-1, 1);
+    const st = nearestWalkable(w.terrain, x, y, 3);
+    if (!st || !antTo(c, w, st[0], st[1])) d.fail = true;
+    else c.emote('crown', 1.6);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const col = colonyOf(c, w);
+    if (!col || d.fail) return false;
+    if (c.arrived || !antMoving(c, w)) {
+      if (!d.settled) {
+        d.settled = true;
+        const [x, y] = roomFloor(d.room);
+        // (the way may have been blocked: only a room she reached counts)
+        if (Math.abs(Math.floor(c.x / CELL) - x) > d.room.rx + 2 || Math.abs(Math.floor(c.y / CELL) - y) > 4) return false;
+        // she holds court (and lays her eggs) wherever she settles
+        const st = nearestWalkable(w.terrain, Math.floor(c.x / CELL), d.why === 'pace' ? Math.floor(c.y / CELL) : y, 3);
+        if (st) {
+          col.chamber = { cx: st[0], cy: st[1] };
+          if (d.room !== d.from) w.events.emit('queenMove', { c, colony: col, why: d.why });
+        }
+      }
+      c.pose = 'idle';
+      return c.brain.t < 6;
+    }
+    return c.brain.t < 120;
+  },
+  thought: (c) => {
+    const d = c.brain.data;
+    if (d.settled) return d.why === 'pace' ? 'A fine spot for a few more eggs.' : 'Ahh, this room will do nicely.';
+    if (d.why === 'pace') return 'A slow royal walk among my eggs.';
+    return d.why === 'comfort' ? 'This room is not right for my eggs. Moving to a comfier one!' : 'Taking a royal stroll round my rooms.';
+  },
 });
 
 def('antRest', {
@@ -811,4 +1033,4 @@ def('antLost', {
   thought: () => 'Where is my colony? I feel a bit lost...',
 });
 
-SPECIES_BEHAVIORS.ant = ['antDeliver', 'antForage', 'antDig', 'antNurse', 'antRest', 'antEat', 'antFlee', 'antLost'];
+SPECIES_BEHAVIORS.ant = ['antDeliver', 'antForage', 'antDig', 'antNurse', 'antRest', 'antEat', 'antFlee', 'antLost', 'antQueen'];

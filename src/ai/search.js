@@ -264,8 +264,8 @@ export function comfortSpot(c, w) {
       add(lx, t.surfaceY(lx) - 3, { kind: 'point', x: lx, y: t.surfaceY(lx) });
     }
     for (const dec of w.decor) {
-      if (!dec.def.shelter || Math.abs(dec.x - c.x) > 320) continue;
-      add(dec.x, dec.y - 4, { kind: 'point', x: dec.x, y: dec.y }, 1, 1);
+      if (!suits(c, dec) || Math.abs(dec.x - c.x) > 320) continue;
+      add(dec.doorX, dec.doorY - 4, { kind: 'point', x: dec.doorX, y: dec.doorY, shelter: dec }, 1, 1);
     }
     for (const p of w.plants) {
       if (!p.def.shade || p.dead || Math.abs(p.x - c.x) > 300) continue;
@@ -306,19 +306,175 @@ export function comfortSpot(c, w) {
   return best ? best.tgt : null;
 }
 
-export function nearestShelter(c, w, range = 220) {
+// ------------------------------------------------------------------ homes
+// What sort of home a critter would live in: 'land', 'water', or null for
+// those who never move into one (ants have their nest and bees their hotel,
+// butterflies and aphids live on the plants, worms in the soil, and a turtle
+// carries its house on its back).
+const NO_HOME = { ant: 1, bee: 1, butterfly: 1, aphid: 1, worm: 1, fruitfly: 1 };
+export function homeKind(c) {
+  if (c.dead || c.stage === 'egg' || c.stage === 'chrysalis' || NO_HOME[c.sp]) return null;
+  if (c.sp === 'turtle') return c.stage === 'hatchling' ? 'water' : null;
+  if (c.sp === 'frog') return c.stage === 'adult' ? 'land' : 'water';
+  return c.def.habitat === 'water' ? 'water' : 'land';
+}
+
+// Could this critter live in (or duck into) this shelter? Dry ones house
+// land critters, sunk ones the pond critters, and everyone has to fit.
+export function suits(c, d) {
+  if (!d.def.shelter || d.removed) return false;
+  const k = homeKind(c);
+  if (!k || (k === 'water') !== d.wet) return false;
+  return c.size <= (d.def.fits || 40);
+}
+
+export function canReachDoor(c, w, d) {
+  if (c.canFly && !d.wet) return true;
+  return reachable(c, w, d.doorX, d.doorY - 3);
+}
+
+// A shelter with room to move into: nearer is better, sociable critters like
+// living with their own kind and loners like it quiet.
+export function findHome(c, w, range) {
+  let best = null;
+  let bs = -1e9;
+  for (const d of w.decor) {
+    if (!suits(c, d) || d.residents.length >= (d.def.cap || 3)) continue;
+    const dist = Math.abs(d.doorX - c.x) + Math.abs(d.doorY - c.y) * 0.5;
+    if (dist > range || !canReachDoor(c, w, d)) continue;
+    let kin = 0;
+    for (const o of d.residents) kin += o.sp === c.sp ? 1 : 0.3;
+    const s = -dist / range + (c.traits.social - 0.45) * kin * 0.5 + Math.random() * 0.15;
+    if (s > bs) {
+      bs = s;
+      best = d;
+    }
+  }
+  return best;
+}
+
+// Somewhere snug to tuck up in: its own home if it has one, otherwise a
+// shelter with a spare bed nearby (which may well become home).
+export function snugSpot(c, w, range) {
+  const own = w.homeOf(c);
+  if (own && Math.abs(own.doorX - c.x) < range * 2.5 && canReachDoor(c, w, own)) return own;
+  return findHome(c, w, range);
+}
+
+// The closest door to dive through when something gives it a fright: home,
+// or any shelter it fits (nobody minds a visitor in an emergency).
+export function shelterNear(c, w, range) {
   let best = null;
   let bd = range;
+  const own = w.homeOf(c);
   for (const d of w.decor) {
-    if (!d.def.shelter) continue;
-    if (!reachable(c, w, d.x, d.y - 3)) continue;
-    const dd = Math.abs(d.x - c.x) + Math.abs(d.y - c.y) * 0.5;
-    if (dd < bd) {
+    if (!suits(c, d)) continue;
+    const dd = Math.hypot(d.doorX - c.x, d.doorY - c.y) * (d === own ? 0.6 : 1);
+    if (dd < bd && canReachDoor(c, w, d)) {
       bd = dd;
       best = d;
     }
   }
   return best;
+}
+
+// ------------------------------------------------------------------ swimming
+function gauss() {
+  return Math.random() + Math.random() + Math.random() - 1.5;
+}
+
+// The favourite depth of a swimmer (0 = surface, 1 = floor). Everyone has
+// their own, and it drifts as the day goes on.
+function favDepth(c) {
+  const m = c.memory;
+  if (m.depth == null) m.depth = c.sp === 'turtle' ? rrange(0.15, 0.5) : c.stage === 'tadpole' ? rrange(0.1, 0.55) : rrange(0.15, 0.75);
+  else if (chance(0.1)) m.depth = clamp(m.depth + rrange(-0.2, 0.2), 0.05, 0.85);
+  return m.depth;
+}
+
+// A point in the open water at about this depth (0..1), near x.
+function waterAtDepth(w, x, depth) {
+  const t = w.terrain;
+  const fy = t.surfaceY(x);
+  const room = fy - t.waterLevel;
+  if (room < 18) return null;
+  const y = t.waterLevel + 6 + clamp(depth, 0, 1) * (room - 16);
+  return t.waterAt(x, y) ? [x, y] : null;
+}
+
+// Somewhere to swim to. Mostly a short trip at roughly its favourite depth,
+// but now and then right across the pond, up to kiss the surface, in among
+// the weeds or over to look at the castle.
+export function swimSpot(c, w, range) {
+  const t = w.terrain;
+  const r = Math.random();
+  if (r < 0.14) {
+    // nose about in the weeds
+    const p = nearbyPlant(w, c.x, range * 1.5, (q) => q.def.aquatic);
+    if (p) {
+      const h = Math.max(20, p.def.place === 'surface' ? p.y - t.waterLevel : p.def.h * p.growth);
+      const x = p.x + rrange(-16, 16);
+      const y = clamp(p.y - rrange(0.15, 0.9) * h, t.waterLevel + 6, t.surfaceY(x) - 8);
+      if (t.waterAt(x, y)) return { kind: 'point', x, y };
+    }
+  } else if (r < 0.2) {
+    // swim past a castle, a shell or a pipe
+    const near = w.decor.filter((d) => d.wet && d.def.shelter && Math.abs(d.x - c.x) < range * 2);
+    if (near.length) {
+      const d = rpick(near);
+      const x = d.x + rrange(-d.def.w * 0.7, d.def.w * 0.7);
+      const y = Math.max(t.waterLevel + 6, d.y - rrange(0.3, 1.2) * d.def.h);
+      if (t.waterAt(x, y)) return { kind: 'point', x, y };
+    }
+  } else if (r < 0.26 && c.sp !== 'turtle') {
+    // up to the top for a look at the sky
+    const x = clamp(c.x + rrange(-range, range) * 0.6, 520, 1100);
+    if (t.waterAt(x, t.waterLevel + 5)) return { kind: 'point', x, y: t.waterLevel + rrange(4, 9) };
+  }
+  // mostly short trips, sometimes a long cruise right across the pond
+  const reach = chance(0.22) ? range * rrange(1.6, 3) : range * rrange(0.3, 1);
+  const dep = favDepth(c);
+  for (let i = 0; i < 10; i++) {
+    const x = clamp(c.x + rrange(-reach, reach), 520, 1100);
+    const p = waterAtDepth(w, x, dep + gauss() * 0.3);
+    if (p) return { kind: 'point', x: p[0], y: p[1] };
+  }
+  const p = w.randomWaterPoint(c.x, range, false);
+  return p ? { kind: 'point', x: p[0], y: p[1] } : null;
+}
+
+// A quiet place for a swimmer to hover and doze: in among the weeds, or out
+// in calm water, a little lower down at night. Never flat on the floor.
+export function restSpot(c, w) {
+  const t = w.terrain;
+  const night = w.env.sun < 0.4;
+  if (chance(0.5)) {
+    const p = nearbyPlant(w, c.x, 260, (q) => q.def.aquatic);
+    if (p) {
+      const x = p.x + rrange(-14, 14);
+      const fy = t.surfaceY(x);
+      const top = p.def.place === 'surface' ? t.waterLevel + 10 : Math.max(t.waterLevel + 8, p.y - p.def.h * p.growth * 0.85);
+      const y = clamp(rrange(top, fy - 20), t.waterLevel + 8, fy - 18);
+      if (t.waterAt(x, y)) return { kind: 'point', x, y };
+    }
+  }
+  const dep = night ? rrange(0.45, 0.85) : clamp(favDepth(c) + gauss() * 0.2, 0.1, 0.8);
+  for (let i = 0; i < 8; i++) {
+    const x = clamp(c.x + rrange(-150, 150), 520, 1100);
+    const p = waterAtDepth(w, x, dep);
+    if (p && t.surfaceY(x) - p[1] > 16) return { kind: 'point', x: p[0], y: p[1] };
+  }
+  return null;
+}
+
+function nearbyPlant(w, x, range, ok) {
+  let n = 0;
+  let pick = null;
+  for (const p of w.plants) {
+    if (p.dead || Math.abs(p.x - x) > range || !ok(p)) continue;
+    if (Math.random() * ++n < 1) pick = p;
+  }
+  return pick;
 }
 
 export function lampSpot(c, w) {

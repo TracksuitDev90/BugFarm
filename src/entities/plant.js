@@ -3,10 +3,15 @@
 // climb to, perch on and eat.
 import { PLANTS } from '../data/plants.js';
 import { DAY_LEN } from '../config.js';
+import { breeze } from '../world/breeze.js';
 import { hash1 } from '../util/rng.js';
 import { clamp, clamp01, band, lerp } from '../util/math.js';
 
 const TAU = Math.PI * 2;
+// How far each kind of plant bends when the breeze leans on it: grass and
+// flowers bow right over, palms and monsteras rock, a cactus barely notices.
+const FLEX = { grass: 0.38, reed: 0.24, flower: 0.22, clover: 0.1, fern: 0.16, strawberry: 0.09, bigleaf: 0.1, monstera: 0.08, palm: 0.07, bromeliad: 0.06, mushroom: 0.012, cactus: 0.006, succulent: 0.025 };
+const CUR = [0, 0];
 
 function flowerCount(def) {
   if (def.kind === 'flower') return def.branches || 1;
@@ -43,6 +48,13 @@ export class Plant {
     this.keyTimer = Math.random();
     this.aphids = 0;
     this.thirsty = false;
+    // how it leans right now (see lean())
+    this.leanT = -1;
+    this.la = 0;
+    this.lk = 0;
+    this.lw = 0;
+    this.lph = 0;
+    this.lh = 1;
     if (opts.leafEaten) opts.leafEaten.forEach((v, i) => i < this.leafEaten.length && (this.leafEaten[i] = v));
     if (opts.flowers) opts.flowers.forEach((f, i) => i < this.flowers.length && Object.assign(this.flowers[i], f));
     this.rebuild();
@@ -422,29 +434,77 @@ export class Plant {
     this.shapeVersion++;
   }
 
-  // Current sway angle (radians) used both for drawing and attached creatures.
+  // How the plant leans right now: a little sway (radians), a bend as the
+  // breeze or the pond's current pushes on it (a shear: the tip moves, the
+  // base stays put) and, for eelgrass, a ripple running up its ribbons.
+  // Drawing and the critters clinging to it both go through here, so a
+  // ladybug stays on its leaf however hard the leaf is blowing about.
+  lean(time) {
+    if (this.leanT === time) return this;
+    this.leanT = time;
+    const def = this.def;
+    const g = 0.6 + this.growth * 0.4;
+    if (def.place === 'underwater') {
+      const h = Math.max(20, def.h * this.growth);
+      breeze.current(this.x, this.y - h * 0.6, CUR);
+      this.la = Math.sin(time * 0.9 + this.seed) * 0.04 * g;
+      this.lk = clamp(CUR[0] * 0.012, -0.22, 0.22);
+      this.lw = (2.5 + Math.abs(CUR[0]) * 0.35) * g;
+      this.lph = time * 1.7 + this.seed;
+      this.lh = h;
+    } else if (def.place === 'surface') {
+      // a lily's pads drift about on their long stems
+      const reach = Math.max(30, this.y - this.waterY);
+      breeze.current(this.x, this.waterY + 2, CUR);
+      this.la = 0;
+      this.lk = clamp((CUR[0] * 0.5 + breeze.wind(this.x) * 3) / reach, -7 / reach, 7 / reach);
+      this.lw = 0;
+    } else {
+      const wind = breeze.wind(this.x);
+      const flex = (FLEX[def.kind] || 0.1) * g * (this.dead ? 0.5 : 1);
+      // a gust makes the leaves shiver as well as lean
+      const push = wind + Math.sin(time * 7.3 + this.seed) * 0.12 * Math.abs(wind);
+      this.la = Math.sin(time * 1.3 + this.seed) * 0.025 * g + push * flex * 0.12;
+      this.lk = clamp(push * flex, -0.4, 0.4);
+      this.lw = 0;
+    }
+    return this;
+  }
+
+  // Current sway angle (radians).
   sway(time) {
-    const amp = this.def.place === 'underwater' ? 0.07 : this.def.place === 'surface' ? 0 : 0.025;
-    return Math.sin(time * (this.def.place === 'underwater' ? 0.9 : 1.3) + this.seed) * amp * (0.6 + this.growth * 0.4);
+    return this.lean(time).la;
+  }
+
+  // How far a point ly above the base (up is negative) is pushed sideways by
+  // the bend and the ripple. Call lean() first.
+  bendX(ly) {
+    let dx = -this.lk * ly;
+    if (this.lw) dx += this.lw * clamp01(-ly / this.lh) * Math.sin(this.lph + ly * 0.06);
+    return dx;
+  }
+
+  // A point in the plant's own space (base at 0,0) to where it is in the
+  // tank right now, bent and swayed. Allocation-free.
+  toWorld(lx, ly, time, out) {
+    this.lean(time);
+    const bx = lx + this.bendX(ly);
+    const c = Math.cos(this.la);
+    const s = Math.sin(this.la);
+    out[0] = this.x + bx * c - ly * s;
+    out[1] = this.y + bx * s + ly * c;
+    return out;
   }
 
   // Allocation-free variant for hot loops.
   slotXY(slot, time, out) {
-    const a = this.sway(time);
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    out[0] = this.x + slot.x * c - slot.y * s;
-    out[1] = this.y + slot.x * s + slot.y * c;
-    return out;
+    return this.toWorld(slot.x, slot.y, time, out);
   }
 
   slotWorld(slot, time) {
-    const a = this.sway(time);
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    let bob = 0;
-    if (this.def.place === 'surface' && (slot.kind === 'pad' || slot.kind === 'flower')) bob = Math.sin(time * 1.2 + slot.i) * 0.8;
-    return [this.x + slot.x * c - slot.y * s, this.y + slot.x * s + slot.y * c + bob];
+    const out = this.toWorld(slot.x, slot.y, time, [0, 0]);
+    if (this.def.place === 'surface' && (slot.kind === 'pad' || slot.kind === 'flower')) out[1] += Math.sin(time * 1.2 + slot.i) * 0.8;
+    return out;
   }
 
   update(dt, world) {

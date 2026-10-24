@@ -8,8 +8,10 @@ import { DAY_LEN, W, H, CELL, GW } from '../config.js';
 import { clamp, clamp01, band, lerp, angleDiff, smoothstep } from '../util/math.js';
 import { rrange, rint, chance } from '../util/rng.js';
 import { nearestWalkable } from '../world/pathfind.js';
+import { breeze } from '../world/breeze.js';
 
 const GRAV = 620;
+const XY = [0, 0];
 // the eight neighbours a crawler feels for ground, and how much each counts
 const PROBE_X = [1, -1, 0, 0, 1, 1, -1, -1];
 const PROBE_Y = [0, 0, 1, -1, 1, -1, 1, -1];
@@ -86,6 +88,7 @@ export class Creature {
     this.path = null;
     this.pathI = 0;
     this.carry = null;
+    this.carryBrood = null; // a nurse ant carrying an egg or baby
     this.pose = 'idle';
     this.anim = Math.random() * 10;
     this.frame = 0;
@@ -147,6 +150,25 @@ export class Creature {
     this.restT = 0;
     this.hungerT = 0;
     this.selected = false;
+    // A bit of free will. Swimmers and flyers have a heading of their own
+    // that wanders (so they curve about instead of beelining), swimmers flick
+    // their tails in bursts and coast between them, everyone has their own
+    // pace, and now and then a passing fancy (a whim) colours what they feel
+    // like doing.
+    this.wan = Math.random() * 2 - 1;
+    this.beat = Math.random() * 4;
+    this.burst = 0;
+    this.glide = Math.random();
+    this.tempo = rrange(0.75, 1.3);
+    this.whim = null;
+    // Home life: the shelter it's tucked up inside right now (if any), a
+    // moment peeking out of the front door, and a moment just after coming
+    // out (so it's drawn on the doorstep, not behind the house).
+    this.inside = null;
+    this.peek = 0;
+    this.doorT = 0;
+    this.vis = 1; // how visible it is as drawn (fades while slipping in or out)
+    this.visF = 0; // (the frame that was last worked out on)
     this.applyStage(true);
   }
 
@@ -500,12 +522,24 @@ export class Creature {
     let dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
     const arrive = Math.min(1, d / 40);
-    let dvx = (dx / d) * sp * Math.max(0.25, arrive);
-    let dvy = (dy / d) * sp * Math.max(0.25, arrive);
+    // a heading of its own that wanders, so flights loop and curve
+    this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 5 - this.wan * dt * 0.2, -1, 1);
+    const off = this.wan * 0.7 * clamp((d - 20) / 90, 0, 1);
+    const ux = (dx / d) * Math.cos(off) - (dy / d) * Math.sin(off);
+    const uy = (dx / d) * Math.sin(off) + (dy / d) * Math.cos(off);
+    let dvx = ux * sp * Math.max(0.25, arrive);
+    let dvy = uy * sp * Math.max(0.25, arrive);
     // flutter / wobble
     const wob = this.sp === 'butterfly' ? 0.9 : this.sp === 'firefly' ? 0.4 : 0.25;
     dvy += Math.sin(w.time * 6 + this.id * 1.7) * sp * wob;
     dvx += Math.cos(w.time * 3.1 + this.id) * sp * wob * 0.4;
+    // butterflies jink about, and anything light gets pushed by a gust
+    if (this.sp === 'butterfly' && Math.random() < dt * 1.4) {
+      this.vx += rrange(-0.7, 0.7) * sp;
+      this.vy += rrange(-0.8, 0.5) * sp;
+    }
+    const gust = breeze.wind(this.x);
+    dvx += gust * sp * (this.sp === 'butterfly' || this.sp === 'fruitfly' ? 0.65 : this.sp === 'bee' ? 0.2 : 0.35);
     // obstacle avoidance
     const px = this.x + this.vx * 0.3;
     const py = this.y + this.vy * 0.3 + 4;
@@ -561,7 +595,14 @@ export class Creature {
         return;
       }
     }
-    const sp = (this.def.speed.swim || this.def.speed.walk * 2 || 20) * this.speedFactor() * (this.paddling ? 0.8 : 1);
+    if (this.inside) {
+      // tucked up in a hidey-hole: stay put
+      this.vx = this.vy = 0;
+      this.moving = false;
+      return;
+    }
+    let sp = (this.def.speed.swim || this.def.speed.walk * 2 || 20) * this.speedFactor() * (this.paddling ? 0.8 : 1);
+    if (this.target && this.target.speedMul) sp *= this.target.speedMul;
     let tp = this.targetPos(w);
     // non-swimmers and amphibians heading to land: make for the shore
     let wantLand = false;
@@ -584,19 +625,53 @@ export class Creature {
     const dx = tx - this.x;
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
-    let dvx = (dx / d) * sp * Math.min(1, d / 30 + 0.2);
-    let dvy = (dy / d) * sp * Math.min(1, d / 30 + 0.2);
+    // Tail beats: fish and tadpoles swim in little bursts and coast in
+    // between (now and then darting off), a turtle in slow strong strokes.
+    let thrust = 1;
+    if (!this.paddling && (this.aquatic || this.sp === 'turtle')) {
+      if (this.burst > 0) {
+        this.burst -= dt;
+        thrust = this.sp === 'turtle' ? 1.3 : 1.75;
+      } else {
+        this.glide -= dt;
+        thrust = this.sp === 'turtle' ? 0.6 : 0.5;
+        if (this.glide <= 0) {
+          const dart = this.sp !== 'turtle' && Math.random() < 0.06 + this.traits.curious * 0.06;
+          this.burst = dart ? rrange(0.45, 0.7) : this.sp === 'turtle' ? rrange(0.5, 0.9) : rrange(0.2, 0.45);
+          this.glide = (this.sp === 'turtle' ? rrange(0.8, 1.8) : rrange(0.3, 1.5)) * (0.7 + this.traits.lazy * 0.6) / this.tempo;
+          if (dart) this.wan = clamp(this.wan + rrange(-1.2, 1.2), -1, 1);
+        }
+      }
+    }
+    // its own heading wanders, so it swims in curves instead of beelines
+    // (straightening out as it gets close)
+    this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 4 - this.wan * dt * 0.15, -1, 1);
+    const off = this.wan * 0.85 * clamp((d - 14) / 70, 0, 1);
+    const co = Math.cos(off);
+    const so = Math.sin(off);
+    const ux = (dx / d) * co - (dy / d) * so;
+    const uy = (dx / d) * so + (dy / d) * co;
+    const want = sp * Math.min(1, d / 30 + 0.2) * thrust;
+    let dvx = ux * want;
+    let dvy = uy * want;
     if (this.def.schools && this.school && this.school.n > 0) {
+      // a loose shoal: how keen each fish is on company comes and goes
       const s = this.school;
-      dvx += (s.cx - this.x) * 0.15 + s.vx * 0.35 - s.sepx * 1.2;
-      dvy += (s.cy - this.y) * 0.15 + s.vy * 0.35 - s.sepy * 1.2;
+      const keen = 0.45 + 0.55 * Math.sin(w.time * 0.05 + this.id * 1.9) ** 2;
+      dvx += ((s.cx - this.x) * 0.1 + s.vx * 0.3) * keen - s.sepx * 1.2;
+      dvy += ((s.cy - this.y) * 0.1 + s.vy * 0.3) * keen - s.sepy * 1.2;
     }
     if (this.sp === 'frog' && this.stage === 'tadpole') dvy += Math.sin(w.time * 9 + this.id) * sp * 0.25;
     const k = Math.min(1, dt * 2.5);
     this.vx += (dvx - this.vx) * k;
     this.vy += (dvy - this.vy) * k;
-    let nx = this.x + this.vx * dt;
-    let ny = this.y + this.vy * dt;
+    // the pond's slow current carries everyone along a little
+    breeze.current(this.x, this.y, XY);
+    // (holding station takes some finning, so a dozing fish barely drifts)
+    const drift = this.paddling ? 0.9 : this.arrived ? 0.12 : 0.55;
+    let nx = this.x + (this.vx + XY[0] * drift) * dt;
+    let ny = this.y + (this.vy + XY[1] * drift) * dt;
+    this.beat += dt * (1.2 + 9 * clamp(Math.hypot(this.vx, this.vy) / Math.max(1, sp), 0, 1.4) * (thrust > 1 ? 1.4 : 0.8));
     if (ny < wl + 3) ny = wl + 3;
     if (!t.waterAt(nx, ny)) {
       // shore exit for land-goers
@@ -691,15 +766,11 @@ export class Creature {
     const sp = (this.def.speed.walk || 6) * this.speedFactor();
     c.t = clamp(c.t + (c.dir * sp * dt) / Math.max(4, L), 0, 1);
     const { lx, ly, ang } = this.climbPoint(c.t);
-    const sway = c.plant.sway(w.time);
-    const cs = Math.cos(sway);
-    const sn = Math.sin(sway);
     let bob = 0;
     if (c.plant.def.place === 'surface' && c.t > 0.9) bob = Math.sin(w.time * 1.2 + c.slot.i) * 0.8;
-    const wx = c.plant.x + lx * cs - ly * sn;
-    const wy = c.plant.y + lx * sn + ly * cs + bob - (c.t > 0.95 ? this.foot * 0.8 : 0);
-    this.x = wx;
-    this.y = wy;
+    c.plant.toWorld(lx, ly, w.time, XY);
+    this.x = XY[0];
+    this.y = XY[1] + bob - (c.t > 0.95 ? this.foot * 0.8 : 0);
     const moving = c.dir !== 0 && c.t > 0 && c.t < 1;
     this.moving = moving;
     let want = 0;
@@ -804,7 +875,8 @@ export class Creature {
       return;
     }
     // ease into a scurry; ants walk in little pulses
-    const top = this.walkSpeed() * this.speedFactor();
+    // (a queen processes along at a stately pace)
+    const top = this.walkSpeed() * this.speedFactor() * (this.stage === 'queen' ? 0.45 : 1);
     const want = top * (0.84 + 0.16 * Math.sin(this.anim * 7 + this.id));
     this.spd = Math.min(want, this.spd + top * 6 * dt);
     let step = this.spd * dt;
@@ -973,12 +1045,16 @@ export class Creature {
     const t = w.terrain;
     if (this.climb && this.climb.plant && !this.climb.plant.removed) {
       const { lx, ly } = this.climbPoint(1);
-      const sway = this.climb.plant.sway(w.time);
-      this.x = this.climb.plant.x + lx * Math.cos(sway) - ly * Math.sin(sway);
-      this.y = this.climb.plant.y + lx * Math.sin(sway) + ly * Math.cos(sway) + (this.stage === 'chrysalis' ? 9 : 0);
+      this.climb.plant.toWorld(lx, ly, w.time, XY);
+      this.x = XY[0];
+      this.y = XY[1] + (this.stage === 'chrysalis' ? 9 : 0);
       return;
     }
     if (this.memory.floats) {
+      // frogspawn drifts slowly round the pond on the current
+      breeze.current(this.x, this.y, XY);
+      const nx = this.x + XY[0] * 0.25 * dt;
+      if (t.surfaceY(nx) - t.waterLevel > 16 && t.waterAt(nx, this.y + 4)) this.x = nx;
       this.y = t.waterSurfY(this.x) + 3 + Math.sin(w.time + this.id) * 0.6;
       if (!t.waterAt(this.x, this.y)) this.memory.floats = false;
       return;
@@ -1107,6 +1183,8 @@ export class Creature {
     if (this.memory.underground) o.ug = 1;
     if (this.memory.young) o.yg = this.memory.young;
     if (this.memory.made) o.mk = this.memory.made;
+    if (this.memory.home) o.ho = this.memory.home;
+    if (this.carryBrood) o.cb = { s: this.carryBrood.stage, t: Math.round(this.carryBrood.t) };
     if (this.climb && this.climb.plant) o.cl = { p: this.climb.plant.id, k: this.climb.slot.kind, i: this.climb.slot.i };
     return o;
   }
@@ -1138,6 +1216,7 @@ export class Creature {
     if (o.ug) c.memory.underground = true;
     if (o.yg) c.memory.young = o.yg;
     if (o.mk) c.memory.made = o.mk;
+    if (o.ho) c.memory.home = o.ho;
     if (o.m && ['walk', 'swim', 'fly', 'crawl', 'burrow', 'still'].includes(o.m)) c.mode = o.m;
     c._climbRef = o.cl || null;
     setNextId(o.id + 1);

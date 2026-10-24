@@ -1632,10 +1632,21 @@ export class UI {
         this.portrait = p;
       }
       this.cardName.textContent = e.def.name;
-      const inside = this.world.creatures.filter((c) => c.hidden && e.covers(c.x, c.y));
       const gift = e.type === 'farmStand' || e.type === 'deliveryVan';
-      this.cardSub.textContent = e.def.shelter ? (inside.length ? `Inside: ${inside.map((c) => c.name).slice(0, 4).join(', ')}` : 'Nobody home right now.') : e.def.hive ? 'Bees bring pollen home here to make honey and raise young.' : e.def.feeder ? 'Drops food every morning at 8:00.' : gift ? 'A thank-you gift from Busytown.' : 'Looking lovely.';
-      if (e.def.hive) {
+      let sub = e.def.hive ? 'Bees bring pollen home here to make honey and raise young.' : e.def.feeder ? 'Drops food every morning at 8:00.' : gift ? 'A thank-you gift from Busytown.' : 'Looking lovely.';
+      if (e.def.shelter) {
+        // who lives here, and who's in right now
+        const home = e.residents;
+        const inside = this.world.creatures.filter((c) => c.inside === e && !c.dead);
+        const who = (list) => list.slice(0, 4).map((c) => `${c.name} the ${c.def.name.toLowerCase()}`).join(', ') + (list.length > 4 ? ` and ${list.length - 4} more` : '');
+        const visitors = inside.filter((c) => !home.includes(c));
+        if (home.length) sub = `Home to ${who(home)}. ` + (inside.length ? `${inside.length} in right now.` : 'Everyone is out and about.');
+        else sub = visitors.length ? `Sheltering inside: ${who(visitors)}.` : e.wet ? 'A hidey-hole for pond critters. Nobody has moved in yet.' : 'A snug little home. Nobody has moved in yet.';
+      }
+      this.cardSub.textContent = sub;
+      if (e.def.shelter) {
+        this.cardMeters.innerHTML = `<span>Rooms taken</span><span>${e.residents.length} of ${e.def.cap || 3}</span><span>Good for</span><span>${e.wet ? 'fish, tadpoles, shrimp and snails' : 'critters on dry land'}</span>`;
+      } else if (e.def.hive) {
         const jars = this.world.goods.filter((g) => g.type === 'honey' && g.src === e.id).length;
         const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
         this.cardMeters.innerHTML = `<span>Honeycomb</span>${bar(this.world.honeyFill(e), '#f0a830')}<span>Jars ready</span><span>${jars ? `${jars} beside the hotel — tap to collect` : 'none yet'}</span>`;

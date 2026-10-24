@@ -5,6 +5,10 @@
 import { SPECIES } from '../data/species.js';
 import { BEHAVIORS, SPECIES_BEHAVIORS } from './behaviors.js';
 import { clamp01, smoothstep } from '../util/math.js';
+import { rrange, rpick } from '../util/rng.js';
+
+// Things a critter might simply take a fancy to doing for a while.
+const WHIMS = ['wander', 'investigate', 'socialize', 'home', 'idle', 'snack', 'search'];
 
 export const PREDATORS_OF = {};
 for (const sp of Object.keys(SPECIES)) {
@@ -29,7 +33,7 @@ export function sense(c, w) {
   c.inWater = t.waterAt(c.x, c.y);
   let T = env.tempAt(c.x, c.y, t);
   let M = env.moistAt(c.x, c.y, t);
-  c.shelter = c.mode === 'walk' || c.mode === 'crawl' ? w.shelterAt(c.x, c.y) : null;
+  c.shelter = c.inside || (c.mode === 'walk' || c.mode === 'crawl' ? w.shelterAt(c.x, c.y) : null);
   if (c.shelter) {
     // shelters are shady when hot and snug when cold
     if (T > 26) T -= 3 + env.lampAt(c.x).power * 4;
@@ -107,6 +111,14 @@ export function think(c, w) {
   sense(c, w);
   const list = SPECIES_BEHAVIORS[c.sp] || SPECIES_BEHAVIORS.default;
   const cur = c.brain.b;
+  // A passing fancy: every so often a critter just feels like a stroll, a
+  // nose about, a natter or a sit at home. It nudges that one thing up for
+  // a while, which knocks it out of its usual rut.
+  let wh = c.whim;
+  if (!wh || wh.until < w.time) {
+    const opts = list.filter((id) => WHIMS.includes(id));
+    wh = c.whim = opts.length ? { id: rpick(opts), until: w.time + rrange(25, 80), b: rrange(0.06, 0.2) } : { id: '', until: w.time + 60, b: 0 };
+  }
   let best = null;
   let bestScore = -1;
   for (let i = 0; i < list.length; i++) {
@@ -117,6 +129,7 @@ export function think(c, w) {
     if (cool && cool[b.id] > w.time) continue;
     let s = b.score(c, w);
     if (s <= 0) continue;
+    if (b.id === wh.id) s += wh.b * c.act;
     if (b === cur) s += cur.stick != null ? cur.stick : 0.12; // commitment
     s *= 0.94 + Math.random() * 0.12;
     if (s > bestScore) {
@@ -141,7 +154,7 @@ export function tickBrain(c, w, dt) {
   br.think -= dt;
   br.t += dt;
   if (br.think <= 0 || !br.b) {
-    br.think = 0.45 + Math.random() * 0.5;
+    br.think = (0.45 + Math.random() * 0.5) / c.tempo;
     // a running behaviour may ask not to be interrupted
     if (!br.b || !br.b.lock || !br.b.lock(c, w)) think(c, w);
   }

@@ -13,9 +13,27 @@ export class Decor {
     this.store = opts.store || 0; // bee hotel: pollen on its way to honey
     this.brood = opts.brood || 0; // bee hotel: pollen put by for raising young
     this.removed = false;
+    // shelters: who calls it home, and whether it's sunk in the pond (both
+    // kept up to date by the world every second)
+    this.residents = [];
+    this.wet = false;
+    this.inN = 0; // (render side) how many are indoors right now
   }
   get name() {
     return this.def.name;
+  }
+  // Where critters go in and out (the door, the open end of the log...).
+  get doorX() {
+    const d = this.def.door;
+    return this.x + (d ? d[0] : 0) * (this.flip ? -1 : 1);
+  }
+  get doorY() {
+    const d = this.def.door;
+    return this.y + (d ? d[1] : 0);
+  }
+  // A point on the shelter's own art (from its bottom middle), flipped with it.
+  at(p) {
+    return [this.x + p[0] * (this.flip ? -1 : 1), this.y + p[1]];
   }
   // Is a point inside this shelter?
   covers(x, y) {

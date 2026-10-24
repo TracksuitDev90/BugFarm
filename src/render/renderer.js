@@ -4,6 +4,8 @@ import { W, H, CELL, GW, INK, ZONE_X } from '../config.js';
 import { TerrainRenderer } from './terrainRender.js';
 import { SpriteCache, bucketFor } from './sprites.js';
 import { Particles } from './particles.js';
+import { Ambient } from './ambient.js';
+import { breeze } from '../world/breeze.js';
 import { CREATURE_ART, PALETTES, WINGS, wingAngle, butterflyLift, drawWingBlade, wingBox, drawButterflyWings, drawWorm, drawBrood, drawHalo } from '../art/creatures.js';
 import { drawFood } from '../art/food.js';
 import { drawPlant } from '../art/plants.js';
@@ -99,6 +101,7 @@ export class Renderer {
     this.sprites = new SpriteCache(900);
     this.plantCache = new Map();
     this.fx = new Particles(220);
+    this.ambient = new Ambient();
     this.light = new LightRays();
     world.fx = this.fx;
     this.q = QUALITY.medium;
@@ -121,6 +124,9 @@ export class Renderer {
     this.screenScale = 1;
     this.paused = false;
     this.flapT = 0; // wing-beat clock: real time, but stops while paused
+    this.prevWT = 0; // tank time at the last frame, for things that turn with it
+    this.wdt = 0;
+    this.frameN = 0;
     this.mail = 0; // letters from Busytown waiting (raises the mailbox flag)
     this.setQuality('medium', true);
   }
@@ -131,6 +137,7 @@ export class Renderer {
     this.qualityName = name;
     this.q = QUALITY[name];
     this.fx.setMax(this.q.particles);
+    this.ambient.setQuality(this.q);
     this.tr.setScale(this.q.terrainS);
     this.tr.setStyle({ sand: this.world.style.sand, soil: this.world.style.soil, gravel: this.world.style.gravel });
     this.backdropKey = '';
@@ -355,11 +362,15 @@ export class Renderer {
     const cam = this.cam;
     this.time += dt;
     this.dt = dt;
+    this.frameN++;
     if (!this.paused) this.flapT += dt;
     this.fx.update(dt, t, this.time);
     this.ensureBackdrop();
     const view = cam.view(40);
     this.view = view;
+    this.wdt = clamp(w.time - (this.prevWT || w.time), 0, 1);
+    this.prevWT = w.time;
+    if (!this.paused) this.ambient.update(dt, w, view);
     this.ensureWater();
     this.sprites.frame(this.q.budget);
     const chunks = this.tr.update(view, 3);
@@ -383,6 +394,7 @@ export class Renderer {
       if (t.waterAt(c.x, c.y) && c.sp !== 'worm') this.drawCreatureE(g, c, alpha);
     }
     this.setWorld(g);
+    this.ambient.drawMotes(g, view, w);
     this.drawPondGear(g);
     this.drawWater(g);
     // --- underground: ant brood & stores, worms
@@ -395,13 +407,24 @@ export class Renderer {
     this.drawVines(g);
     for (const f of w.foods) if ((!f.inWater || f.state === 'float') && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
     this.drawGoods(g, false);
+    let doorstep = 0;
     for (const c of w.creatures) {
-      if (c.sp === 'worm' || !this.visible(c.x, c.y, 40)) continue;
-      if (!t.waterAt(c.x, c.y)) this.drawCreatureE(g, c, alpha);
+      if (c.sp === 'worm' || !this.visible(c.x, c.y, 40) || t.waterAt(c.x, c.y)) continue;
+      // anyone at a front door is drawn after the houses, on the doorstep
+      if (c.inside || c.doorT > 0) doorstep++;
+      else this.drawCreatureE(g, c, alpha);
     }
     this.setWorld(g);
     for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
+    if (doorstep) {
+      for (const c of w.creatures) {
+        if ((c.inside || c.doorT > 0) && c.sp !== 'worm' && this.visible(c.x, c.y, 40) && !t.waterAt(c.x, c.y)) this.drawCreatureE(g, c, alpha);
+      }
+      this.setWorld(g);
+    }
+    this.homeLife(w);
     this.drawWaterSurface(g);
+    this.ambient.drawBits(g, view, this);
     this.drawGoods(g, true);
     this.light.draw(this, g, w, this.time, { rays: this.q.rays, liveWater: this.q.liveRays });
     this.fx.draw(g, view, cam.zoom);
@@ -488,9 +511,22 @@ export class Renderer {
       }
     }
     if (!e) return;
-    const sway = p.sway(this.world.time);
-    this.put(g, p.x, p.y, sway, 1, 1);
-    g.drawImage(e.canvas, e.x0, e.y0, e.w, e.h);
+    // bent by the breeze (or the pond's current): a shear keeps the base
+    // planted while the tip leans over
+    const L = p.lean(this.world.time);
+    this.put(g, p.x, p.y, L.la, 1, 1);
+    if (L.lk) g.transform(1, 0, -L.lk, 1, 0, 0);
+    if (L.lw && this.q.budget > 8) {
+      // eelgrass ribbons ripple: draw it in bands, each nudged along the wave
+      const n = 10;
+      const sh = e.h / n;
+      const ph = e.canvas.height / n;
+      for (let j = 0; j < n; j++) {
+        const ly = e.y0 + (j + 0.5) * sh;
+        const dx = p.bendX(ly) + L.lk * ly; // (the shear is already in the transform)
+        g.drawImage(e.canvas, 0, j * ph, e.canvas.width, Math.min(ph + 1, e.canvas.height - j * ph), e.x0 + dx, e.y0 + j * sh, e.w, sh + 0.6);
+      }
+    } else g.drawImage(e.canvas, e.x0, e.y0, e.w, e.h);
     if (this.plantCache.size > 200) {
       for (const k of this.plantCache.keys()) if (k.removed) this.plantCache.delete(k);
     }
@@ -541,10 +577,18 @@ export class Renderer {
       const box = vineBox(v);
       if (!this.visible(v.x + (box[0] + box[2]) / 2, box[3] / 2, (box[2] - box[0]) / 2 + box[3] / 2)) return;
       const s = this.sprites.get('vine|' + i, b, box, (gg) => drawVine(gg, v));
-      // hanging vines swing from their hook; a looped liana just breathes
+      // hanging vines swing from their hook and stream out in a gust; a
+      // looped liana just breathes and sways a little
       const k = Math.sin(this.world.time * 0.5 + i * 1.7);
-      if (v.span) this.put(g, v.x, 0, 0, 1, 1 + k * 0.012);
-      else this.put(g, v.x, 0, k * (0.02 + 2 / v.len), 1, 1);
+      const wind = breeze.wind(v.x);
+      const flutter = Math.sin(this.world.time * 4.1 + i * 2.3) * 0.15 * Math.abs(wind);
+      if (v.span) {
+        this.put(g, v.x, 0, 0, 1, 1 + k * 0.012);
+        g.transform(1, 0, (wind + flutter) * 0.05, 1, 0, 0);
+      } else {
+        this.put(g, v.x, 0, k * (0.02 + 2 / v.len) - wind * 0.05, 1, 1);
+        g.transform(1, 0, (wind + flutter) * (0.08 + 12 / v.len), 1, 0, 0);
+      }
       g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
     });
     this.setWorld(g);
@@ -559,8 +603,41 @@ export class Renderer {
     g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
     // the mailbox's flag is up while Busytown's letters are waiting
     if (bare) DECOR_ART.mailboxFlag(g, this.mail > 0);
-    if (d.type === 'windmill') DECOR_ART.windmillBlades(g, this.world.time);
+    if (d.type === 'windmill') {
+      // the sails turn faster as a gust comes through
+      d.spin = (d.spin || 0) + this.wdt * (0.6 + Math.abs(breeze.wind(d.x)) * 3.5);
+      DECOR_ART.windmillBlades(g, d.spin);
+    }
     if (d.def.hive) this.drawHoneycomb(g, d);
+  }
+
+  // Signs of life at home: smoke from the chimney (steam from the teapot's
+  // spout) on a chilly evening, and bubbles rising from an underwater home.
+  // Also counts who's in, for the lit windows at night.
+  homeLife(w) {
+    for (const d of w.decor) d.inN = 0;
+    for (const c of w.creatures) if (c.inside && !c.dead) c.inside.inN++;
+    if (this.paused) return;
+    const dt = this.dt || 0.016;
+    const env = w.env;
+    for (const d of w.decor) {
+      if (!d.inN || !this.visible(d.x, d.y, 120)) continue;
+      const def = d.def;
+      if (d.wet) {
+        if (Math.random() < dt * 0.6 * d.inN) {
+          const [bx, by] = d.at(def.win || def.door || [0, -def.h * 0.5]);
+          this.fx.bubble(bx + (Math.random() - 0.5) * 4, by);
+        }
+        continue;
+      }
+      const vent = def.chimney || def.spout;
+      if (!vent) continue;
+      const cosy = Math.max(1 - env.sun, clamp01((22 - env.tempAt(d.x, d.y - 10, w.terrain)) / 6));
+      if (cosy > 0.3 && Math.random() < dt * (def.spout ? 0.9 : 1.4) * cosy) {
+        const [sx, sy] = d.at(vent);
+        this.fx.smoke(sx, sy, !!def.spout);
+      }
+    }
   }
 
   drawFoodE(g, f, alpha) {
@@ -577,9 +654,17 @@ export class Renderer {
   }
 
   drawCreatureE(g, c, alpha) {
+    // slipping in or out of a door fades rather than pops (but anyone who
+    // wasn't on screen last frame just is where they are)
+    if (c.visF !== this.frameN - 1) c.vis = c.hidden ? 0 : 1;
+    else if (!this.paused) c.vis = c.hidden ? Math.max(0, c.vis - (this.dt || 0.016) * 5) : Math.min(1, c.vis + (this.dt || 0.016) * 4);
+    c.visF = this.frameN;
     if (c.hidden) {
-      if (c.pose === 'burrow') this.drawBuried(g, c);
-      return;
+      if (c.pose === 'burrow') {
+        this.drawBuried(g, c);
+        return;
+      }
+      if (!c.inside || c.vis <= 0.02) return;
     }
     const art = CREATURE_ART[c.sp];
     if (!art) return;
@@ -590,7 +675,7 @@ export class Renderer {
     const nf = wspec ? 1 : FRAMES[pose] || 1;
     if (nf > 1) {
       if (pose === 'walk' || pose === 'carry') frame = Math.floor(c.anim * (c.sp === 'ant' ? 14 : 9)) % nf;
-      else if (pose === 'swim') frame = Math.floor(this.time * (c.sp === 'turtle' ? 2.5 : c.sp === 'frog' && c.stage === 'adult' ? 3 : 8) + c.id) % nf;
+      else if (pose === 'swim') frame = Math.floor(c.beat * (c.sp === 'turtle' ? 0.3 : c.sp === 'frog' && c.stage === 'adult' ? 0.35 : 1)) % nf; // quick flicks, then a coast
       else if (pose === 'chirp') frame = c.frame % 2;
     }
     // blinking
@@ -626,8 +711,9 @@ export class Renderer {
     if (c.vf == null || c.dead) c.vf = c.facing;
     else if (!this.paused) c.vf += (c.facing - c.vf) * Math.min(1, (this.dt || 0.016) * 13);
     const vf = Math.abs(c.vf) < 0.18 ? (c.vf < 0 ? -0.18 : 0.18) : c.vf;
-    let sx = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.55 : 1 - (1 - c.plump) * 0.3);
-    let sy = ds * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.3 : 1 - (1 - c.plump) * 0.15);
+    const shrink = c.vis < 1 ? 0.75 + 0.25 * c.vis : 1;
+    let sx = ds * shrink * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.55 : 1 - (1 - c.plump) * 0.3);
+    let sy = ds * shrink * (c.plump >= 1 ? 1 + (c.plump - 1) * 0.3 : 1 - (1 - c.plump) * 0.15);
     if (c.pose === 'eat') sy *= 1 + Math.sin(this.time * 18 + c.id) * 0.035;
     if (c.pose === 'sleep' && !c.dead) sy *= 1 + Math.sin(this.time * 2 + c.id) * 0.025;
     else if (!c.moving && !c.dead && c.mode !== 'fly' && c.mode !== 'swim') sy *= 1 + Math.sin(this.time * 2.6 + c.id) * 0.012; // breathing
@@ -651,6 +737,7 @@ export class Renderer {
     }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
     if (c.stage === 'chrysalis') ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
+    if (c.vis < 1) g.globalAlpha = c.vis;
     if (c.dead) {
       g.globalAlpha = clamp01(1 - c.deadT / 4);
       ang = lerp(ang, 0.2 * c.facing, clamp01(c.deadT));
@@ -734,6 +821,14 @@ export class Renderer {
 
   drawCarry(g, c) {
     const s = c.stage === 'queen' ? 1.35 : 1;
+    if (c.carry === 'brood' && c.carryBrood) {
+      // an egg or baby held gently in the jaws
+      g.save();
+      g.translate(7.8 * s, 0.4);
+      drawBrood(g, c.carryBrood.stage, 0.7);
+      g.restore();
+      return;
+    }
     g.beginPath();
     if (c.carry === 'sand') {
       g.arc(7.4 * s, 0.8, 1.9, 0, TAU);
@@ -837,9 +932,10 @@ export class Renderer {
     const w = this.world;
     this.setWorld(g);
     for (const col of w.colonies) {
-      const cx = col.chamber.cx * CELL;
-      const cy = col.chamber.cy * CELL;
-      if (!this.visible(cx, cy, 120)) continue;
+      const L = col.larder || col.chamber;
+      const cx = L.cx * CELL;
+      const cy = L.cy * CELL;
+      if (!this.visible(cx, cy, 120) && !this.visible(col.chamber.cx * CELL, col.chamber.cy * CELL, 120)) continue;
       // larder: little heap of crumbs and seeds
       const n = Math.min(14, Math.ceil(col.food * 2.2));
       for (let i = 0; i < n; i++) {
@@ -870,6 +966,9 @@ export class Renderer {
     const ripples = this.fx.ripples;
     const wave = (x, y0) => {
       let y = Math.sin(x * 0.05 + tm * 1.8) * 1.1 + Math.sin(x * 0.11 - tm * 1.2) * 0.6;
+      // a gust ruffles the water into a quick chop
+      const wind = Math.abs(breeze.wind(x));
+      if (wind > 0.05) y += (Math.sin(x * 0.27 - tm * 5.2) * 0.9 + Math.sin(x * 0.43 + tm * 7.3) * 0.45) * wind;
       for (const r of ripples) {
         const d = Math.abs(x - r.x);
         const front = r.t * 55;
@@ -913,6 +1012,25 @@ export class Renderer {
       g.lineWidth = 0.8;
       g.strokeStyle = 'rgba(36,70,110,0.6)';
       g.stroke();
+      if (n < 4) continue;
+      // cat's paws: little dark ruffles skating across the water in a gust
+      const dir = breeze.wind((x0 + x1) / 2) < 0 ? -1 : 1;
+      const off = tm * 24 * dir;
+      g.lineWidth = 0.6;
+      g.strokeStyle = 'rgb(36,70,110)';
+      for (let ci = Math.floor((x0 - off) / 12); ci * 12 + off < x1 - 4; ci++) {
+        const mx = ci * 12 + off;
+        if (mx < x0 + 4 || hash1(ci, 7) < 0.5) continue;
+        const a = Math.abs(breeze.wind(mx));
+        if (a < 0.3) continue;
+        const my = yAt(mx) + 2.5 + hash1(ci, 9) * 4;
+        g.globalAlpha = Math.min(0.4, (a - 0.3) * 0.8);
+        g.beginPath();
+        g.moveTo(mx - 2.5, my);
+        g.quadraticCurveTo(mx, my - 1.4, mx + 2.5, my);
+        g.stroke();
+      }
+      g.globalAlpha = 1;
     }
   }
 
@@ -1201,6 +1319,16 @@ export class Renderer {
       g.drawImage(b, x - 24, 2, 48, 48);
     }
     for (const d of this.world.decor) {
+      if (d.def.win && d.inN && !d.wet && this.visible(d.x, d.y, 100)) {
+        // someone's home: a warm lamp in the window
+        const [wx, wy] = d.at(d.def.win);
+        const spr = this.glowSprite('rgba(255,200,110,0.95)');
+        g.globalAlpha = Math.min(1, dark * 1.6);
+        g.drawImage(spr, wx - 7, wy - 7, 14, 14);
+        g.globalAlpha = dark * 0.7;
+        g.drawImage(spr, wx - 22, wy - 22, 44, 44);
+        continue;
+      }
       if (!d.def.light || !this.visible(d.x, d.y, 100)) continue;
       const spr = this.glowSprite('rgba(255,225,140,0.9)');
       g.globalAlpha = dark * 1.2;

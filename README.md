@@ -29,6 +29,11 @@ washes that bloom and pool at their edges, ink stippling in the sand, pencil
 hatching in the tunnels, a bold ink line, all on cold-press paper. Sunlight
 falls through the glass in soft shafts with dust drifting in them, dappled
 light comes down through the jungle canopy, and rays sway under the pond.
+Every so often a soft breeze rolls through the tank: the grass bows, the
+flowers and palms lean, the vines swing, leaves and dandelion fluff blow
+about, sand lifts off the dunes and the pond ruffles up. Under the water the
+filter keeps a slow current turning, so the eelgrass waves, specks drift
+past and fallen leaves float round the pond.
 Nobody is scary, and nothing dies horribly. When a critter's time is up it
 floats away under a little halo and a forget-me-not grows where it rested.
 
@@ -42,8 +47,8 @@ remember.
 
 | Zone | Who lives there | What to watch for |
 | --- | --- | --- |
-| Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
-| Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish school together. The turtle climbs out to bask on the rocks. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
+| Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. The queen walks slowly among her eggs, and moves to whichever room is the right warmth for them, with workers escorting her and carrying the brood after her. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
+| Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, and dozing among the weeds or tucked up in the castle. The turtle basks on the rocks, then goes for long swims and comes up for air. Pond snails and shrimp climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
 | Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads. Every vine hanging from the lid is a different plant: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
@@ -121,11 +126,23 @@ None of that comes as a pop-up. Instead:
 | **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle. Critters eat it bite by bite until it's gone. |
 | **Critters** | Adopt new critters and choose where they live. |
 | **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
-| **Decor** | 28 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car and a castle. Many of them do something useful: shelters give shade and warmth, bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
+| **Decor** | 29 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
 | **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
 | **Climate** | Set each zone's heat lamp (a dome lamp clamped to the lid, with a dimmer on its cord) and mister (a pump on the lid that drinks from a water jug and sprays through a nozzle), the pond's glass heater and its filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
-| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 39 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
+| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 43 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
 | **Clipboard** | The button at the top right. What needs doing now, Busytown's orders and your basket of goods, how each zone is doing, and the goals for its next level. |
+
+### Homes
+
+The cottages, the boot, the teapot, the library, the hollow log and the
+tipped flowerpot are real homes. Critters move in (each home has a few
+rooms), go home to sleep, hide inside from the midday heat or a cold snap,
+dash home when something startles them, and pop their heads out of the
+door to see if it's safe. Chimneys smoke and the teapot's spout steams on a
+chilly evening, and at night a lamp glows in the window when someone's in.
+Sunk in the pond, the castle, the seashell, the treasure chest, the diver's
+helmet and the clay pipe are hidey-holes for the fish, tadpoles, shrimp and
+pond snails. Tap a home to see who lives there.
 
 The lens button in the top right switches between overlays for temperature,
 dampness, ant scent trails and what each critter is thinking. The speed control
@@ -149,6 +166,10 @@ the tools and `Esc` closes panels.
 - **Dig a drain.** Dig a tunnel from the bottom of the pond into the sand.
   The water pours down it and fills the tunnel from the bottom up, and the
   pond level drops. A small puddle cut off from the pond soaks away.
+- **Tap the glass by a house.** Critters with a home nearby dash inside, then
+  peek out of the door when it seems safe again.
+- **Let the ants dig a few rooms, then change the desert heat.** The queen
+  moves house to a comfier room, with her workers fussing round her.
 - **Add a predator.** The gecko eats crickets, frogs catch flies, and ladybugs
   eat aphids. The world stays mostly peaceful, but the food chain is real.
 
@@ -196,7 +217,8 @@ src/
   config.js            world size, grid, caps
   world/               terrain grid (sand/soil/rock/gravel/clay), flowing water,
                        environment (zone climate, pond chemistry, day/night),
-                       spatial hash, A* pathfinding, the World itself
+                       the breeze and the pond's current, spatial hash,
+                       A* pathfinding, the World itself
   entities/            Creature (needs, life stages, movement), Plant, Food, Decor
   ai/                  utility brain, shared behaviours, food/prey/mate search,
                        ant colony (castes, brood, digging, scent trails, aphid herding)
@@ -207,7 +229,7 @@ src/
                        (critters, plants, vines, equipment, goods...),
                        paper grain and watercolour washes
   render/              sprite cache, chunked terrain and water, light shafts,
-                       particles, frame
+                       particles, drifting specks and wind-blown leaves, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal
   sim/                 away catch-up, journal, care (comfy ranges and the
                        to-do list), progress (zone levels and goals), orders
@@ -218,9 +240,11 @@ src/
 
 - **Brains.** Every critter senses its surroundings, scores the behaviours its
   species knows (forage, hunt, flee, bask, hide, court, chirp, pollinate,
-  bring pollen home, recycle, estivate and so on) against its current needs,
-  and runs the best one. Work scores highest when a critter is fed and comfy,
-  so a well-kept farm is a busy one.
+  bring pollen home, recycle, estivate, go home, say hello to a friend and so
+  on) against its current needs, and runs the best one. Work scores highest
+  when a critter is fed and comfy, so a well-kept farm is a busy one. Every
+  critter has its own pace, and now and then a passing whim (a stroll, a nose
+  about, a natter, a sit at home) nudges it out of its usual routine.
   Ants have their own colony-level task allocation on top of that. Species and
   life stages are mostly data in `src/data/species.js`.
 - **Water.** Every cell holds an amount of water. Water falls into room
@@ -230,8 +254,18 @@ src/
   goes to sleep once the water is still, so a calm pond costs nothing.
 - **Movement.** Ants follow smoothed paths and feel which way the ground
   is, so they stand on floors, cling to walls and walk along ceilings.
-  Walkers ease in and out of moving, every critter swivels to turn round,
-  and hops stretch and land with a squash.
+  Walkers ease in and out of moving, stop to sniff and look round, change
+  their minds and dawdle or hurry, every critter swivels to turn round, and
+  hops stretch and land with a squash. Swimmers and flyers have a heading of
+  their own that wanders, so they swim and fly in curves rather than
+  straight lines. Fish swim in bursts and coast in between, and each one has
+  a favourite depth that drifts over the day.
+- **Breeze and current.** Gusts are fronts that travel across the tank and
+  die away behind them. Plants bend with a shear (the base stays put, the
+  tip leans), and the critters clinging to them use the same bend, so they
+  stay on their leaves. The pond's current is one slow loop driven by the
+  filter. It carries swimmers, bubbles, floating flakes and frogspawn a
+  little, and stops short of the shallows so food never strands out of reach.
 - **Simulation and rendering are separate.** `src/world` and `src/entities`
   never touch the DOM, so the whole tank runs headless in Node for the tests and
   for the catch-up after you've been away.

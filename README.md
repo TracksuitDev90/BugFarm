@@ -3,9 +3,11 @@
 A cosy picture-book terrarium. One big glass tank with a sandy desert, a pond
 and a grassy jungle, full of small critters going about their lives. Every
 critter has a job, like everyone in Busytown: bees make honey, beetles and worms
-make compost, butterflies leave silk behind. Collect what they make and send it
-to the neighbours who write in asking for it. Look after them, rearrange their
-world, and run gentle experiments to see what happens.
+make compost, butterflies leave silk behind. Every grown-up has a dream of its
+own, too. Collect what they make and send it to the neighbours who write in
+asking for it; they pay in coins, become friends, and sell the farm the
+wonderful things they make. Look after the critters, rearrange their world,
+and run gentle experiments to see what happens.
 
 ![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond beside its heater and filter, and a misty rainforest jungle hung with all sorts of vines, with dome heat lamps and misters on the lid and thermometers on the glass](docs/tank.jpg)
 
@@ -13,7 +15,7 @@ world, and run gentle experiments to see what happens.
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
-- **Small and quick to load.** About 130 KB of gzipped JavaScript and two
+- **Small and quick to load.** About 215 KB of gzipped JavaScript and two
   small fonts. All the art is drawn in code, so there are no image downloads.
 - **Smooth on old hardware.** The static scenery is cached, critters are
   pre-rendered sprites, and the simulation runs at a fixed 30 steps a second.
@@ -23,7 +25,8 @@ world, and run gentle experiments to see what happens.
   you were gone (up to about a day of tank time, and gently).
 
 The art takes after Richard Scarry: ink outlines, washes of colour,
-rosy cheeks, little hats, and houses made from teapots, boots and apples.
+rosy cheeks, little hats, houses made from teapots, boots and apples, and a
+town full of animals dressed for their jobs.
 Everything inside the glass is painted like a picture-book page: watercolour
 washes that bloom and pool at their edges, ink stippling in the sand, pencil
 hatching in the tunnels, a bold ink line, all on cold-press paper. Sunlight
@@ -47,38 +50,109 @@ remember.
 
 | Zone | Who lives there | What to watch for |
 | --- | --- | --- |
-| Desert | Ants, crickets, grasshoppers, a gecko, beetles, pill bugs | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. The queen walks slowly among her eggs, and moves to whichever room is the right warmth for them, with workers escorting her and carrying the brood after her. Scouts patrol the tunnels and rush to anything new (dig a hollow by the nest and they'll make it a room), a couple of guards stand at the door and shoo away big visitors, and well-fed ants feed hungry sisters mouth to mouth. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
-| Pond | Goldfish, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks on the rocks, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. |
-| Jungle | Ladybugs, aphids, butterflies (from caterpillar to chrysalis), snails, bumblebees, earthworms, fireflies | A misty rainforest of palms, monsteras and bromeliads. Every vine hanging from the lid is a different plant: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync. |
+| Desert | Ants (garden, harvester and honeypot colonies), crickets, a gecko, beetles | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. The queen walks slowly among her eggs, and moves to whichever room is the right warmth for them, with workers escorting her and carrying the brood after her. Scouts patrol the tunnels and rush to anything new (dig a hollow by the nest and they'll make it a room), a couple of guards stand at the door and shoo away big visitors, and well-fed ants feed hungry sisters mouth to mouth. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Colonies come in three kinds: garden ants herd aphids, big-headed harvester ants stock a granary and pile spare seeds by the door, and honeypot ants swell up golden with nectar and fill jars of desert honey. Each kind you adopt digs its own nest. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
+| Pond | Goldfish (common, comet, fantail, black moor, oranda, shubunkin...), guppies, neon tetras, koi, pea puffers, an axolotl, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp, dragonflies (nymphs underwater, then up and away) | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks on the rocks, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. Guppies skim the surface for flies, neon tetras school shoulder to shoulder and glow after dark, koi rummage in the gravel (and sometimes find a lost coin), pea puffers puff up into prickly balls when startled and keep the snails in check, and the axolotl strolls along the bottom smiling. Dragonfly nymphs hunt along the bottom, then climb out and zoom off on four wings. |
+| Jungle | Ladybugs, aphids, butterflies (monarch, blue morpho, tiger swallowtail, pink rose, cabbage white, and rare peacocks, glasswings and emerald swallowtails), moths (luna, rosy maple, polyphemus), snails, bumblebees, earthworms, fireflies, grasshoppers, pill bugs | A misty rainforest of palms, monsteras and bromeliads. Every vine hanging from the lid is a different plant: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync, and moths loop round every lamp. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
 
+Many critters come in **varieties**, and the Field guide keeps a collection
+of every one you've met (rare ones included), so there's always another to
+find.
+
+### Flying free
+
+Butterflies, moths, dragonflies, bees and the rest fly like flyers. Each kind
+has its own cruising height: butterflies and dragonflies up near the lid,
+bees at flower height, fireflies low. On a long trip they climb up to cruise
+and come down near the end, so flights arc over the tank instead of skimming
+it; they look ahead and keep clear of hills and banks; they take off steeply
+and land on high perches. Butterflies flap, then glide on open wings, and
+ride the warm air rising under a heat lamp in lazy spirals. Two butterflies
+that meet may dance up into the sky together. Dragonflies dart, stop dead to
+hover, and dart again. Moths at night can't keep away from a lamp.
+
 ## What the farm is for
 
-Every critter has a job, shown on its card along with how much it has made.
-When a critter isn't eating, sleeping or hiding, it works:
+Every critter has a job, shown on its card along with how much it has made,
+and every job does something real in the tank. When a critter isn't eating,
+sleeping or hiding, it works:
 
 | Good | Who makes it | How |
 | --- | --- | --- |
-| **Honey** | Bumblebees | Bees fill their pollen baskets at the flowers and fly them home to the bee hotel. Its nesting holes fill with honey, and a jar appears beside it. The same pollen raises new bees. |
+| **Honey** | Bumblebees, honeypot ants | Bees fill their pollen baskets at the flowers and fly them home to the bee hotel. Its nesting holes fill with honey, and a jar appears beside it. The same pollen raises new bees. Honeypot ants store nectar in their golden tummies and leave a jar of desert honey by the nest door. |
 | **Compost** | Beetles, earthworms | Big leafy plants drop old leaves. Beetles pat leaves and leftovers into a ball, roll it over to a plant and bury it. Worms turn leaves into castings at the surface. Either way the soil gets richer and plants grow faster. |
-| **Seeds** | Bees, butterflies | Pollinated flowers ripen into seed heads. |
-| **Silk** | Butterflies | A butterfly leaves its empty silk chrysalis behind when it hatches. |
-| **Water lilies** | Goldfish, pond snails, shrimp | The fish feed the lilies and the snails and shrimp keep the water clear, so the lilies bloom. |
+| **Seeds** | Bees, butterflies, moths, fireflies, harvester ants | Pollinated flowers ripen into seed heads (moths and fireflies pollinate by night). Harvester ants pile their spare seeds by the nest door. |
+| **Silk** | Butterflies, moths | A butterfly leaves its empty chrysalis behind when it hatches, and a moth its silk cocoon. |
+| **Water lilies** | Goldfish, tetras, koi, guppies, pond snails, shrimp | The fish feed the lilies and the snails and shrimp keep the water clear, so the lilies bloom. |
 
 Goods sparkle in the tank until you tap them to collect them. Anything you
 leave still does some good: seeds sow themselves and compost melts into the
-soil. The other critters have jobs too. Ladybugs guard the plants, frogs catch
-flies, crickets sing the night chorus, fireflies light the jungle and pill bugs
-recycle fallen leaves.
+soil. The other critters' jobs matter too: ladybugs guard the plants from
+aphids; frogs, guppies, geckos and dragonflies keep the fruit flies down; pea
+puffers keep the snails from overrunning the pond; the crickets' night chorus
+lulls the whole tank to sleep, so everyone wakes up rested; grasshoppers mow
+the grass and drop the clippings for the recyclers; the ants' tunnels let air
+into the sand so desert plants grow better; koi turn up lost coins; and the
+axolotl is so loved in Busytown that every order pays extra.
 
-Neighbours in Busytown write to the farm for its goods: the baker wants honey,
-the tailor wants silk, the gardener wants compost, the florist wants lilies,
-the school wants seeds for its garden. Their letters arrive on the clipboard's
-**Orders** tab, and the mailbox flag goes up while they wait. Send an order
-and they reply with thank-you stars and a basket of treats for the critters
-who made it. Enough stars and Busytown sends a farm stand, then a delivery
-van, which you can't get any other way.
+### Dreams
+
+Every grown-up critter also has a dream of its own that grows out of its job:
+a bee wants to visit thirty flowers, a koi to find three lucky coins, a
+cricket to star in the night chorus, a butterfly to dance in the sky. Its card
+shows the dream and how close it is. When it comes true the critter wears a
+gold star, becomes a master of its trade (it works a quarter faster from then
+on) and Busytown sends a couple of coins to celebrate.
+
+## Busytown and the Market
+
+Twelve neighbours in Busytown write to the farm for its goods: Baker Bramble
+wants honey, Tilly Thimble the tailor wants silk, Gus Greenthumb the gardener
+wants compost, Flora Petal wants lilies, Miss Penny's class wants seeds, and
+Pip the postman, Sprocket the inventor, Odette at the pet shop and the rest
+all have their reasons. Each of them is drawn in the book's style: a bear in
+a baker's cap, a toad mayor in a top hat, an owl teacher in spectacles.
+
+![A letter from Tilly Thimble the tailor, a grey tabby cat in spectacles and a purple dress, asking for a silk chrysalis for the mayor's parade scarf. It pays 12 coins, 3 stars and treats, and says that after two more orders she'll sell the farm a butterfly house](docs/letter.png)
+
+When a letter comes it pops up with a portrait of whoever wrote it. Their
+letters wait on the clipboard's **Orders** tab, and the mailbox flag goes up.
+Send an order and they reply, delighted, with **coins**, thank-you stars, a
+basket of treats for the critters, and a **heart** of friendship.
+
+Every neighbour makes something special and sells it, at the **Busytown
+Market** (the coin purse, top right), to farms that have helped them enough.
+None of them are just for show:
+
+![The Busytown Market: striped stalls for Baker Bramble, Gus Greenthumb, Flora Petal, Mayor Mossbottom, Farmer Furrow and Pip Parcel, each with their portrait, hearts of friendship and their ware (busy buns, garden sprinklers, moonflower seeds, a town notice board, a rain barrel, a mail dragonfly) with its price in coins](docs/market.jpg)
+
+| Ware | From | What it does |
+| --- | --- | --- |
+| Mail dragonfly | Pip the postman | Dash, a dragonfly in a postman's cap, collects every good into the basket for you. |
+| Rain barrel | Farmer Furrow | The misters' jugs refill themselves and the pond tops itself up. |
+| Town notice board | Mayor Mossbottom | Up to 5 letters at once, twice as often, and every order pays extra. |
+| Garden sprinklers | Gus Greenthumb | Plants grow twice as fast and flowers refill with nectar sooner. |
+| Moonflower seeds | Flora Petal | A new plant that blooms and glows at night, feeds moths and fireflies, and gives double seed heads. |
+| Busy buns | Baker Bramble | A bag of three. Whoever nibbles one works double-time for half a day. |
+| Koi, pea puffers, an axolotl | Odette at the pet shop | New pond critters with jobs of their own. |
+| Critter clinic | Doctor Dot | Poorly critters check in and get well; every critter lives a third longer. |
+| Butterfly house | Tilly Thimble | Butterflies lay their eggs there, and rare butterflies hatch from it. |
+| Little schoolhouse | Miss Penny | The young grow up twice as fast, and dreams come true sooner. |
+| Picnic hamper | Chef Crumble | Feeds its corner of the tank at breakfast and supper, never too much. |
+| Clockwork climate keeper | Sprocket | Turns every lamp, mister and the pond heater up and down to suit the residents. |
+
+Enough stars and Busytown also sends a farm stand (it sells a few spare
+goods for coins each evening) and a delivery van (it posts any order that's
+ready each morning), which you can't get any other way.
+
+The decorations all have a purpose too. The houses, logs and hidey-holes are
+homes; the bee hotel makes honey; bubblers add air; the park bench makes for
+extra-restful naps; crickets sing from the fence so the night chorus carries;
+the windmill pumps a trickle of water into its corner; the farm sign brings
+letters a little sooner and the mailbox holds one more; the banana car lures
+fruit flies away from your snacks; and bookworms who live in the little
+library work a fifth faster.
 
 ## Growing your farm
 
@@ -89,9 +163,11 @@ Most mix looking after the zone ("keep the desert comfy for 6 hours", "rinse
 out the pond filter") with something its critters make or send ("beetles roll
 2 balls of compost", "pick a water lily in bloom", "send an order to
 Busytown"). Finishing them levels the zone up
-and unlocks new critters, snacks, plants and decorations: beetles and then a
-gecko in the desert, shrimp, frogs and a turtle in the pond, and worms, pill
-bugs, aphids, ladybugs, bees, fireflies and grasshoppers in the jungle. The
+and unlocks new critters, snacks, plants and decorations: beetles, harvester
+ants, a gecko and honeypot ants in the desert; shrimp, guppies, frogs, neon
+tetras, a turtle and dragonflies in the pond; and worms, pill bugs, aphids,
+ladybugs, moths, bees, fireflies and grasshoppers in the jungle. Koi, pea
+puffers and the axolotl come from the pet shop at the Market. The
 **Sandbox** choices on the welcome screen (or in Settings) unlock everything
 at once.
 
@@ -126,11 +202,12 @@ None of that comes as a pop-up. Instead:
 | **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle: it falls (or sinks) toward whoever nearby is hungriest for it, and hungry critters close by smell it land and come over. Critters eat it bite by bite until it's gone. A critter that isn't hungry may carry a bit home to keep for later, take some to a hungry friend, or just leave it, depending on its character. |
 | **Critters** | Adopt new critters and choose where they live. |
 | **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
-| **Decor** | 29 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
+| **Decor** | 33 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. Four more (the clinic, butterfly house, schoolhouse and picnic hamper) come from the Market. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
 | **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
 | **Climate** | Set each zone's heat lamp (a dome lamp clamped to the lid, with a dimmer on its cord) and mister (a pump on the lid that drinks from a water jug and sprays through a nozzle), the pond's glass heater and its filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
-| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 50 discoveries to unlock. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything. |
+| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 63 discoveries to unlock, and a field guide with every critter's job and the varieties you've collected. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything (and the Market gives its wares away). |
 | **Clipboard** | The button at the top right. What needs doing now, Busytown's orders and your basket of goods, how each zone is doing, and the goals for its next level. |
+| **Coin purse** | Next to the clipboard. Your Busytown coins, and the way into the Market. |
 
 ### Homes
 
@@ -203,11 +280,13 @@ Other tools in `tools/`:
 | `node tools/fuzz.mjs [days] [seed]` | Has a random player feed, sculpt, adopt and change the climate, and reports any broken state. |
 | `node tools/savetest.mjs` | Save and load round-trip, plus the "while you were away" catch-up. |
 | `node tools/experiments.mjs` | Runs each experiment and checks that the expected outcome happens. |
-| `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods and sends orders) and checks that every zone levels up. |
+| `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods, sends orders and shops at the Market) and checks that every zone levels up. Reports coins, friendships, dreams and what was bought when. |
+| `node tools/markettest.mjs` | Buys every ware at the Market in turn and checks that each one does its job. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
 
 `tools/dev.html` and `tools/gallery.html` show every critter, food, plant and
-decoration on one page.
+decoration on one page, `tools/varieties.html` every variety of every critter,
+and `tools/folk.html` every Busytown neighbour.
 
 ## Deploy
 
@@ -232,16 +311,20 @@ src/
                        ant colony (castes, brood, digging, scent trails, aphid herding)
   data/                species, foods, plants, decor, names, discoveries,
                        progression (what each zone level unlocks), goods and
-                       jobs, Busytown's neighbours
+                       jobs, Busytown's neighbours, the Market's wares,
+                       critters' dreams
   art/                 procedural ink-and-watercolour drawing of everything
-                       (critters, plants, vines, equipment, goods...),
+                       (critters, plants, vines, equipment, goods, the
+                       townsfolk's portraits, the Market's gadgets...),
                        paper grain and watercolour washes
   render/              sprite cache, chunked terrain and water, light shafts,
                        particles, drifting specks and wind-blown leaves, frame
-  ui/                  camera, touch input, toolbar, sheets, cards, journal
+  ui/                  camera, touch input, toolbar, sheets, cards, journal,
+                       Busytown's letters and the Market
   sim/                 away catch-up, journal, care (comfy ranges and the
                        to-do list), progress (zone levels and goals), orders
-                       (Busytown's letters), equipment (what each gadget is)
+                       (Busytown's letters, coins and friendship), market
+                       (buying wares), dreams, equipment (what each gadget is)
   save/                localStorage save, backup, export/import
   audio/               tiny procedural sound effects (WebAudio, no files)
 ```
@@ -263,6 +346,10 @@ src/
   goes to sleep once the water is still, so a calm pond costs nothing.
 - **Movement.** Ants follow smoothed paths and feel which way the ground
   is, so they stand on floors, cling to walls and walk along ceilings.
+  Flyers steer toward a target with a heading of their own that wanders,
+  climb to their species' cruising height on long trips, look ahead to keep
+  clear of the ground, and are lifted by warm air under the lamps (see
+  `FLIGHT` in `src/entities/creature.js`).
   Walkers ease in and out of moving, stop to sniff and look round, change
   their minds and dawdle or hurry, every critter swivels to turn round, and
   hops stretch and land with a squash. Swimmers and flyers have a heading of
@@ -306,20 +393,28 @@ The catalogs are plain data, and most additions are a single line:
   `src/art/decor.js` if it needs new art.
 - **Critter:** add a species to `src/data/species.js`, built from existing
   behaviours, and an entry in `CREATURE_ART` in `src/art/creatures.js`.
-  Flyers also get a `WINGS` entry there (hinge point, length, beat rate).
+  Flyers also get a `WINGS` entry there (hinge point, length, beat rate) and
+  a `FLIGHT` style in `src/entities/creature.js`. Give it a job in
+  `src/data/goods.js` and a dream or two in `src/data/dreams.js`. Named
+  varieties are palettes with a `name`.
 - **Unlock:** list a critter, food, plant or decoration under a zone level in
   `src/data/progression.js`. Anything not listed is available from the start.
 - **Job or good:** jobs and goods are in `src/data/goods.js`. A new good also
   needs art in `src/art/goods.js` and something in the world that makes it
   (see `addGood` in `src/world/world.js`).
 - **Neighbour:** add someone to `src/data/neighbours.js` with the goods they
-  want and why.
+  want and why, what they say to thank you, and a `look` for their portrait
+  (an animal, colours, clothes, a hat and a few extras; see
+  `src/art/townsfolk.js`).
+- **Ware:** add it to `src/data/market.js` with who sells it, the hearts it
+  takes and its price, then give it its job (a perk the world checks with
+  `world.owns(id)`, a decoration with a flag, a critter or a plant).
 
 ## Credits
 
 - Fonts are self-hosted: [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand)
   (SIL Open Font License 1.1) and [Chewy](https://fonts.google.com/specimen/Chewy)
   (Apache 2.0). See `assets/fonts/README.md`.
-- The look is inspired by Richard Scarry's Busytown books. All the art is
-  original and drawn in code.
+- The look is inspired by Richard Scarry's Busytown books. All the art,
+  the townsfolk's portraits included, is original and drawn in code.
 - The code is under the MIT License (see `LICENSE`).

@@ -21,8 +21,11 @@ export const PLANTS = {
   lilypad: { name: 'Water lily', zone: 'pond', place: 'surface', kind: 'lily', h: 0, leaves: 3, leaf: '#6fae4a', petals: '#f7c6da', center: '#f6d64a', temp: [4, 14, 32, 38], moist: [-1, -1, 2, 2], growDays: 2.5, aquatic: true },
   reed: { name: 'Cattails', zone: 'pond', place: 'shore', kind: 'reed', h: 80, leaves: 5, leaf: '#8cb85a', head: '#7a4f2e', temp: [-2, 8, 34, 40], moist: [0.2, 0.5, 1.01, 2], growDays: 3 },
   eelgrass: { name: 'Eelgrass', zone: 'pond', place: 'underwater', kind: 'eelgrass', h: 90, leaves: 6, leaf: '#5f9e45', temp: [2, 10, 30, 36], moist: [-1, -1, 2, 2], growDays: 2.5, aquatic: true, oxygen: true },
+  // from Flora Petal at the Busytown Market: opens at night, glows softly,
+  // and feeds the moths and fireflies; its seed heads count double
+  moonflower: { name: 'Moonflower', zone: 'jungle', place: 'ground', kind: 'flower', h: 58, leaves: 5, petals: '#fbfaf2', center: '#f6e8a8', petalShape: 'moon', leaf: '#5f9e45', branches: 2, temp: [4, 14, 32, 40], moist: [0.1, 0.3, 1.01, 2], growDays: 2.4, night: true },
   forgetmenot: { name: 'Forget-me-not', zone: 'any', place: 'ground', kind: 'flower', h: 18, leaves: 3, petals: '#8fc4f0', center: '#f6d64a', petalShape: 'daisy', leaf: '#77b255', branches: 3, temp: [-2, 6, 32, 42], moist: [-1, 0.05, 1.01, 2], growDays: 0.8, memorial: true },
 };
 
-export const PLANT_ORDER = ['daisy', 'tulip', 'sunflower', 'clover', 'fern', 'grass', 'strawberry', 'bigleaf', 'monstera', 'palm', 'bromeliad', 'mushroom', 'cactus', 'succulent', 'marigold', 'drygrass', 'lilypad', 'reed', 'eelgrass'];
+export const PLANT_ORDER = ['daisy', 'tulip', 'sunflower', 'moonflower', 'clover', 'fern', 'grass', 'strawberry', 'bigleaf', 'monstera', 'palm', 'bromeliad', 'mushroom', 'cactus', 'succulent', 'marigold', 'drygrass', 'lilypad', 'reed', 'eelgrass'];
 for (const id of Object.keys(PLANTS)) PLANTS[id].id = id;

@@ -377,6 +377,41 @@ export const ICONS = {
       g.closePath();
     });
   },
+  // a Busytown coin, stamped with a little ladybug
+  coin(g) {
+    paint(g, '#f3c43c', LW, () => circ(g, 0, 0, 9.5));
+    circ(g, 0, 0, 7);
+    stroke(g, LW * 0.5, '#c9962a');
+    paint(g, '#d9483b', LW * 0.6, () => ell(g, 0, 0.8, 3.6, 3.2));
+    line(g, 0, -2.2, 0, 4, LW * 0.5, INK);
+    paint(g, INK, 0, () => circ(g, 0, -3, 1.6));
+    for (const [x, y] of [[-1.6, 0.6], [1.6, 0.6], [-1.3, 2.6], [1.3, 2.6]]) {
+      circ(g, x, y, 0.55);
+      fill(g, INK);
+    }
+    highlight(g, -4, -4.5, 2.4, 1.2, 0.7);
+  },
+  // the Market's striped awning
+  shop(g) {
+    paint(g, '#fbf3df', LW, () => {
+      g.beginPath();
+      g.rect(-8, -2, 16, 10);
+    });
+    paint(g, '#f6d64a', LW * 0.8, () => {
+      g.beginPath();
+      g.rect(-3, 1, 6, 7);
+    });
+    for (let i = 0; i < 4; i++) {
+      paint(g, i % 2 ? '#fbf3df' : '#e2553f', LW, () => {
+        g.beginPath();
+        g.moveTo(-10 + i * 5, -9);
+        g.lineTo(-5 + i * 5, -9);
+        g.lineTo(-5 + i * 5, -3);
+        g.quadraticCurveTo(-7.5 + i * 5, 0, -10 + i * 5, -3);
+        g.closePath();
+      });
+    }
+  },
   camera(g) {
     paint(g, '#7cc0e6', LW, () => {
       g.beginPath();

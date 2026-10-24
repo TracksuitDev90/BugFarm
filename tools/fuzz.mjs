@@ -4,7 +4,9 @@
 import { World } from '../src/world/world.js';
 import '../src/ai/ants.js';
 import { W, H, SIM_DT, DAY_LEN } from '../src/config.js';
-import { SPECIES_ORDER } from '../src/data/species.js';
+import { ADOPT_ORDER } from '../src/data/species.js';
+import { WARES } from '../src/data/market.js';
+import { buy } from '../src/sim/market.js';
 import { FOOD_ORDER } from '../src/data/foods.js';
 import { PLANT_ORDER } from '../src/data/plants.js';
 import { DECOR_ORDER } from '../src/data/decor.js';
@@ -19,6 +21,7 @@ const w = new World();
 w.newGame(seed, seed % 2 ? 'farm' : true);
 const j = new Journal();
 j.attach(w);
+j.sandbox = true; // (so the Market sells everything, for free)
 let issues = 0;
 const report = (msg) => {
   if (issues++ < 15) console.log('  ! ' + msg);
@@ -27,13 +30,13 @@ const steps = Math.round((days * DAY_LEN) / SIM_DT);
 const actions = {};
 for (let i = 0; i < steps; i++) {
   if (i % 90 === 0) {
-    const a = Math.floor(R() * 12);
+    const a = Math.floor(R() * 13);
     const x = R() * W;
     const y = R() * H;
     try {
       switch (a) {
         case 0: for (let k = 0; k < 5; k++) w.dropFood(pick(FOOD_ORDER), x + R() * 40, y); actions.feed = (actions.feed || 0) + 1; break;
-        case 1: w.adopt(pick(SPECIES_ORDER), x, y); actions.adopt = (actions.adopt || 0) + 1; break;
+        case 1: w.adopt(pick(ADOPT_ORDER), x, y); actions.adopt = (actions.adopt || 0) + 1; break;
         case 2: w.placePlant(pick(PLANT_ORDER), x); actions.plant = (actions.plant || 0) + 1; break;
         case 3: w.placeDecor(pick(DECOR_ORDER), x, y); actions.decor = (actions.decor || 0) + 1; break;
         case 4: w.sculpt(x, y, 10 + R() * 40, pick(['sand', 'soil', 'rock', 'gravel', 'dig', 'dig'])); actions.sculpt = (actions.sculpt || 0) + 1; break;
@@ -73,6 +76,12 @@ for (let i = 0; i < steps; i++) {
           actions.orders = (actions.orders || 0) + 1;
           break;
         }
+        case 12: {
+          // the Busytown Market
+          buy(j, w, pick(WARES));
+          actions.market = (actions.market || 0) + 1;
+          break;
+        }
       }
     } catch (e) {
       report('action ' + a + ' threw: ' + (e.stack || e));
@@ -94,6 +103,8 @@ for (let i = 0; i < steps; i++) {
     for (const p of w.plants) if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !p.shape.box.every(Number.isFinite)) report(`plant ${p.type} bad`);
     for (const g of w.goods) if (!Number.isFinite(g.x) || !Number.isFinite(g.y) || g.y > H + 5) report(`good ${g.type} bad pos ${g.x},${g.y}`);
     for (const [k, v] of Object.entries(w.pantry)) if (!Number.isFinite(v) || v < 0) report(`pantry ${k} = ${v}`);
+    if (!Number.isFinite(w.coins) || w.coins < 0) report(`coins = ${w.coins}`);
+    if (w.creatures.filter((c) => c.role === 'courier' && !c.dead).length > 1) report('more than one mail dragonfly');
   }
 }
 const env = w.env;
@@ -101,4 +112,5 @@ console.log(`fuzz ${days} days seed ${seed}: ${issues} issue(s); actions ${JSON.
 console.log(`end: ${w.creatures.length} critters, ${w.plants.length} plants, ${w.foods.length} foods, ${w.decor.length} decor; O2 ${env.pond.oxygen.toFixed(2)} clarity ${env.pond.clarity.toFixed(2)}; water ${w.terrain.waterLevel}`);
 console.log('counts', JSON.stringify(w.counts));
 console.log(`goods waiting ${w.goods.length}, basket ${JSON.stringify(w.pantry)}, orders open ${j.orders.list.length}, sent ${j.orders.sent}`);
+console.log(`market: ${Object.keys(w.perks).join(', ') || 'nothing'}; coins ${w.coins}; colonies ${w.colonies.map((c) => c.kind).join(', ')}`);
 process.exit(issues ? 1 : 0);

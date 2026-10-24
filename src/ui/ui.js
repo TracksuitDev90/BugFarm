@@ -1,11 +1,11 @@
 // DOM user interface layered over the tank canvas.
 import { W, H, CELL, DAY_LEN, ZONE_X } from '../config.js';
-import { SPECIES, SPECIES_ORDER, stageName, adoptLabel } from '../data/species.js';
+import { SPECIES, SPECIES_ORDER, stageName, adoptLabel, ADOPT_ORDER, ANT_KINDS, adoptSpecies } from '../data/species.js';
 import { FOODS, FOOD_ORDER, lovedBy } from '../data/foods.js';
 import { PLANTS, PLANT_ORDER } from '../data/plants.js';
 import { DECOR, DECOR_ORDER } from '../data/decor.js';
 import { DISCOVERIES } from '../data/discoveries.js';
-import { CREATURE_ART, PALETTES, drawWorm } from '../art/creatures.js';
+import { CREATURE_ART, PALETTES, drawWorm, varietyName } from '../art/creatures.js';
 import { drawFood } from '../art/food.js';
 import { drawPlant } from '../art/plants.js';
 import { DECOR_ART, decorBox } from '../art/decor.js';
@@ -20,25 +20,12 @@ import { zoneBand, zoneStatus, tankNeeds, ZONE_NAMES, listWords, plural } from '
 import { maxLevel } from '../data/progression.js';
 import { equipmentAt, equipmentInfo } from '../sim/equipment.js';
 import { heatLamp, mister, pondHeater, pondFilter } from '../art/equipment.js';
-import { GOODS, GOOD_ORDER, JOBS, goodWord } from '../data/goods.js';
+import { GOODS, GOOD_ORDER, JOBS, goodWord, jobOf } from '../data/goods.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { neighbour, needsWords } from '../sim/orders.js';
-
-const $ = (sel, root = document) => root.querySelector(sel);
-function el(tag, attrs = {}, ...kids) {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else if (k === 'html') e.innerHTML = v;
-    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
-    else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
-  }
-  for (const k of kids) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k));
-  return e;
-}
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
+import { $, el, esc, artCanvas, creatureArt, wormIcon } from './dom.js';
+import { Postbag, buildMarket, folkCanvas, heartsEl, coinsEl, nextOffer, goodIcon } from './busytown.js';
+import { onSale } from '../sim/market.js';
 
 const TOOLS = [
   { id: 'look', icon: 'hand', label: 'Look' },
@@ -77,6 +64,10 @@ const TIPS = [
   'Tap a heat lamp, mister, heater or filter to see what it does.',
   'Every critter has a job. Tap one to see what it does for the farm.',
   'Busytown writes in for the goods your critters make. Check the Orders tab on the clipboard.',
+  'Orders pay Busytown coins. Tap the coin purse (top right) to visit the Market.',
+  'Help a neighbour a few times and they will sell you something special at the Market.',
+  'Every grown-up critter has a dream. Tap one to see what it is working toward.',
+  'Butterflies ride the warm air under a heat lamp. Turn one up on a sunny day.',
   'Try the lens button (top right) to see heat, damp and scent trails.',
   'Turn the desert lamp way up and see where the ants go.',
   'Too much food spoils. Too little and tummies rumble!',
@@ -85,39 +76,8 @@ const TIPS = [
   'Warm water holds less air. Watch the fish!',
 ];
 
-// Fit art of a given local box into a canvas.
-function artCanvas(css, box, draw, dpr = Math.min(2, window.devicePixelRatio || 1)) {
-  const [cw, ch] = css;
-  const c = el('canvas');
-  c.width = Math.round(cw * dpr);
-  c.height = Math.round(ch * dpr);
-  c.style.width = cw + 'px';
-  c.style.height = ch + 'px';
-  const g = c.getContext('2d');
-  const [x0, y0, x1, y1] = box;
-  const s = Math.min((cw * dpr * 0.9) / (x1 - x0), (ch * dpr * 0.9) / (y1 - y0));
-  g.setTransform(s, 0, 0, s, c.width / 2 - ((x0 + x1) / 2) * s, c.height / 2 - ((y0 + y1) / 2) * s);
-  g.lineCap = 'round';
-  g.lineJoin = 'round';
-  try {
-    draw(g);
-  } catch (e) {
-    /* ignore */
-  }
-  return c;
-}
-
 function goodCanvas(type, css = 28, look = '') {
   return artCanvas([css, css], goodBox(type), (g) => drawGood(g, type, look));
-}
-
-function creatureArt(sp, stage, pose = 'idle', palIdx = 0, acc = null, accColor = '#e2553f', css = [64, 52]) {
-  const art = CREATURE_ART[sp];
-  if (!art) return artCanvas(css, [-10, -10, 10, 10], () => {});
-  const [bw, bh] = art.box(stage);
-  const pal = PALETTES[sp][palIdx % PALETTES[sp].length];
-  if (sp === 'worm') return wormIcon(css, palIdx);
-  return artCanvas(css, [-bw, -bh, bw, bh], (g) => art.draw(g, { stage, pose, frame: 1, pal, acc, accColor, lw: art.lw, closed: false }));
 }
 
 export class UI {
@@ -162,9 +122,13 @@ export class UI {
     const speedBox = el('div', { class: 'panel speed' }, this.playBtn, this.fastBtn);
     this.lensBtn = el('button', { class: 'btn iconbtn', 'aria-label': 'Science lens', title: 'Science lens', onclick: () => this.cycleLens() }, iconCanvas('lens', 28));
     const gear = el('button', { class: 'btn iconbtn', 'aria-label': 'Settings', title: 'Settings', onclick: () => this.openSettings() }, iconCanvas('gear', 28));
+    // the coin purse: Busytown coins, and the way into the Market
+    this.purseN = el('b', {}, '0');
+    this.purseDot = el('i', { class: 'newdot hidden', title: 'Something new at the Market!' });
+    this.purseBtn = el('button', { class: 'btn purse', 'aria-label': 'Busytown Market', title: 'Busytown Market: spend your coins', onclick: () => this.openMarket() }, iconCanvas('coin', 24), this.purseN, this.purseDot);
     this.clipBadge = el('span', { class: 'badge hidden' });
     this.clipBtn = el('button', { class: 'btn iconbtn clipbtn', 'aria-label': "Keeper's clipboard", title: "Keeper's clipboard: what needs doing, and your farm's goals", onclick: () => this.setTool('clip') }, iconCanvas('clip', 30), this.clipBadge);
-    const hud = el('header', { id: 'hud' }, el('div', { class: 'hud-left' }, clock, speedBox), el('div', { class: 'hud-right' }, this.clipBtn, this.lensBtn, gear));
+    const hud = el('header', { id: 'hud' }, el('div', { class: 'hud-left' }, clock, speedBox), el('div', { class: 'hud-right' }, this.purseBtn, this.clipBtn, this.lensBtn, gear));
     this.lensLabel = el('div', { id: 'lensLabel', class: 'panel hidden' });
     // zone chips
     this.zoneBox = el('nav', { id: 'zones', class: 'panel', 'aria-label': 'Jump to zone' });
@@ -187,7 +151,8 @@ export class UI {
     this.card = el('section', { id: 'card', class: 'panel hidden' });
     this.toasts = el('div', { id: 'toasts' });
     this.modal = el('div', { id: 'modal', class: 'hidden', onclick: (e) => e.target === this.modal && this.closeModal() });
-    app.append(hud, this.lensLabel, this.zoneBox, this.toasts, this.sheet, this.card, this.toolbar, this.modal);
+    this.post = new Postbag(this);
+    app.append(hud, this.lensLabel, this.zoneBox, this.toasts, this.post.box, this.sheet, this.card, this.toolbar, this.modal);
     this.setTool('look');
     this.setSpeed(this.game.speed, true);
     this.updateHUD(true);
@@ -361,10 +326,14 @@ export class UI {
   }
 
   buildFeed(body) {
-    const items = FOOD_ORDER.map((id) => Object.assign({ id, name: FOODS[id].name, canvas: () => artCanvas([64, 52], [-11, -12, 11, 3], (g) => drawFood(g, FOODS[id], 0)) }, this.lockInfo('feed', id)));
+    const items = FOOD_ORDER.map((id) => Object.assign({ id, name: FOODS[id].name, count: id === 'bun' && this.world.stock.buns ? `×${this.world.stock.buns}` : '', canvas: () => artCanvas([64, 52], [-11, -12, 11, 3], (g) => drawFood(g, FOODS[id], 0)) }, this.lockInfo('feed', id)));
     if (!this.journal.canUse('feed', this.choice.feed)) this.choice.feed = items.find((it) => !it.locked).id;
     const say = (id) => {
       const fans = lovedBy(id, SPECIES).map((sp) => SPECIES[sp].plural).slice(0, 5);
+      if (FOODS[id].busy) {
+        this.hint.innerHTML = `<b>${esc(FOODS[id].name)}</b> (${this.world.stock.buns} left) — everybody loves them, and whoever nibbles one works double-time for half a day. Tap to drop one near some busy critters.`;
+        return;
+      }
       this.hint.innerHTML = `<b>${esc(FOODS[id].name)}</b> — loved by ${fans.length ? esc(fans.join(', ')) : 'hmm, nobody much'}. Tap the tank to drop it; hold to sprinkle.`;
     };
     this.tray(body, items, this.choice.feed, (it) => {
@@ -376,16 +345,21 @@ export class UI {
 
   buildAdopt(body) {
     const z = this.tab.adopt;
-    const list = SPECIES_ORDER.filter((sp) => sp !== 'fruitfly' && (z === 'all' || SPECIES[sp].zone === z));
-    const items = list.map((sp) => {
-      const st = sp === 'frog' ? 'tadpole' : sp === 'butterfly' ? 'caterpillar' : sp === 'ant' ? 'queen' : SPECIES[sp].adultStage;
-      const pose = sp === 'goldfish' || st === 'tadpole' ? 'swim' : sp === 'bee' ? 'fly' : 'idle';
+    const w = this.world;
+    const list = ADOPT_ORDER.filter((id) => z === 'all' || SPECIES[adoptSpecies(id)].zone === z);
+    const items = list.map((id) => {
+      const sp = adoptSpecies(id);
+      const kind = ANT_KINDS[id];
+      const st = sp === 'frog' ? 'tadpole' : sp === 'butterfly' || sp === 'moth' ? 'caterpillar' : sp === 'dragonfly' ? 'nymph' : kind ? 'worker' : SPECIES[sp].adultStage;
+      const pose = SPECIES[sp].fish || st === 'tadpole' ? 'swim' : sp === 'bee' ? 'fly' : 'idle';
+      // ant kinds count the workers in colonies of that kind
+      const n = kind ? w.creatures.filter((c) => c.sp === 'ant' && !c.dead && (w.colony(c.colonyId) || {}).kind === kind.kind).length : w.count(sp);
       return Object.assign({
-        id: sp,
-        name: adoptLabel(sp),
-        count: `${this.world.count(sp)}/${SPECIES[sp].maxPop}`,
-        canvas: () => (sp === 'worm' ? wormIcon() : creatureArt(sp, st, pose)),
-      }, this.lockInfo('adopt', sp));
+        id,
+        name: adoptLabel(id),
+        count: kind ? `${n}` : `${n}/${SPECIES[sp].maxPop}`,
+        canvas: () => (sp === 'worm' ? wormIcon() : creatureArt(sp, st, pose, kind ? kind.pal[0] : 0)),
+      }, this.lockInfo('adopt', id));
     });
     if (this.choice.adopt && !this.journal.canUse('adopt', this.choice.adopt)) this.choice.adopt = null;
     const say = (sp) => {
@@ -393,9 +367,10 @@ export class UI {
         this.hint.textContent = 'Pick a critter, then tap where it should live.';
         return;
       }
-      const d = SPECIES[sp];
+      const d = SPECIES[adoptSpecies(sp)];
       const u = this.settings.units;
-      this.hint.innerHTML = `<b>${esc(adoptLabel(sp))}</b> — ${esc(d.blurb)} <i>Comfy at ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)}${d.moist[0] >= 0 && d.moist[1] >= 0.3 ? ' in damp air' : ''}.</i>`;
+      const blurb = ANT_KINDS[sp] ? `${d.blurb} ${ANT_KINDS[sp].blurb}` : d.blurb;
+      this.hint.innerHTML = `<b>${esc(adoptLabel(sp))}</b> — ${esc(blurb)} <i>Comfy at ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)}${d.moist[0] >= 0 && d.moist[1] >= 0.3 ? ' in damp air' : ''}.</i>`;
     };
     this.tray(body, items, this.choice.adopt, (it) => {
       this.choice.adopt = it.id;
@@ -449,8 +424,7 @@ export class UI {
         return;
       }
       const d = DECOR[id];
-      const fx = d.shelter ? 'Critters can hide and nap inside.' : d.oxygen ? 'Adds bubbles and air to the pond.' : d.light ? 'Glows at night.' : d.hive ? 'Bumblebees can raise new bees here.' : d.feeder ? 'Drops a little food each morning — handy for holidays!' : d.stamp ? 'Becomes part of the ground. Great for basking.' : 'Just for fun!';
-      this.hint.innerHTML = `<b>${esc(d.name)}</b> — ${esc(fx)}`;
+      this.hint.innerHTML = `<b>${esc(d.name)}</b> — ${esc(d.job || 'Just for fun!')}`;
     };
     this.tray(body, items, this.choice.decor, (it) => {
       this.choice.decor = it.id;
@@ -821,7 +795,7 @@ export class UI {
       box.append(row);
     }
     const names = [];
-    for (const sp of next.critters || []) names.push(SPECIES[sp].plural);
+    for (const sp of next.critters || []) names.push(ANT_KINDS[sp] ? ANT_KINDS[sp].label : SPECIES[sp].plural);
     for (const f of next.foods || []) names.push(FOODS[f].name);
     for (const pl of next.plants || []) names.push(PLANTS[pl].name);
     for (const d of next.decor || []) names.push(DECOR[d].name);
@@ -849,7 +823,7 @@ export class UI {
     const w = this.world;
     const ord = this.journal.orders;
     const E = this.ordEls;
-    const key = GOOD_ORDER.map((g) => w.pantry[g] || 0).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id).join(',') + '|' + ord.stars;
+    const key = GOOD_ORDER.map((g) => w.pantry[g] || 0).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id).join(',') + '|' + ord.stars + '|' + w.coins;
     if (!force && key === this.ordKey) return;
     this.ordKey = key;
     // the letters
@@ -865,15 +839,17 @@ export class UI {
       const needs = el('div', { class: 'oneeds' });
       for (const [g, n] of Object.entries(o.needs)) {
         const have = Math.min(n, w.pantry[g] || 0);
-        needs.append(el('span', { class: 'oneed' + (have >= n ? ' ok' : ''), title: GOODS[g].how }, goodCanvas(g, 22), `${have} of ${n} ${n === 1 ? GOODS[g].one : GOODS[g].many}`));
+        needs.append(el('span', { class: 'oneed' + (have >= n ? ' ok' : ''), title: GOODS[g].how }, goodIcon(g, 22), `${have} of ${n} ${n === 1 ? GOODS[g].one : GOODS[g].many}`));
       }
+      const offer = nextOffer(this.journal, w, nb.id);
       E.list.append(
         el('div', { class: 'order' + (ok ? ' ready' : '') },
-          el('div', { class: 'ohead' }, iconCanvas(nb.icon, 22), el('span', {}, el('b', {}, nb.name), ', ' + nb.job)),
+          el('div', { class: 'ohead' }, folkCanvas(nb, ok ? 'happy' : 'ask', 46), el('span', {}, el('b', {}, nb.name), ', ' + nb.job, el('br'), heartsEl(ord.heartsOf(nb.id)))),
           el('p', { class: 'letter' }, `“Dear Bug Farm, could you send ${needsWords(o.needs)}? ${o.why}”`),
           needs,
+          offer ? el('div', { class: 'small ooffer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} to unlock the ${offer.ware.name.toLowerCase()}.`) : null,
           el('div', { class: 'ofoot' },
-            el('span', { class: 'ostars' }, `Thank-you: ★${o.stars} + treats`),
+            el('span', { class: 'ostars' }, coinsEl(ord.pay(o).total), ` + ★${o.stars} + treats`),
             el('button', { class: 'btn small', onclick: () => {
               ord.decline(o);
               this.refreshNeeds();
@@ -904,7 +880,9 @@ export class UI {
     }
     const next = ord.nextGift();
     E.foot.innerHTML = '';
-    E.foot.append(el('p', { class: 'small ototal' }, `Orders sent: ${ord.sent} · ★${ord.stars} thank-you stars${next ? ` · Busytown's next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}` : ''}`));
+    E.foot.append(
+      el('div', { class: 'row ototal' }, coinsEl(w.coins), el('span', { class: 'small', style: 'flex:1' }, `Orders sent: ${ord.sent} · ★${ord.stars}${next ? ` · next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}` : ''}`), el('button', { class: 'btn small yellow', onclick: () => this.openMarket() }, iconCanvas('shop', 20), 'Market'))
+    );
   }
 
   updateClipboard(force) {
@@ -1028,7 +1006,7 @@ export class UI {
   // A zone grew: show off what's new.
   levelUp(z, lv, unlocks) {
     const names = [];
-    for (const sp of unlocks.adopt) names.push(SPECIES[sp].plural);
+    for (const sp of unlocks.adopt) names.push(ANT_KINDS[sp] ? ANT_KINDS[sp].label : SPECIES[sp].plural);
     for (const f of unlocks.feed) names.push(FOODS[f].name);
     for (const pl of unlocks.plant) names.push(PLANTS[pl].name);
     for (const d of unlocks.decor) names.push(DECOR[d].name);
@@ -1128,6 +1106,18 @@ export class UI {
       case 'feed': {
         if (!this.choice.feed) return;
         if (wy < 0 || wy > H || wx < 0 || wx > W) return;
+        if (FOODS[this.choice.feed].busy) {
+          // a busy bun comes out of the bag, one at a time
+          if (!(w.stock.buns > 0) && !this.journal.sandbox) {
+            this.toast('No busy buns left. Baker Bramble sells them at the Market.', 'coin');
+            return;
+          }
+          if (!this.journal.sandbox) w.stock.buns--;
+          w.dropFood('bun', wx, Math.max(14, wy));
+          this.sound.play('pop', 0.5);
+          this.renderSheet();
+          return;
+        }
         w.dropFood(this.choice.feed, wx, Math.max(14, wy));
         this.sound.play('pop', 0.5);
         this.haptic(8);
@@ -1252,9 +1242,9 @@ export class UI {
 
   // A letter has arrived from Busytown.
   newLetter(o) {
-    const nb = neighbour(o.who);
     this.sound.play('pop', 0.6);
-    this.toast(`<b>A letter from ${esc(nb.name)}</b>, ${esc(nb.job)}: could you send ${esc(needsWords(o.needs))}? <small>See the clipboard's Orders.</small>`, nb.icon, false, 5000);
+    this.haptic(10);
+    this.post.letter(o);
     this.refreshNeeds();
     if (this.tool === 'clip') this.renderSheet();
   }
@@ -1262,12 +1252,31 @@ export class UI {
   sendOrder(o) {
     const r = this.journal.orders.send(o);
     if (!r) return;
+    this.thanked(r);
+    this.renderSheet();
+  }
+  // A thank-you from Busytown, whether the keeper posted the order or the
+  // delivery van did.
+  thanked(r) {
     this.sound.play('sparkle', 0.9);
     this.haptic(20);
-    this.toast(`<b>Sent to ${esc(r.nb.name)}!</b> +${o.stars} ★${r.treats.length ? '<br>A basket of treats came back for your critters.' : ''}`, 'star', true, 4500);
-    for (const gf of r.gifts) this.toast(`<b>A gift from Busytown!</b><br>${esc(gf.text)} <i>Find it in Decor.</i>`, 'house', true, 7500);
+    this.post.thanks(r);
+    this.updateHUD(true);
     this.refreshNeeds();
-    this.renderSheet();
+  }
+
+  openOrders() {
+    this.tab.clip = 'orders';
+    if (this.tool !== 'clip') this.setTool('clip');
+    else this.renderSheet();
+  }
+
+  // The Busytown Market: every neighbour's stall.
+  openMarket() {
+    this.openModal('Busytown Market', (b, head) => buildMarket(this, b, head), true);
+    const seen = (this.settings.seenWares = this.settings.seenWares || []);
+    for (const wr of onSale(this.journal, this.world)) if (!seen.includes(wr.id)) seen.push(wr.id);
+    this.hooks.saveSettings();
   }
 
   // Tapping a piece of equipment (heat lamp, mister, pond heater, filter or
@@ -1359,7 +1368,7 @@ export class UI {
   }
 
   hold(wx, wy, held) {
-    if (this.tool !== 'feed' || !this.choice.feed) return;
+    if (this.tool !== 'feed' || !this.choice.feed || FOODS[this.choice.feed].busy) return;
     const now = performance.now();
     if (this._sprinkle && now - this._sprinkle < 220) return;
     this._sprinkle = now;
@@ -1493,7 +1502,8 @@ export class UI {
     const actions = el('div', { class: 'card-actions' });
     if (e.kind === 'creature') {
       this.cardJob = el('div', { class: 'job' });
-      c.append(this.cardThought, this.cardJob, this.cardMeters, this.cardChips);
+      this.cardDream = el('div', { class: 'dream' });
+      c.append(this.cardThought, this.cardJob, this.cardDream, this.cardMeters, this.cardChips);
       actions.append(
         el('button', { class: 'btn small yellow', onclick: () => {
           this.cam.follow = this.cam.follow === e ? null : e;
@@ -1572,12 +1582,18 @@ export class UI {
       const ageD = e.age / DAY_LEN;
       const hrs = Math.max(1, Math.round(ageD * 24));
       const age = ageD < 1 ? `${hrs} hour${hrs === 1 ? '' : 's'} old` : `${ageD.toFixed(ageD < 10 ? 1 : 0)} days old`;
-      this.cardName.innerHTML = `${esc(e.name)}`;
-      let sub = `${stageName(e.sp, e.stage)} ${e.def.name.toLowerCase()} · ${age}`;
+      this.cardName.innerHTML = `${esc(e.name)}${e.memory.master ? ' <span class="master" title="Their dream came true">★</span>' : ''}`;
+      // its variety, if it comes in named ones ("Blue morpho", "Kohaku koi")
+      const col = e.sp === 'ant' ? this.world.colony(e.colonyId) : null;
+      const vName = e.role === 'courier' ? 'Mail dragonfly' : e.sp === 'ant' && col ? ANT_KINDS[Object.keys(ANT_KINDS).find((k) => ANT_KINDS[k].kind === col.kind)].name : e.isAdult ? varietyName(e.sp, e.palIdx) : '';
+      const what = e.isAdult && vName ? vName.toLowerCase() : e.def.name.toLowerCase();
+      let sub = `${e.isAdult ? (e.stage === 'queen' ? 'queen ' : '') : stageName(e.sp, e.stage) + ' '}${what} · ${age}`;
+      sub = sub[0].toUpperCase() + sub.slice(1);
       if (e.dead) sub = `${e.def.name} · passed away`;
       this.cardSub.textContent = sub;
-      this.cardThought.textContent = e.dead ? 'Resting peacefully now.' : e.stage === 'egg' ? (e.sp === 'frog' ? 'Little tadpoles are wriggling inside...' : 'Something is growing in here...') : e.stage === 'chrysalis' ? 'Changing... shh!' : e.thought || '...';
+      this.cardThought.textContent = e.dead ? 'Resting peacefully now.' : e.stage === 'egg' ? (e.sp === 'frog' ? 'Little tadpoles are wriggling inside...' : 'Something is growing in here...') : e.pupa ? 'Changing... shh!' : e.thought || '...';
       this.cardJob.innerHTML = this.jobHTML(e);
+      this.cardDream.innerHTML = this.dreamHTML(e);
       const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
       const mood = this.mood(e);
       this.cardMeters.innerHTML =
@@ -1635,19 +1651,22 @@ export class UI {
       }
       this.cardName.textContent = e.def.name;
       const gift = e.type === 'farmStand' || e.type === 'deliveryVan';
-      let sub = e.def.hive ? 'Bees bring pollen home here to make honey and raise young.' : e.def.feeder ? 'Drops food every morning at 8:00.' : gift ? 'A thank-you gift from Busytown.' : 'Looking lovely.';
+      let sub = (gift ? 'A thank-you gift from Busytown. ' : '') + (e.def.job || 'Looking lovely.');
       if (e.def.shelter) {
         // who lives here, and who's in right now
         const home = e.residents;
         const inside = this.world.creatures.filter((c) => c.inside === e && !c.dead);
         const who = (list) => list.slice(0, 4).map((c) => `${c.name} the ${c.def.name.toLowerCase()}`).join(', ') + (list.length > 4 ? ` and ${list.length - 4} more` : '');
         const visitors = inside.filter((c) => !home.includes(c));
-        if (home.length) sub = `Home to ${who(home)}. ` + (inside.length ? `${inside.length} in right now.` : 'Everyone is out and about.');
+        if (e.def.clinic) sub = visitors.length ? `Getting better inside: ${who(visitors)}.` : 'Nobody is poorly right now.';
+        else if (home.length) sub = `Home to ${who(home)}. ` + (inside.length ? `${inside.length} in right now.` : 'Everyone is out and about.');
         else sub = visitors.length ? `Sheltering inside: ${who(visitors)}.` : e.wet ? 'A hidey-hole for pond critters. Nobody has moved in yet.' : 'A snug little home. Nobody has moved in yet.';
       }
       this.cardSub.textContent = sub;
-      if (e.def.shelter) {
-        this.cardMeters.innerHTML = `<span>Rooms taken</span><span>${e.residents.length} of ${e.def.cap || 3}</span><span>Good for</span><span>${e.wet ? 'fish, tadpoles, shrimp and snails' : 'critters on dry land'}</span>`;
+      const does = e.def.job && e.def.shelter ? `<span>What it's for</span><span>${esc(e.def.job)}</span>` : '';
+      if (e.def.clinic) this.cardMeters.innerHTML = does;
+      else if (e.def.shelter) {
+        this.cardMeters.innerHTML = `<span>Rooms taken</span><span>${e.residents.length} of ${e.def.cap || 3}</span><span>Good for</span><span>${e.wet ? 'fish, tadpoles, shrimp and snails' : 'critters on dry land'}</span>${does}`;
       } else if (e.def.hive) {
         const jars = this.world.goods.filter((g) => g.type === 'honey' && g.src === e.id).length;
         const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
@@ -1693,13 +1712,23 @@ export class UI {
 
   // What a critter does for the farm, and how much of it it has done.
   jobHTML(e) {
-    const j = JOBS[e.sp];
+    const j = jobOf(e, e.sp === 'ant' ? this.world.colony(e.colonyId) : null);
     if (!j || e.dead) return '';
     if (e.stage === 'queen') return '<b>Job:</b> Queen <span>— lays every egg in the colony while the workers look after her.</span>';
     const made = e.memory.made || 0;
     const did = made && j.makes ? ` <i>Made ${goodWord(j.makes, made)} so far.</i>` : '';
     if (!e.isAdult) return `<b>Job when grown up:</b> ${esc(j.title)} <span>— ${esc(j.does)}.</span>`;
-    return `<b>Job:</b> ${esc(j.title)} <span>— ${esc(j.does)}.</span>${did}`;
+    const busy = e.busyT > 0 ? ' <i class="busy">Working double-time after a busy bun!</i>' : '';
+    return `<b>Job:</b> ${esc(j.title)} <span>— ${esc(j.does)}.</span>${did}${busy}`;
+  }
+
+  // A grown-up's dream, and how close it is to coming true.
+  dreamHTML(e) {
+    if (e.dead) return '';
+    const p = this.journal.dreams.progress(e);
+    if (!p) return '';
+    if (p.done) return `<b>Dream come true:</b> ${esc(p.text)}. <span class="master">★ ${esc(e.memory.master)}</span> <span>(works a quarter faster)</span>`;
+    return `<b>Dream:</b> ${esc(p.text)} <span class="dmeter"><i style="width:${Math.round(p.f * 100)}%"></i></span> <span>${p.n} of ${p.dream.n}</span>`;
   }
 
   mood(c) {
@@ -1814,6 +1843,19 @@ export class UI {
 
   updateHUD() {
     const env = this.world.env;
+    // the purse: coins, and a dot when there's something new to buy
+    const coins = String(this.world.coins);
+    if (this.purseN.textContent !== coins) {
+      if (this._coins != null && +coins > this._coins) {
+        this.purseBtn.classList.remove('chink');
+        void this.purseBtn.offsetWidth;
+        this.purseBtn.classList.add('chink');
+      }
+      this.purseN.textContent = coins;
+    }
+    this._coins = +coins;
+    const seen = this.settings.seenWares || [];
+    this.purseDot.classList.toggle('hidden', !onSale(this.journal, this.world).some((wr) => !seen.includes(wr.id)));
     const h = env.hour;
     const hh = Math.floor(h);
     const mm = Math.floor((h - hh) * 60 / 15) * 15;
@@ -1916,7 +1958,7 @@ export class UI {
           const d = SPECIES[sp];
           const met = j.met[sp];
           const st = sp === 'ant' ? 'worker' : d.adultStage;
-          const cv = sp === 'worm' ? wormIcon([74, 60]) : creatureArt(sp, st, sp === 'goldfish' ? 'swim' : sp === 'bee' || sp === 'fruitfly' ? 'fly' : 'idle', 0, null, '#e2553f', [74, 60]);
+          const cv = sp === 'worm' ? wormIcon([74, 60]) : creatureArt(sp, st, d.fish ? 'swim' : sp === 'bee' || sp === 'fruitfly' ? 'fly' : 'idle', 0, null, '#e2553f', [74, 60]);
           if (!met) cv.style.filter = 'brightness(0) opacity(0.25)';
           const u = this.settings.units;
           const eats = Object.entries(d.diet).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => k).join(', ') + (d.prey ? ', ' + d.prey.map((p) => SPECIES[p].plural.toLowerCase()).join(', ') : '');
@@ -1927,7 +1969,8 @@ export class UI {
                 met ? el('div', { class: 'small' }, d.blurb) : el('div', { class: 'small' }, `Lives in the ${d.zone}.`),
                 met && JOBS[sp] ? el('div', { class: 'small job' }, el('b', {}, 'Job: '), `${JOBS[sp].title} — ${JOBS[sp].does}.`) : null,
                 met ? el('div', { class: 'small' }, `Comfy at ${fmtTemp(d.temp[1], u)}–${fmtTemp(d.temp[2], u)} · Eats: ${eats} · Active: ${d.activity === 'any' ? 'any time' : d.activity === 'dusk' ? 'dawn & dusk' : 'by ' + d.activity}`) : null,
-                met ? el('ul', {}, ...d.facts.map((f) => el('li', {}, f))) : null))
+                met ? el('ul', {}, ...d.facts.map((f) => el('li', {}, f))) : null,
+                met ? this.varietiesEl(sp) : null))
           );
         }
       } else if (t === 'diary') {
@@ -1968,6 +2011,27 @@ export class UI {
         }
       }
     });
+  }
+
+  // Every named variety of a species, greyed out until the keeper has met
+  // one: a little collection to complete.
+  varietiesEl(sp) {
+    const pals = PALETTES[sp] || [];
+    if (pals.length < 2 || !pals[0].name) return null;
+    const def = SPECIES[sp];
+    const st = sp === 'ant' ? 'worker' : def.adultStage;
+    const pose = def.fish ? 'swim' : 'idle';
+    let n = 0;
+    const row = el('div', { class: 'varieties' });
+    pals.forEach((P, i) => {
+      const seen = this.journal.seenVar[sp + ':' + i];
+      if (seen) n++;
+      const cv = creatureArt(sp, st, pose, i, sp === 'dragonfly' && i === 4 ? 'post' : null, '#e2553f', [40, 34]);
+      if (!seen) cv.style.filter = 'brightness(0) opacity(0.22)';
+      const rare = def.rarePals && def.rarePals.includes(i);
+      row.append(el('span', { class: 'variety' + (rare ? ' rare' : ''), title: seen ? P.name : rare ? 'A rare variety: not found yet' : 'Not met yet' }, cv, el('small', {}, seen ? P.name : '?')));
+    });
+    return el('div', {}, el('div', { class: 'small' }, el('b', {}, 'Varieties: '), `${n} of ${pals.length} found`), row);
   }
 
   openSettings() {
@@ -2044,6 +2108,7 @@ export class UI {
       b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
       b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
+      b.append(el('p', {}, 'Every critter has a job. The honey, silk, seeds, compost and water lilies they make are wanted in Busytown, and the townsfolk pay in coins. Make friends with them and spend your coins at the Busytown Market.'));
       const pick = (mode) => () => {
         this.closeModal();
         onChoose(mode);
@@ -2088,11 +2153,4 @@ export class UI {
   }
 }
 
-function wormIcon(css = [64, 52], palIdx = 0) {
-  return artCanvas(css, [-22, -9, 22, 9], (g) => {
-    const pts = [];
-    for (let i = 0; i < 12; i++) pts.push({ x: 17 - i * 3.2, y: Math.sin(i * 0.7) * 3 });
-    drawWorm(g, pts, PALETTES.worm[palIdx % PALETTES.worm.length], 0.8, false, 'cap', '#4c8fd6');
-  });
-}
 export { drawIcon };

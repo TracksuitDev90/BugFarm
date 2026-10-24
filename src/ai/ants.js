@@ -30,6 +30,10 @@ export class Colony {
     this.layT = DAY_LEN * 0.05;
     this.queenId = 0;
     this.palIdx = 0;
+    // garden | harvester | honeypot: what the colony does besides dig and
+    // forage (see ANT_KINDS), and what it has put by toward its next good
+    this.kind = 'garden';
+    this.store = 0;
     this.pher = new Float32Array(GW * GH);
     this.pherT = 0;
     this.pherActive = new Set();
@@ -206,6 +210,8 @@ export class Colony {
     }
     if (this.fronts.length === 0) this.sproutFront();
     this.dug += removed;
+    // tunnels let air and water into the sand: desert plants grow better
+    if (removed && w.env.fertility.desert < 0.75) w.env.fertility.desert += removed * 0.0006;
     return removed;
   }
 
@@ -235,6 +241,42 @@ export class Colony {
     return w.byId(this.queenId);
   }
 
+  // Room for ants: one colony may grow to the full number; several share it.
+  cap(w) {
+    let n = 0;
+    for (const col of w.colonies) if (col.queen(w) && !col.queen(w).dead) n++;
+    return Math.max(22, Math.round(w.spDef('ant').maxPop / Math.max(1, n)));
+  }
+
+  // A forager has brought something home. Harvesters keep the seeds and
+  // grain; honeypot ants keep the sweet things (in the tummies of their
+  // repletes). Enough put by makes a good the keeper can collect at the door.
+  stash(w, c, amt) {
+    const tags = c.carryTags || [];
+    let want = false;
+    if (this.kind === 'harvester') want = tags.includes('seed') || tags.includes('grain');
+    else if (this.kind === 'honeypot') want = tags.includes('sweet') || tags.includes('nectar') || tags.includes('honeydew') || tags.includes('fruit');
+    if (!want) return;
+    this.store += amt * (c.busyT > 0 ? 2 : 1);
+    const need = this.kind === 'harvester' ? 0.22 : 0.26;
+    if (this.store < need) return;
+    const type = this.kind === 'harvester' ? 'seeds' : 'honey';
+    const ex = this.entrance.cx * CELL;
+    if (w.goods.filter((g) => g.type === type && Math.abs(g.x - ex) < 60).length >= 2) {
+      this.store = need; // the doorstep's full: wait for the keeper
+      return;
+    }
+    this.store -= need;
+    const side = chance(0.5) ? 1 : -1;
+    const x = ex + side * rrange(8, 18);
+    const g = w.addGood(type, x, w.terrain.surfaceY(x), { by: c, plant: type === 'seeds' ? 'marigold' : '', look: 'ant' });
+    if (!g) return;
+    w.credit(c);
+    w.sparkle(x, g.y - 4, 5);
+    w.events.emit('antHarvest', { c, colony: this, type, g });
+    w.addLog(type === 'seeds' ? 'The harvester ants piled their spare seeds by the nest door.' : 'The honeypot ants filled a jar of desert honey!', 'leaf');
+  }
+
   needs(w) {
     const pop = this.workers(w) + this.brood.length;
     const space = 70 + pop * 14;
@@ -256,7 +298,7 @@ export class Colony {
     // queen lays eggs when the larder is stocked
     if (queen && !queen.dead) {
       this.layT -= dt * dev;
-      if (this.layT <= 0 && this.food > 0.6 && pop < w.spDef('ant').maxPop) {
+      if (this.layT <= 0 && this.food > 0.6 && pop < this.cap(w)) {
         const a = Math.random() * TAU;
         const r = Math.random();
         this.brood.push({ stage: 'egg', t: 0, x: (this.chamber.cx + Math.cos(a) * 4 * r) * CELL, y: this.chamber.cy * CELL + 1.5, a: rrange(-0.5, 0.5) });
@@ -269,7 +311,7 @@ export class Colony {
     const nurses = this._nurses || 0;
     for (let i = this.brood.length - 1; i >= 0; i--) {
       const b = this.brood[i];
-      b.t += dt * dev * (1 + Math.min(1, nurses / 3) * 0.4);
+      b.t += dt * dev * (1 + Math.min(1, nurses / 3) * 0.4) * (w.has.school ? 1.5 : 1);
       if (b.stage === 'egg' && b.t > DAY_LEN * 0.45) {
         b.stage = 'larva';
         b.t = 0;
@@ -295,7 +337,12 @@ export class Colony {
     if (this.guardT <= 0) {
       this.guardT = 2;
       let n = 0;
-      for (const c of w.creatures) if (c.colonyId === this.id && c.brain.b && c.brain.b.id === 'antGuard') n++;
+      for (const c of w.creatures) {
+        if (c.colonyId !== this.id) continue;
+        if (c.brain.b && c.brain.b.id === 'antGuard') n++;
+        // a honeypot colony's repletes swell up golden as the store fills
+        if (this.kind === 'honeypot' && c.stage === 'worker') c.acc = c.id % 4 === 0 && (this.store > 0.08 || this.food > 2) ? 'replete' : null;
+      }
       this._guards = n;
     }
     // food spots fade
@@ -392,6 +439,8 @@ export class Colony {
       queenId: this.queenId,
       palIdx: this.palIdx,
       style: this.style,
+      kind: this.kind,
+      store: +this.store.toFixed(3),
     };
   }
 
@@ -407,6 +456,8 @@ export class Colony {
     c.layT = d.layT || 0;
     c.queenId = d.queenId;
     c.palIdx = d.palIdx || 0;
+    c.kind = d.kind || 'garden';
+    c.store = d.store || 0;
     return c;
   }
 }
@@ -523,6 +574,7 @@ def('antDeliver', {
     if (c.arrived || !antMoving(c, w)) {
       if (!c.arrived && c.brain.t < 3) return true;
       col.food += c.carryAmt || 0.05;
+      col.stash(w, c, c.carryAmt || 0.05);
       if (c.carrySrc) col.addFoodSpot(c.carrySrc[0], c.carrySrc[1]);
       w.events.emit('antStore', { c, colony: col });
       c.carry = null;
@@ -623,6 +675,7 @@ def('antForage', {
         c.carry = 'food';
         c.carryAmt = amt;
         c.carryFood = f.def.colors[0];
+        c.carryTags = f.tags;
         c.carrySrc = [f.x, f.y];
         w.events.emit('antFind', { c, food: f, recruited: d.recruited });
         return false;
@@ -654,6 +707,7 @@ def('antForage', {
         c.carry = 'food';
         c.carryAmt = amt + 0.01;
         c.carryFood = '#f3e08a';
+        c.carryTags = ['honeydew', 'sweet'];
         c.carrySrc = null;
         w.events.emit('aphidFarm', { c, aphid: a });
         c.target = { kind: 'point', x: c.x, y: c.y }; // climb down

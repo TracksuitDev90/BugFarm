@@ -132,7 +132,7 @@ export class Plant {
             fy = by - H * 0.18;
             S.stems.push({ pts: [[bx, by], [bx + dir * H * 0.1, by - H * 0.12], [fx, fy]], w: 1.1 });
           }
-          const r = (def.petalShape === 'sun' ? 11 : def.petalShape === 'tulip' ? 4.6 : def.memorial ? 2.4 : 4.2) * (0.4 + 0.6 * open) * (i > 0 ? 0.8 : 1);
+          const r = (def.petalShape === 'sun' ? 11 : def.petalShape === 'tulip' ? 4.6 : def.petalShape === 'moon' ? 5.2 : def.memorial ? 2.4 : 4.2) * (0.4 + 0.6 * open) * (i > 0 ? 0.8 : 1);
           S.flowers.push({ x: fx, y: fy, r, i, open, pollinated: f.pollinated, shape: def.petalShape, droop });
           addSlot(fx, fy - r * 0.3, 'flower', i, top[0], top[1]);
         });
@@ -545,7 +545,7 @@ export class Plant {
     const fert = zone === 'pond' ? 0.5 + env.pond.nutrients * 0.5 : env.fertility[zone] || 0.4;
     const lightF = def.likesDark ? 1.15 - L * 0.5 : 0.12 + 0.88 * L;
     if (this.growth < 1) {
-      const rate = (dt / (def.growDays * DAY_LEN)) * lightF * comfort * (0.6 + fert * 0.8);
+      const rate = ((dt / (def.growDays * DAY_LEN)) * lightF * comfort * (0.6 + fert * 0.8)) * (world.owns('sprinkler') ? 2 : 1);
       this.growth = Math.min(1, this.growth + rate);
     }
     if (comfort < 0.4) this.health -= (dt * (0.4 - comfort)) / (0.5 * DAY_LEN);
@@ -561,7 +561,9 @@ export class Plant {
     // flowers
     for (let fi = 0; fi < this.flowers.length; fi++) {
       const f = this.flowers[fi];
-      f.nectar = Math.min(1, f.nectar + (dt * 1.6 * Math.max(0.2, L)) / DAY_LEN);
+      // (a moonflower fills with nectar by night; the sprinklers speed it all up)
+      const lit = def.night ? 1 - env.sun * 0.85 : Math.max(0.2, L);
+      f.nectar = Math.min(1, f.nectar + (dt * 1.6 * lit * (world.owns('sprinkler') ? 2 : 1)) / DAY_LEN);
       if (def.kind === 'lily') {
         // water lilies bloom for picking when the pond critters look after
         // them (seedT is the bloom timer here)

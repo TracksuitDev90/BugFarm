@@ -7,6 +7,9 @@ import { Particles } from './particles.js';
 import { Ambient } from './ambient.js';
 import { breeze } from '../world/breeze.js';
 import { CREATURE_ART, PALETTES, WINGS, wingAngle, butterflyLift, drawWingBlade, wingBox, drawButterflyWings, drawWorm, drawBrood, drawHalo } from '../art/creatures.js';
+import { drawMothWings, drawDragonWing } from '../art/morecritters.js';
+import { rainBarrel, climateKeeper, sprinklerHead } from '../art/wares.js';
+import { SPRINKLER_X, CLIMATE_X } from '../data/market.js';
 import { drawFood } from '../art/food.js';
 import { drawPlant } from '../art/plants.js';
 import { drawVine, vineBox } from '../art/vines.js';
@@ -51,10 +54,17 @@ const POSES = {
   firefly: ['idle', 'walk', 'fly'],
   pillbug: ['idle', 'walk', 'ball'],
   fruitfly: ['fly'],
+  guppy: ['swim'],
+  tetra: ['swim'],
+  koi: ['swim'],
+  puffer: ['swim', 'puff'],
+  axolotl: ['idle', 'walk', 'swim'],
+  dragonfly: ['idle', 'walk', 'fly'],
+  moth: ['idle', 'walk', 'fly'],
 };
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
 // How much each walker bobs with its footsteps (snails glide instead).
-const STEP_BOB = { cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
+const STEP_BOB = { axolotl: 0.3, dragonfly: 0.2, moth: 0.3, cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
 // Vines trailing from the lid over the jungle, each a different plant. They
 // keep clear of the jungle mister's spray, the lamp and the thermometer.
 // liana: a woody rope looped between two hooks `span` apart, sagging `sag`.
@@ -81,10 +91,11 @@ function artPose(c) {
     else if (p === 'sleep') p = 'idle';
   }
   if (c.sp === 'ant' && c.moving && c.carry) p = c.pose === 'dig' ? 'dig' : 'carry';
-  if (c.sp === 'butterfly' && c.stage !== 'adult') p = c.moving ? 'walk' : 'idle';
+  if ((c.sp === 'butterfly' || c.sp === 'moth') && c.stage !== 'adult') p = c.moving ? 'walk' : 'idle';
+  if (c.sp === 'dragonfly' && c.stage === 'nymph') p = c.moving ? 'walk' : 'idle';
+  if (c.def.fish) p = c.def.puffs && c.fear > 0.45 ? 'puff' : p === 'gasp' && c.sp === 'goldfish' ? 'gasp' : 'swim';
   if (c.sp === 'bee' && p !== 'pollen') p = 'fly';
   if (c.sp === 'fruitfly') p = 'fly';
-  if (c.sp === 'goldfish' && p !== 'gasp') p = 'swim';
   if (c.sp === 'frog' && c.stage !== 'adult') p = c.stage === 'egg' ? 'idle' : 'swim';
   const ok = POSES[c.sp];
   if (ok && !ok.includes(p)) p = ok[0];
@@ -128,6 +139,7 @@ export class Renderer {
     this.wdt = 0;
     this.frameN = 0;
     this.mail = 0; // letters from Busytown waiting (raises the mailbox flag)
+    this.floats = []; // coins floating up where they were earned
     this.setQuality('medium', true);
   }
 
@@ -737,7 +749,7 @@ export class Renderer {
       y += k * c.foot * 0.6;
     }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
-    if (c.stage === 'chrysalis') ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
+    if (c.pupa) ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
     if (c.vis < 1) g.globalAlpha = c.vis;
     if (c.dead) {
       g.globalAlpha = clamp01(1 - c.deadT / 4);
@@ -745,7 +757,13 @@ export class Renderer {
     } else if (c.mode === 'swim' && !c.aquatic && c.paddling) ang += Math.sin(this.time * 10) * 0.2;
     let ph = 0;
     if (wspec) {
-      ph = this.flapT * wspec.hz * TAU + c.id * 2.3;
+      const dtR = this.paused ? 0 : this.dt || 0.016;
+      if (c.soarT > 0) {
+        // gliding: the wings ease open and hold still
+        const open = Math.round(c.flapPh / TAU) * TAU;
+        c.flapPh += (open - c.flapPh) * Math.min(1, dtR * 7);
+      } else c.flapPh += dtR * wspec.hz * TAU;
+      ph = c.flapPh;
       y -= Math.sin(ph) * wspec.bob * ds; // each downstroke lifts the body a touch
     }
     this.put(g, x, y, ang, vf * sx, sy);
@@ -778,10 +796,11 @@ export class Renderer {
   drawWings(g, c, s, ph, far, bucket) {
     g.save();
     if (s.butterfly) {
-      const lw = CREATURE_ART.butterfly.lw;
+      const lw = CREATURE_ART[c.sp].lw;
       const P = c.pal;
-      const near = this.sprites.get('bw|' + c.palIdx, bucket, [-13, -20, 12, 2], (gg) => drawButterflyWings(gg, P, lw, P.wing));
-      const back = this.sprites.get('bwu|' + c.palIdx, bucket, [-13, -20, 12, 2], (gg) => drawButterflyWings(gg, P, lw, P.under));
+      const wingArt = s.moth ? (gg, col) => drawMothWings(gg, P, lw, col, col === P.under) : (gg, col) => drawButterflyWings(gg, P, lw, col);
+      const near = this.sprites.get('bw|' + c.sp + c.palIdx, bucket, [-15, -20, 12, 6], (gg) => wingArt(gg, P.wing));
+      const back = this.sprites.get('bwu|' + c.sp + c.palIdx, bucket, [-15, -20, 12, 6], (gg) => wingArt(gg, P.under));
       // the far pair peeks out behind, showing its paler underside
       for (const [spr, lag, dx, a] of [[back, 0.18, 1.1, 0.85], [near, 0, 0, 1]]) {
         g.save();
@@ -803,7 +822,15 @@ export class Renderer {
         g.fillStyle = `rgba(232,244,252,${(s.blur * 0.5).toFixed(3)})`;
         g.fill();
       }
-      const spr = this.sprites.get('wg|' + c.sp + (far ? 'f' : ''), bucket, wingBox(s), (gg) => drawWingBlade(gg, s.len, s.wid, CREATURE_ART[c.sp].lw, far));
+      const spr = this.sprites.get('wg|' + c.sp + (far ? 'f' : ''), bucket, wingBox(s), (gg) => (s.quad ? drawDragonWing(gg, s.len, s.wid, CREATURE_ART[c.sp].lw, far, c.pal) : drawWingBlade(gg, s.len, s.wid, CREATURE_ART[c.sp].lw, far)));
+      if (s.quad) {
+        // the hind pair sits just behind the fore pair and beats out of step
+        g.save();
+        g.translate(-1.5, 0.2);
+        g.rotate(wingAngle(s, ph + Math.PI * 0.6) + 0.25);
+        g.drawImage(spr.canvas, spr.x0, spr.y0, spr.w, spr.h);
+        g.restore();
+      }
       const sc = far ? 0.88 : 1;
       if (!far && s.blur > 0.4) {
         // a fading after-image of where the wing just was
@@ -1087,6 +1114,35 @@ export class Renderer {
       tag(g, 'mister', x, 8, -18, 14, tagA);
       tag(g, 'water jug', x + 42, 20, 10, 10, tagA);
     }
+    // gadgets from the Busytown Market
+    const w = this.world;
+    if (w.owns('rainBarrel')) {
+      for (const z of ['desert', 'jungle']) {
+        const x = MISTER_X[z] - 26;
+        if (!this.visible(x, 0, 60)) continue;
+        this.blit(g, 'eq|barrel', b, [-16, -34, 18, 3], x, 0, rainBarrel);
+        // a pipe across to the mister's jug
+        g.beginPath();
+        g.moveTo(x + 13, -9);
+        g.quadraticCurveTo(x + 40, -4, x + 60, -14);
+        g.lineWidth = 2.2;
+        g.strokeStyle = INK;
+        g.stroke();
+        g.lineWidth = 1.2;
+        g.strokeStyle = '#9aa0a6';
+        g.stroke();
+        tag(g, 'rain barrel', x, 8, -16, 14, tagA);
+      }
+    }
+    if (w.owns('climate') && this.visible(CLIMATE_X, 0, 60)) {
+      this.put(g, CLIMATE_X, 0, 0, 1, 1);
+      climateKeeper(g, w.time * 0.6);
+      this.setWorld(g);
+      tag(g, 'climate keeper', CLIMATE_X, 8, 0, 18, tagA);
+    }
+    if (w.owns('sprinkler')) {
+      for (const x of SPRINKLER_X) if (this.visible(x, 0, 40)) this.blit(g, 'eq|sprinkler', b, [-8, -2, 8, 14], x, 0, sprinklerHead);
+    }
     // pond heater & filter labels (the gear itself is drawn under the water)
     const wl = t.waterLevel;
     if (this.visible(1000, wl, 160)) {
@@ -1335,6 +1391,22 @@ export class Renderer {
       g.globalAlpha = dark * 1.2;
       g.drawImage(spr, d.x - 70, d.y - 135, 140, 140);
     }
+    // moonflowers glow softly in the dark...
+    const moon = this.glowSprite('rgba(226,240,255,0.95)');
+    for (const p of this.world.plants) {
+      if (!p.def.night || p.dead || !p.shape || !this.visible(p.x, p.y - 40, 60)) continue;
+      for (const f of p.shape.flowers) {
+        g.globalAlpha = dark * 1.2 * clamp01(f.r / 4);
+        g.drawImage(moon, p.x + f.x - 20, p.y + f.y - 20, 40, 40);
+      }
+    }
+    // ...and neon tetras shine in the dark water
+    const neon = this.glowSprite('rgba(90,220,255,1)');
+    for (const c of this.world.creatures) {
+      if (c.sp !== 'tetra' || c.dead || c.stage === 'egg' || !this.visible(c.x, c.y, 30)) continue;
+      g.globalAlpha = dark * 0.9;
+      g.drawImage(neon, c.x - 10, c.y - 6, 20, 12);
+    }
     const ff = this.glowSprite('rgba(214,255,120,1)');
     for (const c of this.world.creatures) {
       if (c.sp !== 'firefly' || c.dead || c.glow < 0.02 || !this.visible(c.x, c.y, 30)) continue;
@@ -1548,6 +1620,43 @@ export class Renderer {
       const spr = this.emoteSprite(c.emoteIcon);
       g.globalAlpha = clamp01(Math.min(k, c.emoteT * 2));
       g.drawImage(spr, sx * dpr - size / 2, sy * dpr - size + bob, size, size);
+    }
+    g.globalAlpha = 1;
+    this.drawCoinFloats(g);
+  }
+
+  // "+3" and a coin, floating up from wherever Busytown coins turned up.
+  coinFloat(x, y, n) {
+    if (x == null || this.floats.length > 12) return;
+    this.floats.push({ x, y, n, t: 0 });
+  }
+  drawCoinFloats(g) {
+    if (!this.floats.length) return;
+    const dpr = this.dpr;
+    const dt = this.paused ? 0 : this.dt || 0.016;
+    const s = 18 * dpr;
+    g.font = `bold ${Math.round(15 * dpr)}px 'Patrick Hand', sans-serif`;
+    g.textBaseline = 'middle';
+    for (let i = this.floats.length - 1; i >= 0; i--) {
+      const f = this.floats[i];
+      f.t += dt;
+      if (f.t > 2) {
+        this.floats.splice(i, 1);
+        continue;
+      }
+      const [sx, sy] = this.cam.toScreen(f.x, f.y);
+      const x = sx * dpr;
+      const y = sy * dpr - f.t * 26 * dpr;
+      g.globalAlpha = clamp01(Math.min(f.t * 6, (2 - f.t) * 2));
+      g.save();
+      g.translate(x - s * 0.6, y);
+      drawIcon(g, 'coin', s);
+      g.restore();
+      g.lineWidth = 3 * dpr;
+      g.strokeStyle = '#fffdf6';
+      g.strokeText('+' + f.n, x + s * 0.05, y);
+      g.fillStyle = '#9a6a12';
+      g.fillText('+' + f.n, x + s * 0.05, y);
     }
     g.globalAlpha = 1;
   }

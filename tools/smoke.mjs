@@ -52,6 +52,7 @@ check(f1 === f0 + 1, 'tapping with Feed drops food');
 // progression: the gecko waits for a later desert level; crickets can move in
 await pg.click('#toolbar >> text=Critters');
 check(await pg.isVisible('.item.locked >> text=Gecko'), 'gecko is locked in a new farm');
+check((await pg.locator('.item >> text=Harvester ants').count()) === 1 && (await pg.locator('.item >> text=Guppy').count()) === 1, 'the critter tray has the ant kinds and the new pond fish');
 await pg.click('.item >> text=Cricket');
 const c0 = await pg.evaluate(() => window.bugfarm.game.world.count('cricket'));
 await pg.evaluate(() => window.bugfarm.game.cam.flyTo(250, 480));
@@ -127,14 +128,36 @@ const goods = await pg.evaluate(() => {
   return { got, left: w.goods.includes(g) };
 });
 check(goods.got === 1 && !goods.left, 'tapping a water lily collects it into the basket');
+// a letter from Busytown pops up with the neighbour's portrait
+await pg.evaluate(() => {
+  const { journal, ui } = window.bugfarm;
+  ui.newLetter(journal.orders.list[journal.orders.list.length - 1]);
+});
+await pg.waitForTimeout(400);
+check(await pg.isVisible('#post .postcard canvas'), 'a letter pops up with a portrait of whoever wrote it');
+await pg.click('#post >> text=Later');
+const coins0 = await pg.evaluate(() => window.bugfarm.game.world.coins);
 await pg.click('button[aria-label="Keeper\'s clipboard"]');
 await pg.click('#sheet .tabs >> text=Orders');
 await pg.waitForTimeout(300);
 await pg.click('#sheet .order >> text=Send it!');
-await pg.waitForTimeout(300);
-const sent = await pg.evaluate(() => ({ sent: window.bugfarm.journal.orders.sent, seeds: window.bugfarm.game.world.pantry.seeds }));
+await pg.waitForTimeout(400);
+const sent = await pg.evaluate(() => ({ sent: window.bugfarm.journal.orders.sent, seeds: window.bugfarm.game.world.pantry.seeds, coins: window.bugfarm.game.world.coins, hearts: window.bugfarm.journal.orders.heartsOf('florist') }));
 check(sent.sent === 1 && sent.seeds === 7, 'sending an order uses up the goods and thanks the farm');
+check(sent.coins > coins0 && sent.hearts === 1 && (await pg.isVisible('#post .postcard.thanks')), `the neighbour pays coins and becomes a friend (${coins0} → ${sent.coins} coins)`);
+await pg.click('#post >> text=Lovely!');
 await pg.click('#toolbar >> text=Look');
+
+// the Busytown Market: Flora sells moonflower seeds to a friend
+await pg.evaluate(() => (window.bugfarm.game.world.coins = 100));
+await pg.click('button[aria-label="Busytown Market"]');
+await pg.waitForTimeout(400);
+check(await pg.isVisible('text=Busytown Market') && (await pg.locator('#modal .stall').count()) >= 10, 'the purse opens the Market, with a stall for every neighbour');
+await pg.click('#modal .ware:has-text("Moonflower seeds") button');
+await pg.waitForTimeout(400);
+const bought = await pg.evaluate(() => ({ owns: window.bugfarm.game.world.owns('moonflower'), coins: window.bugfarm.game.world.coins, plant: window.bugfarm.journal.canUse('plant', 'moonflower') }));
+check(bought.owns && bought.plant && bought.coins === 70, 'buying a ware pays for it and unlocks it');
+await pg.click('#modal .card-close');
 
 // journal & settings
 await pg.click('#toolbar >> text=Journal');
@@ -161,11 +184,12 @@ const before = await pg.evaluate(() => {
 await pg.reload();
 await pg.waitForTimeout(3000);
 const welcome = await pg.isVisible('text=Start my farm');
-const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time, pond: window.bugfarm.journal.progress.levels.pond, shrimp: window.bugfarm.journal.canUse('adopt', 'shrimp'), sent: window.bugfarm.journal.orders.sent, lily: window.bugfarm.game.world.pantry.lily }));
+const after = await pg.evaluate(() => ({ n: window.bugfarm.game.world.creatures.length, t: window.bugfarm.game.world.env.time, pond: window.bugfarm.journal.progress.levels.pond, shrimp: window.bugfarm.journal.canUse('adopt', 'shrimp'), sent: window.bugfarm.journal.orders.sent, lily: window.bugfarm.game.world.pantry.lily, moon: window.bugfarm.game.world.owns('moonflower'), hearts: window.bugfarm.journal.orders.heartsOf('florist'), coins: window.bugfarm.game.world.coins }));
 check(!welcome, 'reload skips the welcome (save found)');
 check(Math.abs(after.n - before.n) <= 3 && after.t >= before.t, `tank restored after reload (${before.n} → ${after.n} critters)`);
 check(after.pond === 2 && after.shrimp, 'farm levels and unlocks survive a reload');
 check(after.sent === 1 && after.lily >= 1, 'the basket and sent orders survive a reload');
+check(after.moon && after.hearts === 1 && after.coins >= 70, 'coins, friendships and Market wares survive a reload');
 
 check(errors.length === 0, 'no errors on the page' + (errors.length ? ':\n' + [...new Set(errors)].slice(0, 6).join('\n') : ''));
 await browser.close();

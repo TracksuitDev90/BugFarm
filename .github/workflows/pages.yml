@@ -28,6 +28,7 @@ jobs:
           node tools/fuzz.mjs 1 3
           node tools/savetest.mjs
           node tools/progresstest.mjs 10 3
+          node tools/markettest.mjs
       - name: Build
         run: npm run build
       - name: Upload site

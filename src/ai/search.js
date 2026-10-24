@@ -5,9 +5,10 @@ import { FOODS } from '../data/foods.js';
 import { LAMP_X } from '../world/environment.js';
 import { clamp, smoothstep } from '../util/math.js';
 import { rrange, chance, rpick } from '../util/rng.js';
+import { flightOf, CEIL, airFloor } from '../entities/creature.js';
 
 const XY = [0, 0];
-const PREY_VALUE = { aphid: 0.035, fruitfly: 0.06, cricket: 0.4, grasshopper: 0.5 };
+const PREY_VALUE = { aphid: 0.035, fruitfly: 0.06, cricket: 0.4, grasshopper: 0.5, pondsnail: 0.15 };
 export function preyValue(sp) {
   return PREY_VALUE[sp] || 0.2;
 }
@@ -171,8 +172,12 @@ export function findPrey(c, w) {
   const r = c.def.sight * (c.hunger > 0.6 ? 1.3 : 1);
   return w.hashC.nearest(c.x, c.y, r, (o) => {
     if (o.dead || o.removed || o.hidden || !prey.includes(o.sp)) return false;
-    if (o.stage === 'egg' || o.stage === 'chrysalis') return false;
-    if (c.sp === 'goldfish') return o.inWater || (o.y > w.terrain.waterLevel - 6 && w.terrain.waterSurfaceAt(o.x) > 0);
+    if (o.stage === 'egg' || o.pupa) return false;
+    if (c.sp === 'goldfish' || c.sp === 'guppy') return o.inWater || (o.y > w.terrain.waterLevel - 6 && w.terrain.waterSurfaceAt(o.x) > 0);
+    // pea puffers only thin out the snails when there are too many
+    if (c.sp === 'puffer') return o.inWater && w.count('pondsnail') > 6;
+    // a dragonfly takes its prey on the wing
+    if (c.sp === 'dragonfly') return o.mode === 'fly';
     if (c.sp === 'gecko') return o.mode !== 'fly' || o.y > w.terrain.surfaceY(o.x) - 30;
     if (c.sp === 'frog') return o.mode !== 'swim';
     if (c.sp === 'ladybug') return o.mode === 'climb' || o.mode === 'walk';
@@ -202,18 +207,8 @@ export function wanderTarget(c, w, range = 140) {
         if (p) return { kind: 'point', x: p[0], y: p[1] };
         break;
       }
-      case 'fly': {
-        let x = c.x + rrange(-range, range);
-        const home = c.def.zone === 'jungle' ? 1330 : c.def.zone === 'desert' ? 280 : 800;
-        if (chance(0.35)) x = (x + home) / 2;
-        x = clamp(x, 24, W - 24);
-        let gy = t.surfaceY(x);
-        if (t.waterSurfaceAt(x) > 0) gy = Math.min(gy, t.waterLevel);
-        const lo = c.sp === 'firefly' ? 20 : 30;
-        const hi = c.sp === 'firefly' ? 110 : c.sp === 'fruitfly' ? 90 : 220;
-        const y = clamp(gy - rrange(lo, hi), 30, H - 20);
-        return { kind: 'point', x, y };
-      }
+      case 'fly':
+        return skySpot(c, w, range);
       case 'burrow': {
         const x = clamp(c.x + rrange(-range, range) * 0.6, 1075, W - 10);
         const gy = t.surfaceY(x);
@@ -233,6 +228,56 @@ export function wanderTarget(c, w, range = 140) {
     }
   }
   return null;
+}
+
+// Somewhere in the open air to fly to: anywhere across the tank within
+// range, at the height this flyer likes (butterflies and dragonflies up
+// near the lid, bees at flower height, fireflies low), drifting home now
+// and then.
+const ROAM = { butterfly: 560, moth: 460, dragonfly: 640, bee: 320, firefly: 220, fruitfly: 160, ladybug: 220 };
+export function skySpot(c, w, range) {
+  const t = w.terrain;
+  const F = flightOf(c.sp);
+  const r = Math.max(range || 0, ROAM[c.sp] || 220);
+  // fruit flies can't keep away from the banana car
+  if (c.sp === 'fruitfly' && chance(0.7)) {
+    const car = w.decor.find((d) => d.type === 'bananaCar');
+    if (car) return { kind: 'point', x: car.x + rrange(-30, 30), y: car.y - car.def.h - rrange(4, 40) };
+  }
+  let x = c.x + rrange(-r, r);
+  const home = c.def.zone === 'jungle' ? 1330 : c.def.zone === 'desert' ? 280 : 810;
+  if (chance(0.3)) x = (x + home) / 2;
+  x = clamp(x, 30, W - 30);
+  const floor = airFloor(t, x);
+  let y;
+  if (F.top != null) {
+    // mostly high, now and then a swoop lower down
+    y = chance(0.8) ? rrange(F.top, F.top + F.band) : rrange(F.top + F.band, floor - F.clear);
+  } else y = floor - rrange(F.low[0], F.low[1]);
+  y = clamp(y, CEIL + 4, floor - F.clear * 0.6);
+  return { kind: 'point', x, y };
+}
+
+// A high perch for a flyer to rest on: the tops of tall plants (a dragonfly
+// likes the cattails best), never the ground if it can help it.
+export function perchSpot(c, w, range = 420) {
+  let best = null;
+  let bs = -1e9;
+  for (const p of w.plants) {
+    if (p.dead || Math.abs(p.x - c.x) > range || (p.def.aquatic && p.def.place !== 'surface')) continue;
+    for (const slot of p.shape.slots) {
+      if (slot.kind !== 'leaf' && slot.kind !== 'flower' && slot.kind !== 'stem' && slot.kind !== 'pad') continue;
+      const [sx, sy] = p.slotWorld(slot, w.time);
+      const height = airFloor(w.terrain, sx) - sy;
+      let s = height * rrange(0.6, 1.4) - Math.abs(sx - c.x) * 0.25;
+      if (c.sp === 'dragonfly' && p.def.kind === 'reed') s += 80;
+      if (s > bs) {
+        bs = s;
+        best = { kind: 'plant', plant: p, slot };
+      }
+    }
+  }
+  return best;
 }
 
 export function nearestPlantSlot(c, w, range, kinds, filter) {
@@ -340,7 +385,7 @@ export function comfortSpot(c, w) {
 // carries its house on its back).
 const NO_HOME = { ant: 1, bee: 1, butterfly: 1, aphid: 1, worm: 1, fruitfly: 1 };
 export function homeKind(c) {
-  if (c.dead || c.stage === 'egg' || c.stage === 'chrysalis' || NO_HOME[c.sp]) return null;
+  if (c.dead || c.stage === 'egg' || c.pupa || NO_HOME[c.sp]) return null;
   if (c.sp === 'turtle') return c.stage === 'hatchling' ? 'water' : null;
   if (c.sp === 'frog') return c.stage === 'adult' ? 'land' : 'water';
   return c.def.habitat === 'water' ? 'water' : 'land';
@@ -586,3 +631,4 @@ export function pickFlower(c, w) {
 }
 
 export { FOODS, smoothstep, rpick, GW, CELL };
+export { CEIL, airFloor };

@@ -58,7 +58,7 @@ export function equipmentInfo(w, e, fmt = (t) => Math.round(t) + '°C') {
       return {
         name: `${ZONE_NAMES[z]} heat lamp`,
         sub: p > 0.02 ? `Dimmer at ${pct(p)} · ${z === 'pond' ? 'water' : 'air'} ${fmt(st.T)}, ${comfy}` : `Switched off · ${z === 'pond' ? 'water' : 'air'} ${fmt(st.T)}, ${comfy}`,
-        what: `A dome lamp clamped to the lid. Its warm bulb heats the ${Z} and makes a toasty basking spot ${spot}. The dial on its cord is the dimmer: turn it up when the ${Z} is chilly, down when it's too hot.`,
+        what: `A dome lamp clamped to the lid. Its warm bulb heats the ${Z} and makes a toasty basking spot ${spot}. The dial on its cord is the dimmer: turn it up when the ${Z} is chilly, down when it's too hot.${w.owns('climate') ? ' The clockwork climate keeper turns it up and down for you.' : ''}`,
         meters: [['Dimmer', p, '#f0913a']],
         actions: [['lampDown', 'Cooler'], ['lampUp', 'Warmer'], ['climate', 'All controls', 'yellow']],
       };
@@ -73,7 +73,7 @@ export function equipmentInfo(w, e, fmt = (t) => Math.round(t) + '°C') {
       return {
         name: `${ZONE_NAMES[z]} mister`,
         sub: `${state} · air is ${damp(env[z].moist)}`,
-        what: 'A little pump drinks from the water jug and sprays fine rain through the nozzle under the lid, which keeps the air damp. The dial sets how much it sprays. When the jug runs dry the rain stops, so refill it.',
+        what: 'A little pump drinks from the water jug and sprays fine rain through the nozzle under the lid, which keeps the air damp. The dial sets how much it sprays. ' + (w.owns('rainBarrel') ? 'The rain barrel keeps its jug topped up.' : 'When the jug runs dry the rain stops, so refill it.') + (w.owns('climate') ? ' The climate keeper turns it up and down for you.' : ''),
         meters: [['Jug', water, water < 0.2 ? '#e2553f' : '#7cc0e6'], ['Damp air', env[z].moist, '#4c8fd6']],
         actions: acts,
       };

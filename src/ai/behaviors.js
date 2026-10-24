@@ -7,7 +7,14 @@ import { rrange, rint, chance, rpick } from '../util/rng.js';
 import {
   cachedFood, validFood, findPrey, findMate, wanderTarget, nearestPlantSlot, comfortSpot, lampSpot,
   pickFlower, reachable, preyValue, homeKind, findHome, snugSpot, shelterNear, swimSpot, restSpot, foodReach, glassSpot, waterSpot,
+  skySpot, perchSpot, CEIL, airFloor, suits, canReachDoor,
 } from './search.js';
+
+// Critters that belong in the air: they take off to get about rather than
+// walking (ladybugs and grown-up fireflies stroll as often as they fly).
+function aerial(c) {
+  return c.canFly && (c.def.habitat === 'air' || c.sp === 'butterfly' || c.sp === 'moth') && c.sp !== 'firefly';
+}
 
 function hungerScore(c) {
   let h = smoothstep(0.16, 0.8, c.hunger);
@@ -185,10 +192,12 @@ def('wander', {
   score: (c) => (0.15 + c.traits.curious * 0.14) * c.act,
   start(c, w) {
     const d = c.brain.data;
+    if (aerial(c) && c.mode !== 'fly' && c.mode !== 'swim') c.takeOff();
     if (!goTo(c, roam(c, w))) d.fail = true;
     d.zone = zoneWord(w, c.x);
-    // swimmers string a few legs together rather than stopping after each
-    d.legs = c.mode === 'swim' ? rint(1, 4) : 1;
+    // swimmers and flyers string a few legs together rather than stopping
+    // after each: a long looping flight round the tank
+    d.legs = c.mode === 'swim' ? rint(1, 4) : c.mode === 'fly' ? rint(2, 5) : 1;
     d.stopIn = rrange(1.5, 6) / c.tempo;
     if (c.mode === 'walk' && c.target) c.target.speedMul = rrange(0.75, 1.2);
   },
@@ -210,7 +219,7 @@ def('wander', {
         return true;
       }
       d.pause = (d.pause || rrange(0.5, 2.5) / c.tempo) - dt;
-      if (c.mode === 'fly' && c.sp !== 'butterfly' && c.sp !== 'bee') return false;
+      if (c.mode === 'fly') return false;
       return d.pause > 0;
     }
     if (c.blocked && c.mode !== 'fly' && c.mode !== 'swim') return false;
@@ -241,9 +250,13 @@ def('wander', {
   },
   thought: (c) =>
     jobLine(c) ||
-    (c.traits.curious > 0.6
-      ? rpick(['Ooh, what is over there?', 'Exploring ' + c.brain.data.zone + '!', 'Adventure time!'])
-      : rpick(['Having a little stroll.', 'Just pottering about.', 'Stretching my legs.'])),
+    (c.mode === 'fly'
+      ? rpick(['Up, up and away!', 'What a view from up here!', 'Flying right across the tank!', 'Wheee!'])
+      : c.mode === 'swim'
+        ? rpick(['Just swimming about.', 'Doing a lap of the pond.', 'Ooh, what is down there?'])
+        : c.traits.curious > 0.6
+        ? rpick(['Ooh, what is over there?', 'Exploring ' + c.brain.data.zone + '!', 'Adventure time!'])
+        : rpick(['Having a little stroll.', 'Just pottering about.', 'Stretching my legs.'])),
 });
 
 // --------------------------------------------------------------------- forage
@@ -379,6 +392,7 @@ def('search', {
     return h * 0.5 * (0.5 + 0.5 * c.act);
   },
   start(c, w) {
+    if (aerial(c) && c.mode !== 'fly' && c.mode !== 'swim') c.takeOff();
     const range = c.mode === 'fly' ? 320 : c.mode === 'swim' ? 220 : 120 + c.traits.curious * 160;
     if (!goTo(c, wanderTarget(c, w, range))) c.brain.data.fail = true;
     if (c.hunger > 0.6) c.emote('food', 1.4);
@@ -409,7 +423,7 @@ def('hunt', {
     const d = c.brain.data;
     d.prey = c.memory.prey;
     d.t = 0;
-    d.range = c.sp === 'frog' ? 46 : c.sp === 'gecko' ? 16 : c.sp === 'goldfish' ? 12 : 8;
+    d.range = c.sp === 'frog' ? 46 : c.sp === 'gecko' ? 16 : c.sp === 'goldfish' ? 12 : c.sp === 'dragonfly' ? 12 : 8;
     if (d.prey && d.prey.mode === 'climb' && d.prey.climb && (c.canClimb || c.canFly)) {
       c.seek({ kind: 'plant', plant: d.prey.climb.plant, slot: d.prey.climb.slot });
     } else if (d.prey) c.seek({ kind: 'creature', c: d.prey });
@@ -435,7 +449,7 @@ def('hunt', {
     if (dist <= d.range + p.size * 0.3 && d.t > 0.7) {
       d.t = 0;
       c.facing = p.x >= c.x ? 1 : -1;
-      const odds = (c.sp === 'ladybug' ? 0.6 : 0.32) + c.traits.bold * 0.2 - p.fear * 0.25;
+      const odds = (c.sp === 'ladybug' || c.sp === 'dragonfly' ? 0.6 : 0.32) + c.traits.bold * 0.2 - p.fear * 0.25;
       if (c.sp === 'frog' || c.sp === 'gecko') c.tongue = { x: p.x, y: p.y, t: 0.25 };
       if (Math.random() < odds) {
         w.predation(c, p);
@@ -684,7 +698,7 @@ def('rest', {
       return;
     }
     if (c.mode === 'fly') {
-      tgt = nearestPlantSlot(c, w, 300, ['leaf', 'flower', 'stem', 'pad']);
+      tgt = perchSpot(c, w);
       if (!tgt) {
         const x = c.x;
         tgt = { kind: 'point', x, y: w.terrain.surfaceY(x), ground: true };
@@ -722,6 +736,8 @@ def('rest', {
       if (d.zz <= 0) {
         d.zz = 3.5;
         c.emote('zzz', 2);
+        // a nap by the park bench is extra restful
+        c.restBonus = w.decor.some((b) => b.type === 'bench' && Math.abs(b.x - c.x) < 40 && Math.abs(b.y - c.y) < 40) ? 1.6 : 1;
       }
       if (c.energy > 0.97 && c.act > 0.45) return false;
       if (c.brain.t > 240) return false;
@@ -732,11 +748,14 @@ def('rest', {
   },
   stop(c) {
     c.pose = 'idle';
+    c.restBonus = 1;
     comeOut(c);
     c.hidden = false;
   },
-  thought: (c) =>
-    c.pose === 'sleep'
+  thought: (c, w) =>
+    c.pose === 'sleep' && w.chorus > 0.4 && w.env.sun < 0.4
+      ? rpick(['Zzz... the crickets are singing me to sleep.', 'Zzz... lovely lullaby...'])
+      : c.pose === 'sleep'
       ? c.inside
         ? rpick([`Zzz... tucked up in the ${homeWord(c.inside)}.`, 'Zzz...', 'Zzz... home sweet home.'])
         : rpick(['Zzz... dreaming of snacks.', 'Zzz...', 'Snoozing.', 'Zzz... five more minutes.'])
@@ -929,13 +948,17 @@ def('chirp', {
     if (night < 0.5 || c.hunger > 0.6 || c.comfort < 0.4) return 0;
     return 0.45 * night * (0.6 + c.traits.social * 0.6);
   },
-  start(c) {
+  start(c, w) {
     c.halt();
     c.brain.data.dur = rrange(18, 40);
     c.brain.data.n = 0;
+    // singing from the fence carries further
+    c.brain.data.fence = w.decor.some((d) => d.type === 'fence' && Math.abs(d.x - c.x) < 60);
   },
   tick(c, w, dt) {
     const d = c.brain.data;
+    // the night chorus lulls the whole tank to sleep (see world.chorus)
+    if (c.sp === 'cricket') w.chorus = Math.min(1, w.chorus + dt * (d.fence ? 0.05 : 0.025));
     // Dolbear's law: chirps per minute rise with temperature
     const perMin = Math.max(8, 7 * c.T - 30);
     d.acc = (d.acc || 0) + dt * (perMin / 60);
@@ -1008,16 +1031,18 @@ def('glow', {
 
 // --------------------------------------------------------------------- pollinate (bees)
 def('pollinate', {
-  can: (c) => c.sp === 'bee' || c.sp === 'butterfly',
+  can: (c) => c.sp === 'bee' || c.sp === 'butterfly' || c.sp === 'moth' || c.sp === 'firefly',
   score(c, w) {
-    if (c.sp === 'butterfly' && c.stage !== 'adult') return 0;
+    if (!c.isAdult) return 0;
+    // fireflies and moths visit flowers by night
+    if ((c.sp === 'firefly' || c.sp === 'moth') && w.env.sun > 0.5) return 0;
     const m = c.memory;
     if (!m.flT || w.time - m.flT > 2) {
       m.flT = w.time;
       m.fl = pickFlower(c, w);
     }
     if (!m.fl) return 0;
-    return c.act * (0.35 + hungerScore(c) * 0.7) * (c.sp === 'bee' ? 1.1 : 0.8);
+    return c.act * (0.35 + hungerScore(c) * 0.7) * (c.sp === 'bee' ? 1.1 : c.sp === 'firefly' ? 0.55 : 0.8);
   },
   start(c, w) {
     const d = c.brain.data;
@@ -1032,11 +1057,12 @@ def('pollinate', {
     if (c.arrived && c.mode === 'climb') {
       d.t = (d.t || 0) + dt;
       c.pose = c.sp === 'bee' && (c.memory.pollen || 0) > 0 ? 'pollen' : 'idle';
-      if (d.t > 2.2) {
+      const rate = w.workRate(c);
+      if (d.t > 2.2 / rate) {
         d.t = 0;
         w.eat(c, { kind: 'plant', plant: d.fl.plant, slot: d.fl.slot }, 2);
         if (d.fl.plant.pollinate(d.fl.slot)) w.events.emit('pollinate', { c, plant: d.fl.plant });
-        c.memory.pollen = Math.min(6, (c.memory.pollen || 0) + 1);
+        c.memory.pollen = Math.min(6, (c.memory.pollen || 0) + rate);
         const v = c.memory.visited || (c.memory.visited = []);
         v.push(d.fl.key);
         if (v.length > 6) v.shift();
@@ -1052,6 +1078,8 @@ def('pollinate', {
     return c.brain.t < 60;
   },
   thought: (c, w) => {
+    if (c.sp === 'firefly') return rpick(['Sipping nectar by my own light.', 'Night-time flower visit!']);
+    if (c.sp === 'moth') return rpick(['Flowers taste sweeter by moonlight.', 'The night shift: pollinating!']);
     if (c.sp !== 'bee') return rpick(['Sipping sweet nectar.', 'Every flower I visit can make seeds!']);
     if ((c.memory.pollen || 0) >= 3 && !w.hive()) return 'My pollen baskets are full, but there is no bee hotel to make honey in!';
     return rpick(['Bzz! Flower to flower!', 'Filling my pollen baskets. Busy busy!', 'This one smells lovely.']);
@@ -1169,7 +1197,7 @@ def('recycle', {
     }
     if (d.phase === 'gather') {
       c.pose = 'eat';
-      d.t += dt;
+      d.t += dt * w.workRate(c);
       if (d.t > 2.4) {
         const take = Math.min(d.f.amount, 0.6);
         d.f.amount -= take;
@@ -1201,7 +1229,7 @@ def('recycle', {
     }
     // bury
     c.pose = 'dig';
-    d.t += dt;
+    d.t += dt * w.workRate(c);
     if (d.t > 2.4) {
       const bx = c.x + c.facing * 6;
       w.makeCompost(c, bx, w.terrain.surfaceY(bx), 'ball');
@@ -1289,7 +1317,7 @@ def('sap', {
 
 // --------------------------------------------------------------------- pupate (caterpillars)
 def('pupate', {
-  can: (c) => c.sp === 'butterfly' && c.stage === 'caterpillar',
+  can: (c) => c.larva,
   score: (c) => (c.stageAge > c.stageDur * 0.82 && c.hunger < 0.6 ? 1.4 : 0),
   lock: () => true,
   start(c, w) {
@@ -1603,6 +1631,7 @@ def('socialize', {
       if (!d.hi && Math.hypot(p.x - c.x, p.y - c.y) < 40) {
         d.hi = true;
         if (chance(0.5)) c.emote(rpick(['heart', 'note']), 1.2);
+        w.events.emit('hello', { c, o: p });
       }
       return c.brain.t < d.dur;
     }
@@ -1615,6 +1644,7 @@ def('socialize', {
         c.halt();
         c.facing = p.x >= c.x ? 1 : -1;
         c.emote(rpick(['heart', 'note', '?']), 1.6);
+        w.events.emit('hello', { c, o: p });
         const b = p.brain.b;
         if (!b || b.id === 'idle' || b.id === 'wander') switchTo(p, w, 'greeted', { pal: c });
       } else if (c.arrived || c.blocked || c.brain.t > 12) return false;
@@ -1661,7 +1691,7 @@ def('greeted', {
 // sociable ones share, greedy ones squirrel it away, lazy ones leave it.
 const NO_CARRY = { ant: 1, bee: 1, butterfly: 1, aphid: 1, worm: 1, fruitfly: 1, firefly: 1, frog: 1 };
 function canCarry(c) {
-  return !NO_CARRY[c.sp] && c.stage !== 'egg' && c.stage !== 'chrysalis' && c.stage !== 'caterpillar' && (c.mode === 'walk' || c.mode === 'swim' || c.mode === 'glass');
+  return !NO_CARRY[c.sp] && c.stage !== 'egg' && !c.pupa && !c.larva && (c.mode === 'walk' || c.mode === 'swim' || c.mode === 'glass');
 }
 function likes(c, f) {
   let like = 0;
@@ -1676,7 +1706,7 @@ function hungryFriend(c, w, f, range) {
   const near = w.hashC.query(c.x, c.y, range);
   for (let i = 0; i < near.length; i++) {
     const o = near[i];
-    if (o === c || o.dead || o.hidden || o.hunger < 0.5 || o.stage === 'egg' || o.stage === 'chrysalis' || o.sp === 'ant') continue;
+    if (o === c || o.dead || o.hidden || o.hunger < 0.5 || o.stage === 'egg' || o.pupa || o.sp === 'ant') continue;
     const like = likes(o, f);
     if (like < 0.4 || !reachable(c, w, o.x, o.y - 2) || !reachable(o, w, o.x, o.y - 2)) continue;
     const kin = o.sp === c.sp ? 1.3 : 1;
@@ -1840,7 +1870,7 @@ function mealWord(h) {
   return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 20 ? 'dinner' : 'supper';
 }
 def('beg', {
-  can: (c) => c.sp === 'goldfish' && c.mode === 'swim' && c.stage !== 'egg',
+  can: (c) => c.def.fish && c.sp !== 'puffer' && c.mode === 'swim' && c.stage !== 'egg',
   score(c, w) {
     if (c.hunger < 0.12 || c.fear > 0.3) return 0;
     if (w.keeperFeeding) return 0.5 + c.hunger * 0.6;
@@ -1886,7 +1916,7 @@ def('beg', {
 
 // --------------------------------------------------------------------- chase (playing tag in the water)
 def('chase', {
-  can: (c) => (c.sp === 'goldfish' || (c.sp === 'frog' && c.stage === 'tadpole')) && c.mode === 'swim',
+  can: (c) => ((c.def.fish && c.sp !== 'puffer') || (c.sp === 'frog' && c.stage === 'tadpole')) && c.mode === 'swim',
   hold: 0.5,
   score(c, w) {
     if (c.hunger > 0.5 || c.fear > 0.2 || c.act < 0.5) return 0;
@@ -1918,6 +1948,7 @@ def('chase', {
       // tag!
       d.tag = true;
       c.emote('note', 1);
+      w.events.emit('tag', { c, o: p });
       if (chance(0.4) && p.brain.b && p.brain.b.id === 'chased') {
         // ...and now it's their turn to be "it"
         p.memory.playmate = c;
@@ -2022,8 +2053,359 @@ def('breathe', {
   thought: (c) => (c.sp === 'pondsnail' ? 'Climbing up for a breath of fresh air.' : 'Popping up for a breath of air!'),
 });
 
+// --------------------------------------------------------------------- clinic (poorly critters check in at Doctor Dot's)
+function clinicFor(c, w) {
+  let best = null;
+  let bd = 700;
+  for (const d of w.decor) {
+    if (!d.def.clinic || !suits(c, d)) continue;
+    const dd = Math.abs(d.x - c.x);
+    if (dd < bd && canReachDoor(c, w, d)) {
+      bd = dd;
+      best = d;
+    }
+  }
+  return best;
+}
+def('clinic', {
+  can: (c) => c.isAdult && !c.def.colony && (c.mode === 'walk' || c.mode === 'fly' || c.mode === 'climb'),
+  hold: 0.9,
+  score(c, w) {
+    if (!w.has.clinic) return 0;
+    const poorly = c.health < 0.6 ? (0.6 - c.health) * 2.4 : 0;
+    const old = c.age > c.lifespan * 0.85 && c.health < 0.97 ? 0.25 : 0;
+    if (poorly + old <= 0) return 0;
+    const m = c.memory;
+    if (!m.clinicQ || w.time - m.clinicQ > 5) {
+      m.clinicQ = w.time;
+      m.clinic = clinicFor(c, w);
+    }
+    return m.clinic ? 0.45 + poorly + old : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.d = c.memory.clinic;
+    if (d.d) headInside(c, d.d);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!d.d || d.d.removed) return false;
+    if (c.inside !== d.d) {
+      const r = goInside(c, w, d.d, 50);
+      if (r === 'fail') return false;
+      if (r === 'go') return true;
+      d.inT = 0;
+      w.events.emit('clinic', { c, d: d.d });
+      if (!w.awayMode) w.addLog(`${c.name} the ${c.def.name.toLowerCase()} checked into the critter clinic.`, 'heart');
+    }
+    // bed rest and a bowl of soup
+    d.inT += dt;
+    c.pose = 'sleep';
+    c.health = Math.min(1, c.health + dt / 40);
+    c.hunger = Math.max(0, c.hunger - dt / 400);
+    if (c.health >= 0.98 && d.inT > 20) {
+      c.emote('heart', 2);
+      return false;
+    }
+    return c.brain.t < 240;
+  },
+  stop(c) {
+    c.pose = 'idle';
+    comeOut(c);
+    c.hidden = false;
+  },
+  thought: (c) => (c.inside ? rpick(['Doctor Dot says: rest, and plenty of soup.', 'Feeling better already.']) : 'I feel a bit poorly. Off to the clinic!'),
+});
+
+// --------------------------------------------------------------------- soar (riding the warm air up under a lamp)
+// The air under a heat lamp is warm and rising. Butterflies, moths and
+// dragonflies spiral up in it on open wings, then glide off across the tank.
+function warmLamp(c, w) {
+  let best = null;
+  let bd = 700;
+  for (const z of ['desert', 'pond', 'jungle']) {
+    const lamp = w.env.lampAt(z === 'desert' ? 100 : z === 'pond' ? 800 : 1400);
+    if (lamp.power < 0.2) continue;
+    const d = Math.abs(lamp.x - c.x);
+    if (d < bd) {
+      bd = d;
+      best = lamp;
+    }
+  }
+  return best;
+}
+def('soar', {
+  can: (c) => (c.sp === 'butterfly' || c.sp === 'moth' || c.sp === 'dragonfly') && c.isAdult,
+  hold: 0.45,
+  score(c, w) {
+    if (c.hunger > 0.55 || c.fear > 0.3 || c.act < 0.45) return 0;
+    const m = c.memory;
+    if (m.soarT && w.time - m.soarT < 120) return 0;
+    if (!m.lampQ || w.time - m.lampQ > 6) {
+      m.lampQ = w.time;
+      m.lamp = warmLamp(c, w);
+    }
+    return m.lamp ? (0.1 + c.traits.curious * 0.18) * c.act : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.lamp = c.memory.lamp;
+    c.memory.soarT = w.time;
+    if (c.mode !== 'fly') c.takeOff();
+    d.r = rrange(26, 52);
+    d.a = Math.atan2(c.y - 200, c.x - (d.lamp ? d.lamp.x : c.x));
+    d.y = Math.min(c.y, airFloor(w.terrain, d.lamp ? d.lamp.x : c.x) - 40);
+    d.dir = chance(0.5) ? 1 : -1;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!d.lamp) return false;
+    // spiral in toward the column of warm air, then up it
+    const near = Math.abs(c.x - d.lamp.x) < d.r + 30;
+    if (near) {
+      d.a += dt * 1.7 * d.dir;
+      d.y = Math.max(CEIL + 40, d.y - dt * 26 * (0.5 + d.lamp.power));
+      c.soarT = Math.max(c.soarT, 0.3);
+    }
+    c.seekPoint(d.lamp.x + Math.cos(d.a) * d.r, d.y + Math.sin(d.a) * d.r * 0.22, { speedMul: near ? 0.6 : 1 });
+    if (d.y <= CEIL + 41 && !d.top) {
+      d.top = true;
+      d.topT = c.brain.t;
+      w.events.emit('soar', { c });
+    }
+    return c.brain.t < 16 && !(d.top && c.brain.t - d.topT > 2.5);
+  },
+  stop(c) {
+    c.soarT = 1.2; // and glide away
+  },
+  thought: () => rpick(['Riding the warm air up, up, up!', 'Wheee, the lamp makes the air float!', 'Look at me soar!']),
+});
+
+// --------------------------------------------------------------------- dance (two butterflies spiral up into the sky together)
+def('dance', {
+  can: (c) => (c.sp === 'butterfly' || c.sp === 'moth') && c.isAdult,
+  hold: 0.5,
+  score(c, w) {
+    if (c.mode !== 'fly' || c.hunger > 0.5 || c.fear > 0.2 || c.act < 0.5) return 0;
+    const m = c.memory;
+    if (m.danceT && w.time - m.danceT < 90) return 0;
+    if (!m.danceQ || w.time - m.danceQ > 4) {
+      m.danceQ = w.time;
+      m.partner = w.hashC.nearest(c.x, c.y, 200, (o) => o !== c && o.sp === c.sp && o.isAdult && !o.dead && o.mode === 'fly' && (!o.brain.b || ['wander', 'idle', 'search', 'pollinate'].includes(o.brain.b.id)) && (!o.memory.danceT || w.time - o.memory.danceT > 60));
+    }
+    return m.partner ? (0.08 + c.traits.social * 0.2) * c.act : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    const p = c.memory.partner;
+    d.p = p;
+    c.memory.danceT = w.time;
+    if (!p) return;
+    p.memory.danceT = w.time;
+    d.cx = (c.x + p.x) / 2;
+    d.cy = Math.min(c.y, p.y);
+    d.a = 0;
+    d.r = rrange(14, 24);
+    d.dur = rrange(5, 8);
+    switchTo(p, w, 'danced', { by: c });
+    w.events.emit('dance', { c, p });
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    const p = d.p;
+    if (!p || p.dead || !p.brain.b || p.brain.b.id !== 'danced') return false;
+    // round and round each other, rising as they go, carried on the breeze
+    d.a += dt * 3.2;
+    d.cy = Math.max(CEIL + 16, d.cy - dt * 16);
+    d.cx = clamp(d.cx + Math.sin(c.brain.t * 0.7) * dt * 12, 60, W - 60);
+    c.seekPoint(d.cx + Math.cos(d.a) * d.r, d.cy + Math.sin(d.a) * d.r * 0.7, { speedMul: 1.15 });
+    p.seekPoint(d.cx - Math.cos(d.a) * d.r, d.cy - Math.sin(d.a) * d.r * 0.7, { speedMul: 1.15 });
+    if (chance(dt * 0.5)) c.emote('heart', 1);
+    return c.brain.t < d.dur;
+  },
+  thought: (c) => `Dancing up into the sky with ${c.brain.data.p ? c.brain.data.p.name : 'a friend'}!`,
+});
+def('danced', {
+  score: () => 0,
+  hold: 0.55,
+  start(c) {
+    c.soarT = 0;
+  },
+  tick(c) {
+    const by = c.brain.data.by;
+    if (!by || by.dead || !by.brain.b || by.brain.b.id !== 'dance') return c.brain.t < 0.5;
+    return c.brain.t < 10;
+  },
+  thought: (c) => `Twirling round and round with ${c.brain.data.by ? c.brain.data.by.name : 'a friend'}!`,
+});
+
+// --------------------------------------------------------------------- lamp (moths can't resist a light at night)
+function nightLight(c, w) {
+  let best = null;
+  let bd = 600;
+  for (const d of w.decor) {
+    if (!d.def.light) continue;
+    const dd = Math.abs(d.x - c.x);
+    if (dd < bd) {
+      bd = dd;
+      best = { x: d.x, y: d.y - d.def.h + 8 };
+    }
+  }
+  for (const z of ['desert', 'pond', 'jungle']) {
+    const lamp = w.env.lampAt(z === 'desert' ? 100 : z === 'pond' ? 800 : 1400);
+    const dd = Math.abs(lamp.x - c.x);
+    if (lamp.power > 0.2 && dd < bd) {
+      bd = dd;
+      best = { x: lamp.x, y: CEIL + 26 };
+    }
+  }
+  for (const p of w.plants) {
+    if (p.dead || !p.def.night || !p.flowers.some((f) => f.nectar > 0.3) || Math.abs(p.x - c.x) > bd) continue;
+    bd = Math.abs(p.x - c.x);
+    best = { x: p.x, y: p.y - p.def.h * p.growth - 10 };
+  }
+  return best;
+}
+def('lamp', {
+  can: (c) => c.sp === 'moth' && c.isAdult,
+  hold: 0.5,
+  score(c, w) {
+    if (w.env.sun > 0.4 || c.hunger > 0.6) return 0;
+    const m = c.memory;
+    if (m.lampT && w.time - m.lampT < 40) return 0;
+    m.light = nightLight(c, w);
+    return m.light ? 0.3 + c.traits.curious * 0.2 : 0;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    d.l = c.memory.light;
+    c.memory.lampT = w.time;
+    if (c.mode !== 'fly') c.takeOff();
+    d.a = rrange(0, 6.28);
+    d.dur = rrange(6, 12);
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (!d.l) return false;
+    // muddled loops round and round the light
+    d.a += dt * (2.4 + Math.sin(c.brain.t * 1.3) * 1.2);
+    const r = 12 + Math.sin(c.brain.t * 2.1) * 6;
+    c.seekPoint(d.l.x + Math.cos(d.a) * r * 1.4, Math.max(CEIL, d.l.y + Math.sin(d.a) * r), { speedMul: 1.1 });
+    if (!d.told && c.brain.t > 3) {
+      d.told = true;
+      w.events.emit('mothLamp', { c });
+    }
+    return c.brain.t < d.dur;
+  },
+  thought: () => rpick(['Ooh, a light! Must... go... round...', 'So bright! So lovely!', 'Is that the moon? It must be the moon.']),
+});
+
+// --------------------------------------------------------------------- rummage (koi feel about in the gravel, and sometimes find a coin)
+def('rummage', {
+  can: (c) => c.sp === 'koi' && c.isAdult && c.mode === 'swim',
+  hold: 0.45,
+  score(c, w) {
+    if (c.hunger > 0.6 || c.fear > 0.3) return 0;
+    const m = c.memory;
+    if (m.rumT && w.time - m.rumT < 50) return 0;
+    return (0.16 + c.traits.curious * 0.2) * c.act;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    c.memory.rumT = w.time;
+    const p = w.randomWaterPoint(c.x, 160, true);
+    if (p) c.seekPoint(p[0], p[1] - 6);
+    else d.fail = true;
+  },
+  tick(c, w, dt) {
+    const d = c.brain.data;
+    if (d.fail) return false;
+    if (!c.arrived) return c.brain.t < 20;
+    c.pose = 'eat';
+    d.t = (d.t || 0) + dt;
+    if (chance(dt * 3)) w.dust(c.x + c.facing * c.size * 0.4, c.y + 6, 1);
+    if (d.t > 4) {
+      // a lucky find, once in a while (more often for a busy koi)
+      const m = c.memory;
+      const due = !m.coinT || w.time - m.coinT > DAY_LEN * (c.busyT > 0 ? 0.2 : 0.4);
+      if (due && chance(0.45)) {
+        m.coinT = w.time;
+        const n = rint(1, 3);
+        w.earn(n, `${c.name} the koi`, c.x, c.y);
+        w.credit(c);
+        c.emote('star', 2);
+        w.events.emit('koiCoin', { c, n });
+        w.addLog(`${c.name} the koi found ${n === 1 ? 'a lost coin' : n + ' lost coins'} in the gravel!`, 'coin');
+      }
+      return false;
+    }
+    return true;
+  },
+  stop(c) {
+    if (c.pose === 'eat') c.pose = 'idle';
+  },
+  thought: () => rpick(['Rummage, rummage...', 'Something shiny down here?', 'My whiskers are tingling!']),
+});
+
+// --------------------------------------------------------------------- deliver (the mail dragonfly does its round)
+function nextGood(c, w) {
+  let best = null;
+  let bd = 1e9;
+  for (const g of w.goods) {
+    if (g.gone || (g.claim && g.claim !== c.id)) continue;
+    const d = Math.abs(g.x - c.x) + Math.abs(g.y - c.y) * 0.5;
+    if (d < bd) {
+      bd = d;
+      best = g;
+    }
+  }
+  return best;
+}
+def('deliver', {
+  can: (c) => c.role === 'courier' && c.isAdult,
+  hold: 0.9,
+  score(c, w) {
+    if (c.hunger > 0.75 || c.energy < 0.12) return 0;
+    if (!w.goods.length) return 0;
+    return 0.95;
+  },
+  start(c, w) {
+    const d = c.brain.data;
+    if (c.mode !== 'fly') c.takeOff();
+    d.g = nextGood(c, w);
+    if (d.g) {
+      d.g.claim = c.id;
+      c.seekPoint(d.g.x, d.g.y - 6, { speedMul: 1.2, near: true });
+    }
+  },
+  tick(c, w) {
+    const d = c.brain.data;
+    if (c.mode !== 'fly') c.takeOff();
+    if (!d.g || d.g.gone) {
+      d.g = nextGood(c, w);
+      if (!d.g) return false;
+      d.g.claim = c.id;
+    }
+    if (!c.target || Math.hypot(c.target.x - d.g.x, c.target.y - (d.g.y - 6)) > 4) c.seekPoint(d.g.x, d.g.y - 6, { speedMul: 1.2, near: true });
+    if (Math.hypot(c.x - d.g.x, c.y - (d.g.y - 6)) < 12) {
+      const g = d.g;
+      d.g = null;
+      if (w.collectGood(g, c)) {
+        w.credit(c);
+        c.emote('star', 1);
+      }
+    }
+    return c.brain.t < 45;
+  },
+  stop(c, w) {
+    const d = c.brain.data;
+    if (d.g && d.g.claim === c.id) d.g.claim = 0;
+  },
+  thought: (c) => rpick(['Collecting the post!', 'Special delivery for the keeper!', 'Zoom! Next stop!']),
+});
+
 // Which behaviours each species knows.
-const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize', 'gather'];
+const BASE = ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize', 'gather', 'clinic'];
 export const SPECIES_BEHAVIORS = {
   default: BASE,
   cricket: [...BASE, 'chirp', 'hide'],
@@ -2031,17 +2413,24 @@ export const SPECIES_BEHAVIORS = {
   gecko: [...BASE, 'hunt', 'bask', 'hide'],
   beetle: [...BASE, 'headstand', 'hide', 'recycle'],
   goldfish: [...BASE, 'hunt', 'graze', 'beg', 'chase'],
+  guppy: [...BASE, 'hunt', 'graze', 'beg', 'chase'],
+  tetra: [...BASE, 'graze', 'beg', 'chase'],
+  koi: [...BASE, 'graze', 'beg', 'chase', 'rummage'],
+  puffer: [...BASE, 'hunt'],
+  axolotl: ['idle', 'wander', 'rest', 'forage', 'snack', 'search', 'comfort', 'flee', 'investigate', 'home', 'socialize', 'gather'],
+  dragonfly: [...BASE, 'hunt', 'soar', 'deliver'],
+  moth: [...BASE, 'pollinate', 'pupate', 'soar', 'dance', 'lamp'],
   frog: [...BASE, 'hunt', 'croak', 'graze', 'breathe', 'chase'],
   turtle: [...BASE, 'bask', 'breathe'],
   pondsnail: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'home', 'breathe', 'investigate', 'gather'],
   shrimp: ['idle', 'wander', 'rest', 'forage', 'snack', 'graze', 'comfort', 'flee', 'mate', 'investigate', 'home', 'socialize', 'gather'],
   ladybug: [...BASE, 'hunt', 'huddle'],
   aphid: ['idle', 'sap', 'mate', 'comfort'],
-  butterfly: [...BASE, 'pollinate', 'pupate'],
+  butterfly: [...BASE, 'pollinate', 'pupate', 'soar', 'dance'],
   snail: [...BASE, 'estivate'],
   bee: [...BASE, 'pollinate', 'bring'],
   worm: ['idle', 'wander', 'rest', 'forage', 'comfort', 'mate', 'surface'],
-  firefly: [...BASE, 'glow'],
+  firefly: [...BASE, 'glow', 'pollinate'],
   pillbug: [...BASE, 'hide'],
   fruitfly: ['idle', 'wander', 'forage', 'search', 'rest', 'flee'],
 };

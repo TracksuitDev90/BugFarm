@@ -327,6 +327,35 @@ const SHAPES = {
       line(g, x, y, x + 0.5, y - 0.4, lw * 0.8, cols[i % 4]);
     }
   },
+  // Baker Bramble's busy bun: a sticky honey swirl
+  bun(g, c, lw) {
+    paint(g, c[0], lw, () => {
+      g.beginPath();
+      g.moveTo(-6.4, 0);
+      g.bezierCurveTo(-7, -9, 7, -9, 6.4, 0);
+      g.closePath();
+    });
+    g.beginPath();
+    for (let a = 0; a < TAU * 1.8; a += 0.25) {
+      const r = 0.6 + a * 0.42;
+      const x = Math.cos(a) * r;
+      const y = -3.4 + Math.sin(a) * r * 0.6;
+      if (a === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    stroke(g, lw * 0.8, c[2]);
+    // a drip of honey glaze
+    paint(g, c[1], lw * 0.6, () => {
+      g.beginPath();
+      g.moveTo(-4, -6);
+      g.quadraticCurveTo(0, -8.4, 4, -6);
+      g.quadraticCurveTo(3, -4, 2, -5);
+      g.quadraticCurveTo(1.4, -2.6, 0.6, -4.6);
+      g.quadraticCurveTo(-2, -4.2, -4, -6);
+      g.closePath();
+    });
+    highlight(g, -2, -6.2, 1.8, 0.6, 0.7);
+  },
   drop(g, c, lw) {
     g.save();
     g.globalAlpha *= 0.92;

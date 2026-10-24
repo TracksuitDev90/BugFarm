@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bug Farm varieties</title>
+<style>body{margin:0;background:#f7eed6;font:11px sans-serif}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// Every variety of every critter that comes in more than one look, plus the
+// stages of the newer critters.
+import { CREATURE_ART, PALETTES } from '../src/art/creatures.js';
+const c = document.getElementById('c');
+const q = new URLSearchParams(location.search);
+const S = +(q.get('s') || 3);
+const only = q.get('only');
+const rows = [];
+const pose = { goldfish: 'swim', guppy: 'swim', tetra: 'swim', koi: 'swim', puffer: 'swim', butterfly: 'idle', moth: 'idle', dragonfly: 'idle', axolotl: 'walk' };
+for (const sp of ['ant', 'goldfish', 'guppy', 'tetra', 'koi', 'puffer', 'axolotl', 'dragonfly', 'butterfly', 'moth']) {
+  PALETTES[sp].forEach((P, i) => rows.push([sp, sp === 'ant' ? 'worker' : 'adult', pose[sp] || 'idle', i, sp === 'dragonfly' && i === 4 ? 'post' : null]));
+}
+rows.push(['ant', 'worker', 'walk', 4, 'replete']);
+rows.push(['butterfly', 'adult', 'fly', 5, null]);
+rows.push(['butterfly', 'adult', 'fly', 6, null]);
+rows.push(['moth', 'adult', 'fly', 0, null]);
+rows.push(['moth', 'caterpillar', 'walk', 1, null]);
+rows.push(['moth', 'cocoon', 'idle', 0, null]);
+rows.push(['puffer', 'adult', 'puff', 0, null]);
+rows.push(['dragonfly', 'nymph', 'walk', 0, null]);
+rows.push(['axolotl', 'adult', 'swim', 1, 'beret']);
+rows.push(['tetra', 'fry', 'swim', 0, null]);
+rows.push(['koi', 'fry', 'swim', 3, null]);
+let x = 10, y = 10, rowH = 0;
+const items = [];
+for (const [sp, stage, ps, pi, acc] of rows) {
+  if (only && !only.split(',').includes(sp)) continue;
+  const art = CREATURE_ART[sp];
+  const [bw, bh] = art.box(stage);
+  const w = Math.max(90, bw * 2 * S + 10), h = bh * 2 * S + 26;
+  if (x + w > 1590) { x = 10; y += rowH; rowH = 0; }
+  items.push({ sp, stage, ps, pi, acc, x, y, w, h, bw, bh });
+  x += w; rowH = Math.max(rowH, h);
+}
+c.width = 1600; c.height = y + rowH + 10;
+const g = c.getContext('2d');
+g.fillStyle = '#f7eed6'; g.fillRect(0, 0, c.width, c.height);
+for (const it of items) {
+  const art = CREATURE_ART[it.sp];
+  const P = PALETTES[it.sp][it.pi % PALETTES[it.sp].length];
+  g.save();
+  g.strokeStyle = 'rgba(0,0,0,0.1)';
+  g.strokeRect(it.x, it.y, it.w - 4, it.h - 4);
+  g.fillStyle = '#333';
+  g.fillText(`${P.name || it.sp} ${it.stage !== 'adult' ? it.stage : ''} ${it.ps}`, it.x + 4, it.y + 12);
+  g.translate(it.x + it.w / 2, it.y + 16 + it.bh * S);
+  g.scale(S, S);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  art.draw(g, { stage: it.stage, pose: it.ps, frame: 1, pal: P, acc: it.acc, accColor: '#d9483b', lw: art.lw, closed: false });
+  g.restore();
+}
+</script>
+</body>
+</html>

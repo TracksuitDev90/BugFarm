@@ -587,6 +587,160 @@ export const DECOR_ART = {
     });
     text(g, 'zZ', 9, 13, 4, '#4c8fd6');
   },
+  // Doctor Dot's little cottage hospital, with a heart on the sign
+  clinic(g) {
+    rect(g, -22, -40, 44, 40, '#fbf6ea');
+    rect(g, -22, -6, 44, 6, '#cfe3f2', LW * 0.8);
+    paint(g, '#7cc0e6', LW, () => {
+      g.beginPath();
+      g.moveTo(-26, -38);
+      g.lineTo(0, -58);
+      g.lineTo(26, -38);
+      g.closePath();
+    });
+    for (let i = -2; i <= 2; i++) line(g, i * 4, -55 + Math.abs(i) * 1.5, i * 9, -39, LW * 0.5, 'rgba(58,42,31,0.45)');
+    // the sign: a heart with a sticking plaster
+    paint(g, '#fffdf6', LW, () => circ(g, 0, -45, 6.4));
+    paint(g, '#e8475a', LW * 0.7, () => {
+      g.beginPath();
+      g.moveTo(0, -40.6);
+      g.bezierCurveTo(-6.4, -45, -4.4, -50.4, 0, -47.4);
+      g.bezierCurveTo(4.4, -50.4, 6.4, -45, 0, -40.6);
+      g.closePath();
+    });
+    g.save();
+    g.translate(0, -45.4);
+    g.rotate(-0.5);
+    rect(g, -3.4, -1, 6.8, 2, '#f6d9b0', LW * 0.5);
+    g.restore();
+    rect(g, -15, -34, 30, 6, '#fffdf6', LW * 0.7);
+    text(g, 'CLINIC', 0, -30.8, 5.2, '#c8321e');
+    archDoor(g, -8, 0, 12, 22, '#7cc0e6');
+    roundWindow(g, 10, -18, 4.4);
+    // a flower box under the window
+    rect(g, 4, -12, 12, 3, '#c98f4a', LW * 0.7);
+    for (const x of [6, 10, 14]) {
+      circ(g, x, -13.4, 1.2);
+      fill(g, '#f39ac0');
+    }
+    highlight(g, -14, -34, 4, 1.5, 0.35, -0.2);
+  },
+  // Tilly's butterfly house: a silk-mesh dome full of flowers
+  butterflyHouse(g) {
+    rect(g, -22, -6, 44, 6, '#c98f4a');
+    paint(g, 'rgba(236,246,232,0.65)', LW, () => {
+      g.beginPath();
+      g.moveTo(-20, -6);
+      g.lineTo(-20, -34);
+      g.bezierCurveTo(-20, -62, 20, -62, 20, -34);
+      g.lineTo(20, -6);
+      g.closePath();
+    });
+    // flowers inside
+    for (const [x, y, c] of [[-10, -14, '#f39ac0'], [-2, -20, '#f6d64a'], [8, -15, '#e8475a'], [13, -22, '#8fc4f0']]) {
+      line(g, x, -6, x, y, LW * 0.6, '#5f9e45');
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU;
+        circ(g, x + Math.cos(a) * 1.6, y + Math.sin(a) * 1.6, 1.2);
+        fill(g, c);
+      }
+    }
+    // the mesh
+    g.save();
+    g.beginPath();
+    g.moveTo(-20, -6);
+    g.lineTo(-20, -34);
+    g.bezierCurveTo(-20, -62, 20, -62, 20, -34);
+    g.lineTo(20, -6);
+    g.closePath();
+    g.clip();
+    for (let x = -20; x <= 20; x += 5) line(g, x, -60, x, -6, LW * 0.35, 'rgba(58,42,31,0.35)');
+    for (let y = -56; y <= -6; y += 5) line(g, -22, y, 22, y, LW * 0.35, 'rgba(58,42,31,0.35)');
+    g.restore();
+    g.beginPath();
+    g.moveTo(-20, -6);
+    g.lineTo(-20, -34);
+    g.bezierCurveTo(-20, -62, 20, -62, 20, -34);
+    g.lineTo(20, -6);
+    stroke(g, LW * 1.4, '#8a5a35');
+    line(g, 0, -55, 0, -6, LW * 1.2, '#8a5a35');
+    // a butterfly on top
+    for (const s of [-1, 1]) paint(g, '#f08a2c', LW * 0.6, () => ell(g, s * 3, -58, 3, 2.2, s * 0.5));
+    line(g, 0, -60, 0, -56, LW * 0.8);
+    highlight(g, -10, -44, 4, 6, 0.4, 0.4);
+  },
+  // Miss Penny's little red schoolhouse, with a bell in the tower
+  schoolhouse(g) {
+    rect(g, -24, -36, 48, 36, '#d9483b');
+    for (let y = -32; y < 0; y += 5) line(g, -24, y, 24, y, LW * 0.35, 'rgba(58,42,31,0.3)');
+    paint(g, '#5e5a62', LW, () => {
+      g.beginPath();
+      g.moveTo(-28, -34);
+      g.lineTo(0, -52);
+      g.lineTo(28, -34);
+      g.closePath();
+    });
+    // bell tower
+    rect(g, -5, -64, 10, 14, '#fbf3df');
+    paint(g, '#5e5a62', LW, () => {
+      g.beginPath();
+      g.moveTo(-7, -63);
+      g.lineTo(0, -71);
+      g.lineTo(7, -63);
+      g.closePath();
+    });
+    paint(g, '#f0bf45', LW * 0.7, () => {
+      g.beginPath();
+      g.moveTo(-2.6, -54);
+      g.quadraticCurveTo(-2.6, -60, 0, -60);
+      g.quadraticCurveTo(2.6, -60, 2.6, -54);
+      g.closePath();
+    });
+    rect(g, -12, -31, 24, 6, '#fbf3df', LW * 0.7);
+    text(g, 'SCHOOL', 0, -27.8, 5, '#3a2a1f');
+    archDoor(g, 0, 0, 11, 18, '#fbf3df');
+    for (const x of [-16, 16]) {
+      rect(g, x - 4, -20, 8, 9, '#cfe8f6', LW * 0.8);
+      line(g, x, -20, x, -11, LW * 0.5);
+    }
+    // ABC chalkboard leaning by the door
+    rect(g, 18, -10, 9, 10, '#3f5a4a', LW * 0.7);
+    text(g, 'ABC', 22.5, -5, 3.2, '#fffdf6');
+  },
+  // Chef Crumble's picnic hamper, hung from the lid on a rope
+  hamper(g) {
+    line(g, 0, -2, 0, 6, LW * 1.2);
+    line(g, -8, 6, 0, 0, LW);
+    line(g, 8, 6, 0, 0, LW);
+    paint(g, '#c98f4a', LW, () => {
+      g.beginPath();
+      g.moveTo(-14, 8);
+      g.lineTo(14, 8);
+      g.lineTo(12, 26);
+      g.lineTo(-12, 26);
+      g.closePath();
+    });
+    for (let y = 11; y < 26; y += 3.5) line(g, -13.5 + (y - 8) * 0.1, y, 13.5 - (y - 8) * 0.1, y, LW * 0.45, 'rgba(58,42,31,0.45)');
+    for (let x = -10; x <= 10; x += 4) line(g, x, 8, x * 0.9, 26, LW * 0.45, 'rgba(58,42,31,0.45)');
+    // gingham cloth peeking out of the lid
+    paint(g, '#fffdf6', LW * 0.8, () => {
+      g.beginPath();
+      g.moveTo(-15, 8);
+      g.quadraticCurveTo(-8, 3, 0, 6);
+      g.quadraticCurveTo(8, 3, 15, 8);
+      g.lineTo(13, 11);
+      g.lineTo(-13, 11);
+      g.closePath();
+    });
+    for (let x = -12; x <= 12; x += 4) {
+      g.fillStyle = '#e2553f';
+      g.fillRect(x, 6, 2, 2);
+      g.fillRect(x + 2, 8, 2, 2);
+    }
+    // an apple and a baguette
+    blob(g, -5, 4, 3, 2.8, '#e2453f', LW * 0.6);
+    paint(g, '#e8b060', LW * 0.6, () => ell(g, 6, 2, 6, 1.8, -0.5));
+  },
   // rocks are stamped into terrain; this is only for the menu icon
   boulder(g) {
     blob(g, 0, -11, 20, 12, '#a7a39a', LW);

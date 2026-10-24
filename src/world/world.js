@@ -849,6 +849,8 @@ export class World {
       amt = bite;
       p.eatSlot(tgt.slot, amt / Math.max(0.3, p.def.h > 60 ? 1.2 : 0.6));
       this.events.emit('eatPlant', { c, plant: p, tag });
+      // a grasshopper mowing the grass drops clippings: work for the recyclers
+      if (c.sp === 'grasshopper' && (tag === 'grass' || tag === 'leaf') && chance(0.1)) this.dropLitter(p);
     } else if (tgt.kind === 'algae') {
       like = c.diet.algae || 0;
       amt = bite * Math.min(1, this.env.pond.algae * 3);
@@ -2020,7 +2022,8 @@ export class World {
       this.goods.push(g);
     }
     Object.assign(this.pantry, d.pantry || {});
-    this.coins = d.coins || 0;
+    // (a farm from before the Market opened gets the town's welcome gift)
+    this.coins = d.coins != null ? d.coins : 20;
     this.perks = Object.assign({}, d.perks || {});
     Object.assign(this.stock, d.stock || {});
     for (const cd of d.colonies || []) this.colonies.push(Colony.load(cd));

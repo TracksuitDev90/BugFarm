@@ -64,6 +64,10 @@ const TIPS = [
   'Tap a heat lamp, mister, heater or filter to see what it does.',
   'Every critter has a job. Tap one to see what it does for the farm.',
   'Busytown writes in for the goods your critters make. Check the Orders tab on the clipboard.',
+  'Orders pay Busytown coins. Tap the coin purse (top right) to visit the Market.',
+  'Help a neighbour a few times and they will sell you something special at the Market.',
+  'Every grown-up critter has a dream. Tap one to see what it is working toward.',
+  'Butterflies ride the warm air under a heat lamp. Turn one up on a sunny day.',
   'Try the lens button (top right) to see heat, damp and scent trails.',
   'Turn the desert lamp way up and see where the ants go.',
   'Too much food spoils. Too little and tummies rumble!',
@@ -791,7 +795,7 @@ export class UI {
       box.append(row);
     }
     const names = [];
-    for (const sp of next.critters || []) names.push(SPECIES[sp].plural);
+    for (const sp of next.critters || []) names.push(ANT_KINDS[sp] ? ANT_KINDS[sp].label : SPECIES[sp].plural);
     for (const f of next.foods || []) names.push(FOODS[f].name);
     for (const pl of next.plants || []) names.push(PLANTS[pl].name);
     for (const d of next.decor || []) names.push(DECOR[d].name);
@@ -1002,7 +1006,7 @@ export class UI {
   // A zone grew: show off what's new.
   levelUp(z, lv, unlocks) {
     const names = [];
-    for (const sp of unlocks.adopt) names.push(SPECIES[sp].plural);
+    for (const sp of unlocks.adopt) names.push(ANT_KINDS[sp] ? ANT_KINDS[sp].label : SPECIES[sp].plural);
     for (const f of unlocks.feed) names.push(FOODS[f].name);
     for (const pl of unlocks.plant) names.push(PLANTS[pl].name);
     for (const d of unlocks.decor) names.push(DECOR[d].name);
@@ -2104,6 +2108,7 @@ export class UI {
       b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
       b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
+      b.append(el('p', {}, 'Every critter has a job. The honey, silk, seeds, compost and water lilies they make are wanted in Busytown, and the townsfolk pay in coins. Make friends with them and spend your coins at the Busytown Market.'));
       const pick = (mode) => () => {
         this.closeModal();
         onChoose(mode);

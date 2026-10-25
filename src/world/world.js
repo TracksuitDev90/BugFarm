@@ -1,5 +1,5 @@
 // The World owns every entity and runs the simulation step.
-import { W, H, CELL, GW, GH, MAT, DAY_LEN, MAX_CREATURES, MAX_FOOD, MAX_PLANTS, MAX_DECOR, ZONE_X } from '../config.js';
+import { W, H, CELL, GW, GH, MAT, DAY_LEN, MAX_CREATURES, MAX_FOOD, MAX_PLANTS, MAX_DECOR, ZONE_X, ZONE_MID, ZONE_SCALE, TANK, X, parseTank } from '../config.js';
 import { Terrain, POND_L, POND_R } from './terrain.js';
 import { Environment, LAMP_X, MISTER_X, FILTER_X } from './environment.js';
 import { SpatialHash } from './spatial.js';
@@ -23,6 +23,8 @@ import { Colony } from '../ai/ants.js';
 import { preyValue, suits } from '../ai/search.js';
 import { zoneStatus, residents, favouriteFoods } from '../sim/care.js';
 import { SPRINKLER_X } from '../data/market.js';
+import { cleanName } from '../sim/keeper.js';
+import { Vines } from './vines.js';
 
 const MAX_GOODS = 40;
 // Pollen loads it takes to fill a jar of honey, and how much a worm eats
@@ -49,6 +51,7 @@ export class World {
     this.perks = {};
     this.stock = { buns: 0 };
     this.colonies = [];
+    this.vines = new Vines(); // the living vines hanging from the jungle's lid
     this.hashC = new SpatialHash(64);
     this.hashF = new SpatialHash(64);
     this.byIdMap = new Map();
@@ -61,6 +64,8 @@ export class World {
     this.gentle = true;
     this.awayMode = false;
     this.style = { sand: 'golden', soil: 'loam', gravel: 'natural', backdrop: 'meadow', water: 'clear', frame: 'wood', wallpaper: 'cream' };
+    // who Busytown writes to: { name, kind: 'me' | 'town' } (see sim/keeper.js)
+    this.keeper = null;
     this.stats = { born: 0, died: 0, dug: 0, eaten: 0, fed: 0, days: 0 };
     this.history = [];
     this.histT = 0;
@@ -78,7 +83,7 @@ export class World {
     this.waterMapT = -99;
     // Where (and at what time of day) the keeper usually feeds the pond:
     // the fish learn it.
-    this.feedMem = { x: 810, hours: new Array(24).fill(0) };
+    this.feedMem = { x: ZONE_MID.pond, hours: new Array(24).fill(0) };
     this.keeperFeeding = false; // the Feed tool is out
     this.shareLogT = -99;
     this.seed = 1;
@@ -107,7 +112,7 @@ export class World {
     const farm = starter === 'farm';
     const t = this.terrain;
     // ant colony (its nest starts somewhere new every time)
-    this.foundColony(rint(26, 82));
+    this.foundColony(rint(26, 82) + TANK.desert / CELL);
     // plants
     const plant = (type, x, growth = rrange(0.55, 0.95)) => this.addPlant(type, x, null, { growth });
     for (const [type, x] of [
@@ -116,68 +121,69 @@ export class World {
       ['palm', 1086], ['palm', 1556], ['monstera', 1160], ['monstera', 1452], ['bromeliad', 1236], ['bromeliad', 1512], ['bigleaf', 1272],
       ['fern', 1132], ['fern', 1300], ['fern', 1584], ['daisy', 1180], ['tulip', 1305], ['sunflower', 1400], ['clover', 1350], ['grass', 1340],
       ['strawberry', 1430], ['mushroom', 1580], ['mushroom', 1255],
-    ]) plant(type, x + rrange(-6, 6));
+    ]) plant(type, X(x) + rrange(-6, 6));
     // decor (a new farm earns its bee hotel, library and lamp post later)
-    this.addDecor('sign', 505);
-    this.addDecor('flowerpot', 300);
-    this.addDecor('castle', 880);
-    this.addDecor('pipe', 690);
-    this.addDecor('log', 1480);
-    this.addDecor('mushroomHouse', 1110);
+    this.addDecor('sign', X(505));
+    this.addDecor('flowerpot', X(300));
+    this.addDecor('castle', X(880));
+    this.addDecor('pipe', X(690));
+    this.addDecor('log', X(1480));
+    this.addDecor('mushroomHouse', X(1110));
     if (!farm) {
-      this.addDecor('bubbler', 960);
-      this.addDecor('library', 1200);
-      this.addDecor('beeHouse', 1370);
-      this.addDecor('lampPost', 1545);
+      this.addDecor('bubbler', X(960));
+      this.addDecor('library', X(1200));
+      this.addDecor('beeHouse', X(1370));
+      this.addDecor('lampPost', X(1545));
     }
+    this.vines.seed(this);
     // critters (alternating boys and girls, so every pair can raise a family)
     const add = (sp, x, y, opts) => this.spawn(sp, x, y, Object.assign({ stage: SPECIES[sp].adultStage, sex: this.balancedSex(sp) }, opts || {}));
-    add('cricket', 280);
-    add('cricket', 330);
-    add('cricket', 470);
-    add('goldfish', 760, 520);
-    add('goldfish', 800, 560);
-    add('goldfish', 840, 540);
-    add('pondsnail', 760, t.surfaceY(760));
-    add('pondsnail', 930, t.surfaceY(930));
-    add('snail', 1210);
-    add('snail', 1500);
-    add('butterfly', 1250, 300);
-    add('butterfly', 1420, 260);
-    this.adopt('butterfly', 1180, 420);
+    add('cricket', X(280));
+    add('cricket', X(330));
+    add('cricket', X(470));
+    add('goldfish', X(760), 520);
+    add('goldfish', X(800), 560);
+    add('goldfish', X(840), 540);
+    add('pondsnail', X(760), t.surfaceY(X(760)));
+    add('pondsnail', X(930), t.surfaceY(X(930)));
+    add('snail', X(1210));
+    add('snail', X(1500));
+    add('butterfly', X(1250), 300);
+    add('butterfly', X(1420), 260);
+    this.adopt('butterfly', X(1180), 420);
     if (!farm) {
-      add('gecko', 420);
-      add('beetle', 160);
-      add('beetle', 360);
-      add('frog', 700, 480, { stage: 'tadpole' });
-      add('frog', 900, 520, { stage: 'tadpole' });
-      add('frog', 980, 480, { stage: 'tadpole' });
-      add('turtle', 820, 600);
-      add('shrimp', 800, t.surfaceY(800));
-      add('shrimp', 880, t.surfaceY(880));
-      add('shrimp', 1000, t.surfaceY(1000));
-      add('ladybug', 1150);
-      add('ladybug', 1300);
-      add('ladybug', 1450);
-      add('bee', 1350, 320);
-      add('bee', 1420, 300);
-      add('worm', 1200, 560);
-      add('worm', 1450, 640);
-      add('firefly', 1330);
-      add('firefly', 1390);
-      add('firefly', 1520);
-      add('firefly', 1180);
-      add('pillbug', 1470);
-      add('pillbug', 1490);
-      add('pillbug', 1260);
-      add('grasshopper', 1380);
-      for (let i = 0; i < 6; i++) this.adopt('aphid', rrange(1100, 1550), 400);
-      this.adopt('butterfly', 1520, 420);
+      add('gecko', X(420));
+      add('beetle', X(160));
+      add('beetle', X(360));
+      add('frog', X(700), 480, { stage: 'tadpole' });
+      add('frog', X(900), 520, { stage: 'tadpole' });
+      add('frog', X(980), 480, { stage: 'tadpole' });
+      add('turtle', X(820), 600);
+      add('shrimp', X(800), t.surfaceY(X(800)));
+      add('shrimp', X(880), t.surfaceY(X(880)));
+      add('shrimp', X(1000), t.surfaceY(X(1000)));
+      add('ladybug', X(1150));
+      add('ladybug', X(1300));
+      add('ladybug', X(1450));
+      add('bee', X(1350), 320);
+      add('bee', X(1420), 300);
+      add('worm', X(1200), 560);
+      add('worm', X(1450), 640);
+      add('firefly', X(1330));
+      add('firefly', X(1390));
+      add('firefly', X(1520));
+      add('firefly', X(1180));
+      add('pillbug', X(1470));
+      add('pillbug', X(1490));
+      add('pillbug', X(1260));
+      add('grasshopper', X(1380));
+      for (let i = 0; i < 6; i++) this.adopt('aphid', rrange(X(1100), X(1550)), 400);
+      this.adopt('butterfly', X(1520), 420);
     }
     // a few snacks to start
-    this.addFood(farm ? 'lettuce' : 'apple', 1330, t.surfaceY(1330), { state: 'rest' });
-    this.addFood('seedmix', 250, t.surfaceY(250), { state: 'rest' });
-    this.addFood('flakes', 800, t.waterLevel + 1, { state: 'float', inWater: true });
+    this.addFood(farm ? 'lettuce' : 'apple', X(1330), t.surfaceY(X(1330)), { state: 'rest' });
+    this.addFood('seedmix', X(250), t.surfaceY(X(250)), { state: 'rest' });
+    this.addFood('flakes', X(800), t.waterLevel + 1, { state: 'float', inWater: true });
     this.addLog(farm ? 'Welcome to your Bug Farm! Each corner has its first two kinds of critter. Check the clipboard to see what they need.' : 'Welcome to your Bug Farm! Everyone has just moved in.', 'star');
     // a welcome gift from the town, to spend at the Market
     this.coins = 20;
@@ -239,6 +245,23 @@ export class World {
   }
   spDef(sp) {
     return SPECIES[sp];
+  }
+  // The builders have just opened up new ground (x0..x1): they leave a few
+  // plants to get it started.
+  newGround(b) {
+    const plants = { desert: ['drygrass', 'cactus', 'drygrass', 'succulent'], pond: ['eelgrass', 'eelgrass', 'lilypad'], jungle: ['fern', 'grass', 'palm', 'fern', 'clover'] }[b.zone] || [];
+    plants.forEach((type, i) => {
+      const x = b.x0 + ((i + 0.5) / plants.length) * (b.x1 - b.x0) + rrange(-10, 10);
+      this.addPlant(type, x, null, { growth: rrange(0.45, 0.8) });
+    });
+    this.sparkle((b.x0 + b.x1) / 2, this.terrain.surfaceY((b.x0 + b.x1) / 2) - 30, 18);
+    this.addLog(`The builders made the ${b.zone} bigger, and planted a few things to get the new ${b.zone === 'pond' ? 'water' : 'ground'} started.`, 'star');
+  }
+
+  // How many of a species the tank has room for: more in a bigger zone.
+  maxPop(sp) {
+    const d = SPECIES[sp];
+    return Math.round(d.maxPop * (ZONE_SCALE[d.zone] || 1));
   }
   colony(id) {
     for (const c of this.colonies) if (c.id === id) return c;
@@ -490,7 +513,7 @@ export class World {
   ensureCourier() {
     let c = this.creatures.find((k) => k.role === 'courier' && !k.dead);
     if (c || !this.owns('courier')) return c || null;
-    const x = 810 + rrange(-80, 80);
+    const x = ZONE_MID.pond + rrange(-80, 80);
     c = new Creature('dragonfly', x, 90, { stage: 'adult', role: 'courier', palIdx: 4, acc: 'post', name: 'Dash', sex: 'm', lifespan: DAY_LEN * 9999 });
     c.mode = 'fly';
     c.hunger = 0.1;
@@ -903,7 +926,7 @@ export class World {
     a.mateCD = cd;
     if (b) b.mateCD = cd;
     const mother = b && b.sex === 'f' ? b : a;
-    const room = def.maxPop - this.count(a.sp);
+    const room = this.maxPop(a.sp) - this.count(a.sp);
     let n = Math.min(rint(br.clutch[0], br.clutch[1]), room);
     if (n <= 0) return;
     const t = this.terrain;
@@ -951,7 +974,7 @@ export class World {
           // (a dragonfly dips down to lay hers in the pond)
           const ax = mother.inWater ? mother.x : LAMP_X.pond + rrange(-120, 120);
           for (let i = 0; i < n; i++) {
-            const p = this.randomWaterPoint(ax, 60, true) || this.randomWaterPoint(810, 200, true);
+            const p = this.randomWaterPoint(ax, 60, true) || this.randomWaterPoint(ZONE_MID.pond, (ZONE_X.pond[1] - ZONE_X.pond[0]) * 0.4, true);
             if (!p) break;
             const c = mk(p[0], p[1], firstStage);
             c.mode = 'still';
@@ -1052,7 +1075,7 @@ export class World {
       } else if (wasClimb) c.climb = null;
       if (c.stageDef.loco === 'walk' && c.mode === 'walk') c.y = c.groundAt(this, c.x);
       const extra = (c.memory.young || 1) - 1;
-      for (let k = 0; k < extra && this.count(c.sp) < def.maxPop; k++) {
+      for (let k = 0; k < extra && this.count(c.sp) < this.maxPop(c.sp); k++) {
         const s = new Creature(c.sp, c.x + rrange(-6, 6), c.y + rrange(-4, 4), { stage: c.stage, palIdx: c.palIdx });
         s.mode = c.mode;
         if (c.mode === 'climb' && c.climb) {
@@ -1137,7 +1160,7 @@ export class World {
   }
 
   spawnFruitFly(food) {
-    if (this.count('fruitfly') >= SPECIES.fruitfly.maxPop || this.creatures.length >= MAX_CREATURES - 10) return;
+    if (this.count('fruitfly') >= this.maxPop('fruitfly') || this.creatures.length >= MAX_CREATURES - 10) return;
     const c = new Creature('fruitfly', food.x, food.y - 6, { stage: 'adult' });
     c.mode = 'fly';
     this.addCreature(c);
@@ -1335,7 +1358,7 @@ export class World {
     if (ANT_KINDS[sp]) {
       const kd = ANT_KINDS[sp];
       if (x > ZONE_X.desert[1] - 30) return { ok: false, msg: 'Ants like to dig in the sandy desert.' };
-      if (this.count('ant') >= SPECIES.ant.maxPop + 10) return { ok: false, msg: 'The desert is busy enough with ants!' };
+      if (this.count('ant') >= this.maxPop('ant') + 10) return { ok: false, msg: 'The desert is busy enough with ants!' };
       const col = this.colonies.find((k) => k.kind === kd.kind && this.byId(k.queenId) && !this.byId(k.queenId).dead);
       if (col) {
         for (let i = 0; i < 4; i++) {
@@ -1352,8 +1375,8 @@ export class World {
       return { ok: true, msg: `A new colony of ${kd.label.toLowerCase()}! Watch them dig.` };
     }
     const def = SPECIES[sp];
-    if (this.count(sp) >= def.maxPop) return { ok: false, msg: `The tank has plenty of ${def.plural.toLowerCase()} already!` };
-    if (this.creatures.length >= MAX_CREATURES - 4) return { ok: false, msg: 'The tank is full to bursting!' };
+    if (this.count(sp) >= this.maxPop(sp)) return { ok: false, msg: `The tank has plenty of ${def.plural.toLowerCase()} already!` };
+    if (this.creatures.length >= MAX_CREATURES - 4) return { ok: false, msg: 'The tank is full to bursting! Bertie the builder can make it bigger (the Market).' };
     const sy = t.surfaceY(x);
     const wet = t.waterSurfaceAt(x) > 0 && t.waterAt(x, sy - 2);
     let c = null;
@@ -1371,7 +1394,7 @@ export class World {
         const swims = def.fish;
         // little schooling fish come in a group
         const n = sp === 'tetra' ? 3 : sp === 'guppy' ? 2 : 1;
-        for (let i = 0; i < n && this.count(sp) < def.maxPop; i++) {
+        for (let i = 0; i < n && this.count(sp) < this.maxPop(sp); i++) {
           const xx = x + (i ? rrange(-14, 14) : 0);
           const yy = swims ? clamp(y + (i ? rrange(-10, 10) : 0), t.waterLevel + 10, t.surfaceY(xx) - 10) : t.surfaceY(xx);
           c = this.spawn(sp, xx, yy, { stage: st, sex: this.balancedSex(sp) }) || c;
@@ -1387,7 +1410,7 @@ export class World {
       }
       case 'dragonfly': {
         if (!wet) return { ok: false, msg: 'Dragonfly nymphs live underwater. Tap the pond!' };
-        for (let i = 0; i < 2 && this.count(sp) < def.maxPop; i++) {
+        for (let i = 0; i < 2 && this.count(sp) < this.maxPop(sp); i++) {
           const xx = clamp(x + rrange(-16, 16), 10, W - 10);
           c = this.spawn('dragonfly', xx, t.surfaceY(xx), { stage: 'nymph', sex: this.balancedSex('dragonfly') }) || c;
         }
@@ -1478,7 +1501,7 @@ export class World {
     if (!v.ok) return v;
     const def = PLANTS[type];
     const p = this.addPlant(type, x, null, { growth: 0.3 });
-    if (!p) return { ok: false, msg: 'No room for more plants!' };
+    if (!p) return { ok: false, msg: 'No room for more plants! Bertie the builder can make the tank bigger (the Market).' };
     this.addNovelty(p.x, p.y - 10, 0.8);
     this.events.emit('plant', { plant: p });
     return { ok: true, p };
@@ -1488,7 +1511,7 @@ export class World {
     const v = this.canPlace('decor', type, x, y);
     if (!v.ok) return v;
     const d = this.addDecor(type, x, DECOR[type].place === 'top' ? 0 : null);
-    if (!d) return { ok: false, msg: 'The tank is crowded with decorations!' };
+    if (!d) return { ok: false, msg: 'The tank is crowded with decorations! Bertie the builder can make it bigger (the Market).' };
     this.addNovelty(x, this.terrain.surfaceY(x) - 10, 1);
     this.events.emit('decor', { d, type });
     this.computeRegions();
@@ -1577,7 +1600,7 @@ export class World {
     p.nutrients *= 0.4;
     p.algae = Math.max(0.03, p.algae * 0.6);
     p.clarity = Math.min(1, p.clarity + 0.25);
-    this.splash(800, this.terrain.waterLevel, 1.2);
+    this.splash(ZONE_MID.pond - 10, this.terrain.waterLevel, 1.2);
     this.events.emit('chore', { kind: 'pond', n });
     return n;
   }
@@ -1612,7 +1635,7 @@ export class World {
     // pour back up to the line, or as close as the banks allow
     this.pourToLevel(p.full);
     this.env.lowWater = 0;
-    this.pour(810, t.waterLevel);
+    this.pour(ZONE_MID.pond, t.waterLevel);
     if (!byBarrel) this.events.emit('chore', { kind: 'topup', zone: 'pond' });
   }
   // Warm water and lamps slowly evaporate the pond below its line.
@@ -1674,6 +1697,7 @@ export class World {
     // environment reacts to the loads gathered during the previous step
     env.update(dt, this);
     breeze.update(dt, this);
+    this.vines.update(this, dt);
     this.chorus *= Math.exp(-dt / 40);
     env.rotLoad = 0;
     env.bioLoad = 0;
@@ -1966,6 +1990,8 @@ export class World {
   serialize() {
     return {
       seed: this.seed,
+      // how much bigger than the original the tank has been built (sim/tank.js)
+      tank: { ...TANK },
       terrain: this.terrain.serialize(),
       env: this.env.serialize(),
       creatures: this.creatures.filter((c) => !c.dead).map((c) => c.serialize()),
@@ -1978,7 +2004,9 @@ export class World {
       perks: this.perks,
       stock: this.stock,
       colonies: this.colonies.map((c) => c.serialize()),
+      vines: this.vines.serialize(),
       style: this.style,
+      keeper: this.keeper,
       stats: this.stats,
       history: this.history,
       log: this.log.slice(0, 60),
@@ -1987,11 +2015,15 @@ export class World {
   }
 
   load(d) {
+    const tank = parseTank(d.tank);
+    if (Object.keys(tank).some((z) => tank[z] !== TANK[z])) throw new Error('This save is for a different size of tank.');
     this.seed = d.seed;
     this.terrain.load(d.terrain);
     this.env.load(d.env);
     if (!d.env.pond || d.env.pond.full == null) this.env.pond.full = this.terrain.waterLevel;
     this.style = Object.assign(this.style, d.style || {});
+    const kn = cleanName(d.keeper && d.keeper.name);
+    this.keeper = kn ? { name: kn, kind: d.keeper.kind === 'town' ? 'town' : 'me' } : null;
     this.stats = Object.assign(this.stats, d.stats || {});
     this.history = d.history || [];
     this.log = d.log || [];
@@ -2027,6 +2059,8 @@ export class World {
     this.perks = Object.assign({}, d.perks || {});
     Object.assign(this.stock, d.stock || {});
     for (const cd of d.colonies || []) this.colonies.push(Colony.load(cd));
+    // (a tank from before the vines grew gets a fresh canopy)
+    this.vines.load(d.vines, this);
     for (const cd of d.creatures || []) {
       if (!SPECIES[cd.sp]) continue;
       const c = Creature.load(cd);

@@ -2,11 +2,12 @@
 // a tap can find it) and how it's doing, in plain words for its info card.
 // Pure functions of the world, like care.js, so they run headless too.
 import { LAMP_X, MISTER_X, HEATER_X, FILTER_X } from '../world/environment.js';
+import { X } from '../config.js';
 import { zoneBand, zoneStatus, ZONE_NAMES } from './care.js';
 import { clamp01 } from '../util/math.js';
 
 // Stick-on strip thermometers on the glass, one per zone.
-export const GAUGE_AT = { desert: [34, 40], pond: [580, 40], jungle: [1492, 40] };
+export const GAUGE_AT = { desert: [34, 40], pond: [X(580), 40], jungle: [X(1492), 40] };
 
 // Tap areas in world units: [x0, y0, x1, y1].
 function boxes(w) {

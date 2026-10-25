@@ -188,5 +188,17 @@ function run(w, j, days) {
   check(w.plants.filter((p) => p.type === 'moonflower').length === 2 && j.canUse('plant', 'moonflower'), 'moonflower seeds are sown and can be planted');
 }
 
+// the builder: a bigger zone once it has grown enough, a step at a time
+{
+  const { w, j } = tank();
+  j.progress.levels.desert = 1;
+  check(!buy(j, w, 'buildDesert').ok, 'the builder waits until the desert has grown (level 2)');
+  j.progress.levels.desert = 2;
+  const c0 = w.coins;
+  const r = buy(j, w, 'buildDesert');
+  check(r.ok && r.build === 'desert' && w.coins === c0 - 60, `the builder takes the coins and sets off to widen the desert (${c0 - w.coins} coins)`);
+  // (the widening itself happens to the save: see tools/tanktest.mjs)
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nevery ware does its job');
 process.exit(failed ? 1 : 0);

@@ -12,20 +12,26 @@ import { NEIGHBOURS, ORDER_GIFTS, MAX_HEARTS } from '../data/neighbours.js';
 import { WARES, COINS_PER_STAR } from '../data/market.js';
 import { SPECIES } from '../data/species.js';
 import { residents, favouriteFoods, listWords } from './care.js';
-import { DAY_LEN } from '../config.js';
+import { DAY_LEN, ZONE_MID } from '../config.js';
 import { rrange, rint, rpick, chance } from '../util/rng.js';
 
 export const MAX_OPEN = 3;
 // How many letters can wait at once, and how soon the next one comes.
-// (the notice board and the mailbox make room for more; the farm sign
-// brings them a little sooner)
-function maxOpen(w) {
-  if (!w) return MAX_OPEN;
-  return (w.owns('noticeBoard') ? 5 : MAX_OPEN) + (w.decor.some((d) => d.type === 'mailbox') ? 1 : 0);
+// A new farm hears from Busytown gently: a good while between letters,
+// and no more than two waiting (so one that can't be done yet doesn't hold
+// up the rest) until the keeper has the hang of sending them. (The notice
+// board and the mailbox make room for more; the farm sign brings them a
+// little sooner.)
+function maxOpen(w, sent = 99) {
+  const base = sent < 4 ? 2 : MAX_OPEN;
+  if (!w) return base;
+  // (a farm on the notice board has asked for more letters)
+  return (w.owns('noticeBoard') ? 5 : base) + (w.decor.some((d) => d.type === 'mailbox') ? 1 : 0);
 }
-function gap(w) {
-  if (!w) return DAY_LEN * rrange(0.28, 0.5);
-  return DAY_LEN * rrange(0.28, 0.5) * (w.owns('noticeBoard') ? 0.5 : 1) * (w.decor.some((d) => d.type === 'sign') ? 0.85 : 1);
+function gap(w, sent = 99) {
+  const days = sent < 3 ? rrange(0.6, 0.9) : sent < 8 ? rrange(0.45, 0.7) : rrange(0.35, 0.55);
+  if (!w) return DAY_LEN * days;
+  return DAY_LEN * days * (w.owns('noticeBoard') ? 0.5 : 1) * (w.decor.some((d) => d.type === 'sign') ? 0.85 : 1);
 }
 // The first ware a neighbour offers, and the hearts it takes.
 function firstWare(who) {
@@ -74,8 +80,8 @@ export class Orders {
 
   attach(world) {
     this.world = world;
-    // the first letter arrives soon after the farm opens
-    if (this.nextT == null || this.nextT > world.time + DAY_LEN) this.nextT = world.time + DAY_LEN * 0.06;
+    // the first letter arrives once the farm has had a little while to settle
+    if (this.nextT == null || this.nextT > world.time + DAY_LEN) this.nextT = world.time + DAY_LEN * 0.3;
   }
 
   // Goods the farm can make right now, given who lives here (and what's
@@ -105,8 +111,9 @@ export class Orders {
     const w = this.world;
     if (!w) return null;
     this.errands(w);
-    if (this.list.length >= maxOpen(w) || w.time < this.nextT) return null;
-    this.nextT = w.time + gap(w);
+    this.tidyLetters(w);
+    if (this.list.length >= maxOpen(w, this.sent) || w.time < this.nextT) return null;
+    this.nextT = w.time + gap(w, this.sent);
     const o = this.make(w);
     if (!o) return null;
     this.list.push(o);
@@ -122,9 +129,12 @@ export class Orders {
   catchUp() {
     const w = this.world;
     let n = 0;
-    if (w) this.errands(w);
-    while (w && this.list.length < maxOpen(w) && w.time >= this.nextT) {
-      this.nextT += gap(w);
+    if (w) {
+      this.errands(w);
+      this.tidyLetters(w);
+    }
+    while (w && this.list.length < maxOpen(w, this.sent) && w.time >= this.nextT) {
+      this.nextT += gap(w, this.sent);
       const o = this.make(w);
       if (!o) continue;
       this.list.push(o);
@@ -143,9 +153,14 @@ export class Orders {
     if (!pool.length) return null;
     // neighbours who haven't yet offered the farm their special ware write a
     // little more often, so every friendship gets its chance to grow
-    const nb = weighted(pool, (n) => Object.keys(n.wants).reduce((a, g) => a + (can.includes(g) ? n.wants[g] : 0), 0) * (this.waiting(n.id) ? 1.6 : 1));
+    // A new farm's first few letters ask for something it can manage soon:
+    // goods already in the basket (or waiting in the tank) first, the quick
+    // ones (seeds, compost) next, and not yet the slow ones (silk, honey and
+    // lilies take a few days to come).
+    const easy = (g) => (this.sent >= 3 ? 1 : (w.pantry[g] || 0) > 0 || w.goodsOf(g) > 0 ? 4 : GOODS[g].value <= 1 ? 1 : 0.15);
+    const nb = weighted(pool, (n) => Object.keys(n.wants).reduce((a, g) => a + (can.includes(g) ? n.wants[g] * easy(g) : 0), 0) * (this.waiting(n.id) ? 1.6 : 1));
     const goods = Object.keys(nb.wants).filter((g) => can.includes(g));
-    const first = weighted(goods, (g) => nb.wants[g]);
+    const first = weighted(goods, (g) => nb.wants[g] * easy(g));
     const [lo, hi] = GOODS[first].batch;
     const needs = { [first]: rint(lo, hi) + (this.sent >= 6 && chance(0.35) ? 1 : 0) };
     // regulars sometimes want a little of two things
@@ -156,7 +171,22 @@ export class Orders {
     const why = rpick(nb.why[first] || ['It would be such a help.']).replace('{n}', goodWord(first, needs[first]));
     let stars = 0;
     for (const [g, n] of Object.entries(needs)) stars += n * GOODS[g].value;
-    return { id: this.seq++, who: nb.id, needs, why, stars, coins: stars * COINS_PER_STAR, day: w.env.day };
+    return { id: this.seq++, who: nb.id, needs, why, stars, coins: stars * COINS_PER_STAR, day: w.env.day, t: Math.round(w.time) };
+  }
+
+  // Nobody waits for ever: a letter that's sat two days without the farm
+  // being able to fill it is withdrawn, kindly (they found some elsewhere,
+  // and they'll write again), so one hard order never holds up the rest.
+  tidyLetters(w) {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const o = this.list[i];
+      const t = o.t != null ? o.t : (o.day - 1) * DAY_LEN;
+      if (w.time - t < DAY_LEN * 2 || this.canSend(o)) continue;
+      this.list.splice(i, 1);
+      const nb = neighbour(o.who);
+      w.addLog(`${nb.name} found ${needsWords(o.needs)} elsewhere in the end. No harm done: they'll write again!`, 'clip');
+      this.nextT = Math.min(this.nextT, w.time + DAY_LEN * 0.15);
+    }
   }
 
   // Friendship with a neighbour, 0..MAX_HEARTS.
@@ -218,8 +248,8 @@ export class Orders {
     if (this.letters.length > 30) this.letters.length = 30;
     w.addLog(`Sent ${needsWords(o.needs)} to ${nb.name}. Busytown paid ${pay.total} coins!`, 'coin');
     w.events.emit('delivered', { o, stars: o.stars, gifts, coins: pay.total, hearts: h1 });
-    // a reply usually brings another letter along before long
-    this.nextT = Math.min(this.nextT, w.time + DAY_LEN * 0.12);
+    // a reply usually brings another letter along (after a breather)
+    this.nextT = Math.min(this.nextT, w.time + DAY_LEN * rrange(0.3, 0.45));
     return { o, nb, treats, gifts, pay, hearts: h1, offers, thanks };
   }
 
@@ -279,7 +309,7 @@ export class Orders {
     if (i < 0) return;
     this.list.splice(i, 1);
     this.lastWho = o.who;
-    if (this.world) this.nextT = Math.min(this.nextT, this.world.time + DAY_LEN * 0.15);
+    if (this.world) this.nextT = Math.min(this.nextT, this.world.time + DAY_LEN * 0.3);
   }
 
   // A thank-you basket of snacks for the critters who did the work.
@@ -289,7 +319,7 @@ export class Orders {
     const sps = [...new Set(residents(w, zone).map((c) => c.sp))];
     const foods = favouriteFoods(sps, this.canUse, 2);
     if (!foods.length) return [];
-    const mid = { desert: 280, pond: 810, jungle: 1330 }[zone];
+    const mid = ZONE_MID[zone];
     const out = [];
     for (let k = 0; k < 3; k++) {
       const f = foods[k % foods.length];

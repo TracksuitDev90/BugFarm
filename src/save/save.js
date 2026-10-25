@@ -1,7 +1,7 @@
 // Saving without a server: the whole tank is serialised into localStorage
 // (with a backup of the previous save), and can be exported/imported as a
 // small file so a tank can move between devices.
-import { SAVE_KEY, SETTINGS_KEY, SAVE_VERSION } from '../config.js';
+import { SAVE_KEY, SETTINGS_KEY, SAVE_VERSION, TANK_KEY } from '../config.js';
 
 function safeGet(k) {
   try {
@@ -32,7 +32,11 @@ export function snapshot(game, journal) {
 }
 
 export function saveGame(game, journal) {
-  const data = snapshot(game, journal);
+  return writeSave(snapshot(game, journal));
+}
+
+// Store a whole save (a snapshot, or one the builders have just widened).
+export function writeSave(data) {
   const str = JSON.stringify(data);
   const prev = safeGet(SAVE_KEY);
   if (prev) safeSet(SAVE_KEY + '.bak', prev);
@@ -64,6 +68,18 @@ export function loadGame() {
     }
   }
   return null;
+}
+
+// The size the tank is built to (see config.js and sim/tank.js), kept apart
+// from the save because it's needed before anything else starts.
+export function writeTankSize(tank) {
+  try {
+    if (!tank || !(tank.desert || tank.pond || tank.jungle)) localStorage.removeItem(TANK_KEY);
+    else localStorage.setItem(TANK_KEY, JSON.stringify(tank));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 export function hasSave() {

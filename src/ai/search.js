@@ -1,6 +1,6 @@
 // World queries the AI uses to reason about its surroundings: where food is,
 // what's reachable, where it's comfier, where to sleep.
-import { W, H, CELL, GW } from '../config.js';
+import { W, H, CELL, GW, ZONE_X, ZONE_MID } from '../config.js';
 import { FOODS } from '../data/foods.js';
 import { LAMP_X } from '../world/environment.js';
 import { clamp, smoothstep } from '../util/math.js';
@@ -25,7 +25,7 @@ export function reachable(c, w, x, y) {
       if (wet) return true;
       return c.mode === 'swim' && c.amphibious && y < t.waterLevel + 20;
     case 'burrow':
-      return x > 1040 && !wet;
+      return x > ZONE_X.jungle[0] - 20 && !wet;
     case 'climb':
     case 'walk':
     case 'crawl': {
@@ -245,7 +245,7 @@ export function skySpot(c, w, range) {
     if (car) return { kind: 'point', x: car.x + rrange(-30, 30), y: car.y - car.def.h - rrange(4, 40) };
   }
   let x = c.x + rrange(-r, r);
-  const home = c.def.zone === 'jungle' ? 1330 : c.def.zone === 'desert' ? 280 : 810;
+  const home = ZONE_MID[c.def.zone] || ZONE_MID.pond;
   if (chance(0.3)) x = (x + home) / 2;
   x = clamp(x, 30, W - 30);
   const floor = airFloor(t, x);
@@ -500,7 +500,7 @@ export function swimSpot(c, w, range) {
     }
   } else if (r < 0.26 && c.sp !== 'turtle') {
     // up to the top for a look at the sky
-    const x = clamp(c.x + rrange(-range, range) * 0.6, 520, 1100);
+    const x = clamp(c.x + rrange(-range, range) * 0.6, ZONE_X.pond[0] - 40, ZONE_X.pond[1] + 40);
     if (t.waterAt(x, t.waterLevel + 5)) return { kind: 'point', x, y: t.waterLevel + rrange(4, 9) };
   }
   // new water (a channel the keeper dug, a tunnel that flooded, a pond that
@@ -575,7 +575,7 @@ export function restSpot(c, w) {
   }
   const dep = night ? rrange(0.25, 0.62) : clamp(favDepth(c) + gauss() * 0.2, 0.1, 0.75);
   for (let i = 0; i < 8; i++) {
-    const x = clamp(c.x + rrange(-150, 150), 520, 1100);
+    const x = clamp(c.x + rrange(-150, 150), ZONE_X.pond[0] - 40, ZONE_X.pond[1] + 40);
     const p = waterAtDepth(w, x, dep);
     if (p && t.surfaceY(x) - p[1] > 16) return { kind: 'point', x: p[0], y: p[1] };
   }

@@ -19,6 +19,11 @@ const pg = await ctx.newPage();
 await pg.goto(`http://localhost:${server.address().port}/`);
 await pg.waitForSelector('text=Sandbox: full tank');
 await pg.click('text=Sandbox: full tank');
+// (a new farm asks for a name first)
+if (await pg.isVisible('.name-in').catch(() => false)) {
+  await pg.fill('.name-in', 'Perf');
+  await pg.click("text=That's us!");
+}
 await pg.waitForTimeout(1500);
 const cdp = await ctx.newCDPSession(pg);
 await cdp.send('Emulation.setCPUThrottlingRate', { rate });

@@ -5,20 +5,38 @@
 import { WARES, WARE_BY_ID } from '../data/market.js';
 import { DECOR } from '../data/decor.js';
 import { SPECIES } from '../data/species.js';
-import { ZONE_X, W } from '../config.js';
+import { ZONE_X, ZONE_MID, W, X, TANK } from '../config.js';
+import { tankTier, tankTiers } from './tank.js';
+import { ZONE_NAMES } from './care.js';
 import { rrange } from '../util/rng.js';
 
-const ZONE_MID = { desert: 280, pond: 810, jungle: 1330 };
 
 // Where a ware stands: 'owned' | 'sale' (offered, maybe not affordable yet)
 // | 'locked' (needs more friendship). Stock wares are never 'owned'.
 export function wareState(journal, w, ware) {
   const free = journal.sandbox;
   const hearts = journal.orders.heartsOf(ware.who);
+  if (ware.kind === 'build') {
+    // a step at a time, each once the zone has grown enough
+    const z = ware.zone;
+    const tier = tankTier(TANK, z);
+    const max = tankTiers(z);
+    if (tier >= max) return { owned: true, need: 0, hearts, cost: 0, state: 'owned', afford: true, tier, max };
+    const t = ware.tiers[tier];
+    const p = journal.progress;
+    const locked = !free && !p.legacy && p.levels[z] < t.level;
+    const cost = free ? 0 : t.cost;
+    return { owned: false, need: locked ? 1 : 0, lock: `when the ${ZONE_NAMES[z].toLowerCase()} reaches level ${t.level}`, hearts, cost, state: locked ? 'locked' : 'sale', afford: w.coins >= cost, tier, max };
+  }
   const need = free ? 0 : Math.max(0, ware.hearts - hearts);
   const owned = ware.kind !== 'stock' && w.owns(ware.id);
   const cost = free ? 0 : ware.cost;
   return { owned, need, hearts, cost, state: owned ? 'owned' : need > 0 ? 'locked' : 'sale', afford: w.coins >= cost };
+}
+
+// What the keeper has "seen" of a ware: each new step of building is news.
+export function wareKey(ware) {
+  return ware.kind === 'build' ? ware.id + ':' + tankTier(TANK, ware.zone) : ware.id;
 }
 
 // Wares on sale right now that the keeper hasn't bought.
@@ -83,6 +101,15 @@ export function buy(journal, w, ware) {
   if (st.state === 'locked') return { ok: false, msg: `Help them ${st.need} more time${st.need === 1 ? '' : 's'} first.` };
   if (!w.spend(st.cost)) return { ok: false, msg: `That costs ${st.cost} coins. Send a few more orders!` };
   const out = { ok: true, msg: '' };
+  if (ware.kind === 'build') {
+    // (the game saves, widens the saved tank and comes back to it)
+    out.build = ware.zone;
+    out.cost = st.cost;
+    out.msg = 'Bertie\'s builders are on their way!';
+    w.addLog(`Bertie Bricks is making the ${ware.zone} bigger.`, 'coin');
+    w.events.emit('bought', { ware, d: null });
+    return out;
+  }
   if (ware.kind === 'stock') {
     w.stock[ware.id] = (w.stock[ware.id] || 0) + ware.stock;
     out.msg = `${ware.stock} ${ware.name.toLowerCase()} in your basket. Find them in Feed.`;
@@ -96,12 +123,12 @@ export function buy(journal, w, ware) {
       const sp = ware.sp;
       const n = sp === 'axolotl' ? 1 : 2;
       for (let i = 0; i < n; i++) {
-        const r = w.adopt(sp, 760 + i * 70 + rrange(-20, 20), w.terrain.waterLevel + 60);
+        const r = w.adopt(sp, ZONE_MID.pond - 50 + i * 70 + rrange(-20, 20), w.terrain.waterLevel + 60);
         if (r.ok && r.c) out.c = r.c;
       }
       out.msg = `${n === 1 ? 'Your new ' + SPECIES[sp].name.toLowerCase() + ' is' : 'Your new ' + SPECIES[sp].plural.toLowerCase() + ' are'} in the pond! More can be adopted from Critters.`;
     } else if (ware.kind === 'plant') {
-      for (const x of [1200, 1450]) w.placePlant(ware.plant, x + rrange(-30, 30));
+      for (const x of [X(1200), X(1450)]) w.placePlant(ware.plant, x + rrange(-30, 30));
       out.msg = 'Two moonflowers planted in the jungle. Watch them after dark!';
     } else if (ware.id === 'courier') {
       out.c = w.ensureCourier();

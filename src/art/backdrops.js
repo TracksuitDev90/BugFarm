@@ -1,6 +1,6 @@
 // Painted back walls for the tank (the "aquarium poster" behind the glass),
 // done in a soft picture-book style. Rendered once into a cached canvas.
-import { W, H } from '../config.js';
+import { W, H, ZONE_X } from '../config.js';
 import { ell, circ, fill, stroke, paint, smoothPath, INK } from './ink.js';
 import { RNG, fbm1 } from '../util/rng.js';
 import { blooms, poolEdge } from './paper.js';
@@ -102,7 +102,9 @@ function rainforest(scale, kind) {
   g.scale(scale, scale);
   g.translate(0, -80);
   const rng = new RNG(4242);
-  const x0 = 930;
+  // (it starts where the jungle does, and a bigger jungle gets more forest)
+  const jo = ZONE_X.jungle[0] - 1060;
+  const x0 = 930 + jo;
   // 1) far canopy: a soft wall of treetops
   const bumps = (y, amp, step, color, ink) => {
     g.beginPath();
@@ -147,7 +149,9 @@ function rainforest(scale, kind) {
       stroke(g, 0.8, 'rgba(58,42,31,0.3)');
     }
   };
-  for (const [x, w] of [[1020, 16], [1180, 22], [1395, 26], [1560, 18]]) trunk(x, w, 120, T.trunk);
+  const trunks = [[1020, 16], [1180, 22], [1395, 26], [1560, 18]].map(([x, w]) => [x + jo, w]);
+  for (let x = 1560 + jo + 170; x < W + 20; x += rng.range(150, 210)) trunks.push([x, rng.range(15, 26)]);
+  for (const [x, w] of trunks) trunk(x, w, 120, T.trunk);
   // 3) mid canopy clumps over the trunk tops
   const clump = (cx, cy, r, col) => {
     for (let i = 0; i < 6; i++) {
@@ -156,10 +160,12 @@ function rainforest(scale, kind) {
     }
     paint(g, col, 1.1, () => ell(g, cx, cy, r * 0.75, r * 0.5));
   };
-  for (const [x, y, r] of [[990, 140, 60], [1110, 120, 70], [1260, 110, 80], [1420, 115, 76], [1560, 130, 70], [1640, 160, 60]]) clump(x, y, r, T.mid);
+  const clumps = [[990, 140, 60], [1110, 120, 70], [1260, 110, 80], [1420, 115, 76], [1560, 130, 70], [1640, 160, 60]].map(([x, y, r]) => [x + jo, y, r]);
+  for (let x = 1640 + jo + 140; x < W + 60; x += rng.range(120, 160)) clumps.push([x, rng.range(110, 150), rng.range(60, 80)]);
+  for (const [x, y, r] of clumps) clump(x, y, r, T.mid);
   // 4) lianas looping down from the canopy
-  for (let i = 0; i < 9; i++) {
-    const x = rng.range(990, W);
+  for (let i = 0; i < Math.round((W - 990 - jo) / 68); i++) {
+    const x = rng.range(990 + jo, W);
     const len = rng.range(140, 300);
     const sway = rng.range(-30, 30);
     g.beginPath();
@@ -192,8 +198,8 @@ function rainforest(scale, kind) {
     stroke(g, 0.7, 'rgba(58,42,31,0.4)');
     g.restore();
   };
-  for (let i = 0; i < 16; i++) {
-    const x = rng.range(980, W + 10);
+  for (let i = 0; i < Math.round((W - 980 - jo) / 39); i++) {
+    const x = rng.range(980 + jo, W + 10);
     const n = rng.int(3, 6);
     for (let k = 0; k < n; k++) fanLeaf(x, 470, rng.range(40, 80), -Math.PI / 2 + (k / (n - 1) - 0.5) * 2.2, rng.chance(0.5) ? T.near : T.mid);
   }
@@ -206,7 +212,7 @@ function rainforest(scale, kind) {
   // fade in from the pond side
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalCompositeOperation = 'destination-in';
-  const fade = g.createLinearGradient(980 * scale, 0, 1120 * scale, 0);
+  const fade = g.createLinearGradient((980 + jo) * scale, 0, (1120 + jo) * scale, 0);
   fade.addColorStop(0, 'rgba(0,0,0,0)');
   fade.addColorStop(1, 'rgba(0,0,0,1)');
   g.fillStyle = fade;

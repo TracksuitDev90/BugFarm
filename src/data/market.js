@@ -8,7 +8,12 @@
 //                  one in the tank)
 //         critter / plant - unlocks something new to adopt or plant
 //         stock  - a consumable that can be bought again and again
+//         build  - makes a zone of the tank bigger, a step at a time (see
+//                  sim/tank.js); each step (tier) needs the zone to have
+//                  reached a level, and costs more
 //   hearts: friendship needed with `who` before they'll sell it
+import { X } from '../config.js';
+
 export const WARES = [
   {
     id: 'courier',
@@ -159,6 +164,39 @@ export const WARES = [
     what: 'A smiling pink axolotl with frilly gills. All of Busytown adores it: while one lives in your pond every order pays extra coins.',
     pitch: 'My very favourite. I only sell them to the best keepers.',
   },
+  {
+    id: 'buildDesert',
+    who: 'builder',
+    kind: 'build',
+    zone: 'desert',
+    name: 'Bigger desert',
+    hearts: 0,
+    tiers: [{ cost: 60, level: 2 }, { cost: 140, level: 3 }],
+    what: 'Bertie moves the glass out and lays a stretch of fresh sand on the far side of the desert: room for more nests, plants and houses.',
+    pitch: 'Running out of room? I can fix that.',
+  },
+  {
+    id: 'buildPond',
+    who: 'builder',
+    kind: 'build',
+    zone: 'pond',
+    name: 'Bigger pond',
+    hearts: 0,
+    tiers: [{ cost: 70, level: 2 }, { cost: 160, level: 3 }],
+    what: 'Bertie digs the pond wider down the middle, gravel, water and all: room for more fish, weeds and lilies.',
+    pitch: 'A pond can always be a little bigger.',
+  },
+  {
+    id: 'buildJungle',
+    who: 'builder',
+    kind: 'build',
+    zone: 'jungle',
+    name: 'Bigger jungle',
+    hearts: 0,
+    tiers: [{ cost: 60, level: 2 }, { cost: 140, level: 4 }],
+    what: 'Bertie opens up more jungle floor on the far side, with more of the lid for vines to hang from.',
+    pitch: 'Give those plants some elbow room!',
+  },
 ];
 
 export const WARE_BY_ID = {};
@@ -174,8 +212,8 @@ for (const w of WARES) {
 }
 
 // Where the gadgets sit on the tank's lid.
-export const CLIMATE_X = 880;
-export const SPRINKLER_X = [150, 460, 1150, 1470];
+export const CLIMATE_X = X(880);
+export const SPRINKLER_X = [X(150), X(460), X(1150), X(1470)];
 
 // Coins Busytown pays for each thank-you star on an order.
-export const COINS_PER_STAR = 4;
+export const COINS_PER_STAR = 5;

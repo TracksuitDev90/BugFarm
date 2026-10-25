@@ -1,4 +1,4 @@
-import { W, H } from '../config.js';
+import { W, H, BASE_W } from '../config.js';
 import { clamp, damp } from '../util/math.js';
 
 // 2D camera with smooth targets, inertia and follow mode.
@@ -27,6 +27,9 @@ export class Camera {
     const usableH = Math.max(100, vh - padTop - padBottom);
     this.fitHeight = usableH / (H + 70);
     this.fitAll = Math.min(this.fitHeight, (vw - 16) / (W + 70));
+    // (a tank built wider still opens at about the original's width; the
+    // All button shows the lot)
+    this.fitBase = Math.max(this.fitAll, Math.min(this.fitHeight, (vw - 16) / (BASE_W + 70)));
     this.minZoom = this.fitAll * 0.92;
     this.clampAll();
   }
@@ -42,7 +45,7 @@ export class Camera {
   defaultZoom() {
     // Portrait phones: zoom in on the busy band around the ground line and
     // pan between zones. Wide screens: show the whole tank.
-    return this.portrait ? Math.min(this.maxZoom, this.fitHeight * 1.75) : this.fitAll;
+    return this.portrait ? Math.min(this.maxZoom, this.fitHeight * 1.75) : this.fitBase;
   }
 
   reset(animate) {

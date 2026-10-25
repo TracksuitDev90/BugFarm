@@ -171,6 +171,20 @@ export const NEIGHBOURS = [
     thanks: ['The fish are doing happy little loops already!', 'You\'re a natural with critters, you know.'],
     look: { animal: 'otter', fur: '#7a5236', face: '#ecd8b8', nose: '#3a2a1f', inner: '#c98a6a', bg: '#c4e6e8', hat: 'kerchief', hatColor: '#2f9a9a', outfit: { kind: 'stripes', color: '#2f5d8a', trim: '#fffdf6', collar: '#2f9a9a' } },
   },
+  {
+    id: 'builder',
+    name: 'Bertie Bricks',
+    job: 'the builder',
+    icon: 'house',
+    wants: { compost: 3, seeds: 2, silk: 1 },
+    why: {
+      compost: ['Every new house on Elm Lane gets a garden bed.', 'I\'m filling the flower boxes on the new bridge.'],
+      seeds: ['A fresh lawn round the new school, please!', 'The new park needs grass seed, and lots of it.'],
+      silk: ['Silk makes the finest plumb line there is.'],
+    },
+    thanks: ['Solid work! I could build a house on that.', 'Measure twice, thank once. Thank you!'],
+    look: { animal: 'bear', fur: '#6e4a32', face: '#d9b48a', inner: '#c98a6a', nose: '#3a2a1f', bg: '#f2dfae', hat: 'hardhat', hatColor: '#f3c43c', outfit: { kind: 'overalls', color: '#e2783f', trim: '#4c6fa8' }, extras: ['tools'] },
+  },
 ];
 
 // Thank-you gifts Busytown sends when the farm's stars reach these totals:

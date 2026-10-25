@@ -4,7 +4,7 @@
 // and the in-tank gauges all agree, and the tests can run them headless.
 import { SPECIES } from '../data/species.js';
 import { FOODS, FOOD_ORDER } from '../data/foods.js';
-import { DAY_LEN } from '../config.js';
+import { DAY_LEN, ZONE_X, TANK, TANK_MAX } from '../config.js';
 
 export const ZONE_NAMES = { desert: 'Desert', pond: 'Pond', jungle: 'Jungle' };
 
@@ -232,6 +232,14 @@ export function tankNeeds(w, canUse = () => true, fmt = (t) => Math.round(t) + '
   }
   const rotten = w.foods.filter((f) => !f.inWater && f.fresh < 0.35);
   if (rotten.length >= 3) add(env.zoneAt(rotten[0].x), 1, 'leaf', `${rotten.length} squishy leftovers are lying about. Tidy them before the fruit flies find them.`, { kind: 'tidy' });
+  // a zone filling up: the builder can make it bigger
+  for (const z of ['desert', 'pond', 'jungle']) {
+    const [x0, x1] = ZONE_X[z];
+    let stuff = 0;
+    for (const pl of w.plants) if (!pl.dead && pl.x >= x0 && pl.x < x1) stuff += 1;
+    for (const d of w.decor) if (d.x >= x0 && d.x < x1) stuff += d.def.w / 30;
+    if (stuff / ((x1 - x0) / 100) > 4.2 && TANK[z] < TANK_MAX[z]) add(z, 0, 'house', `The ${z} is getting crowded. Bertie the builder can make it bigger: look in the Market.`, { kind: 'market' });
+  }
   // the forecast, so a change in the weather is never a surprise
   const fc = env.forecast;
   if (fc && fc !== env.weather && (fc.temp || fc.moist)) {
@@ -241,6 +249,52 @@ export function tankNeeds(w, canUse = () => true, fmt = (t) => Math.round(t) + '
   }
   needs.sort((a, b) => b.sev - a.sev);
   return needs;
+}
+
+// A to-do that flickers on and off (a hungry fish finds a crumb, then it's
+// gone; the desert hovers right at the edge of too warm) shouldn't make the
+// clipboard's badge blink. Each kind of need has a presence that rises
+// while it's listed and falls while it isn't, and it only counts once it's
+// clearly there (and stops once it's clearly gone). Real seconds. Anything
+// urgent counts at once; the "just so you know" notes pass straight through.
+export function needKey(n) {
+  return n.icon + ':' + (n.act ? n.act.kind + ':' + (n.act.zone || '') : '') + ':' + (n.zone || '');
+}
+export class NeedWatch {
+  constructor(tau = 4, on = 0.75, off = 0.3) {
+    this.p = new Map(); // key -> { v: presence 0..1, on: counted, n: latest need }
+    this.tau = tau;
+    this.on = on;
+    this.off = off;
+  }
+  // The keeper just dealt with it: drop it straight away.
+  clear(key) {
+    this.p.delete(key);
+  }
+  filter(needs, dt) {
+    const k = 1 - Math.exp(-dt / this.tau);
+    const here = new Set();
+    for (const n of needs) {
+      if (n.sev < 1) continue;
+      const key = needKey(n);
+      here.add(key);
+      const e = this.p.get(key) || { v: 0, on: false, n };
+      e.n = n;
+      e.v += (1 - e.v) * k;
+      if (e.v >= this.on || n.sev >= 3) e.on = true;
+      this.p.set(key, e);
+    }
+    for (const [key, e] of this.p) {
+      if (here.has(key)) continue;
+      e.v -= e.v * k;
+      if (e.v <= this.off) e.on = false;
+      if (e.v < 0.02) this.p.delete(key);
+    }
+    const out = needs.filter((n) => n.sev < 1 || this.p.get(needKey(n)).on);
+    // (still counted while it fades, so the badge doesn't drop and come back)
+    for (const [key, e] of this.p) if (e.on && !here.has(key)) out.push(e.n);
+    return out.sort((a, b) => b.sev - a.sev);
+  }
 }
 
 export { listWords, plural };

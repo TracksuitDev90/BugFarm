@@ -295,8 +295,9 @@ export class Visitor {
         this.state = 'stay';
         this.pause = rrange(14, 30);
       }
-    } else if (this.state === 'out' || (this.pause -= dt) <= 0) {
-      // ducking back down
+    } else if (this.state === 'out' || (!this.waiting && (this.pause -= dt) <= 0)) {
+      // ducking back down (but not with an idea waiting: then he stays up,
+      // where the keeper can tap him)
       this.pop = Math.max(0, this.pop - dt * 3);
       if (this.pop <= 0) {
         this.hidden = true;

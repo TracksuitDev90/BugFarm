@@ -21,7 +21,7 @@ import { setMisregistration } from '../art/ink.js';
 import { finishSprite, grainTile } from '../art/paper.js';
 import { LightRays } from './light.js';
 import { DeepWater } from './deepwater.js';
-import { LAMP_X, MISTER_X, HEATER_X, FILTER_X } from '../world/environment.js';
+import { LAMP_X, MISTER_X, MIST_HALF, HEATER_X, FILTER_X } from '../world/environment.js';
 import { heatLamp, mister, pondHeater, pondFilter, tag } from '../art/equipment.js';
 import { zoneBand, zoneStatus } from '../sim/care.js';
 import { GAUGE_AT, equipmentBox } from '../sim/equipment.js';
@@ -71,7 +71,7 @@ function artPose(c) {
   let p = c.pose;
   if (c.dead) p = 'idle';
   else if (c.mode === 'fly') p = c.sp === 'bee' && (c.memory.pollen || 0) > 0 ? 'pollen' : 'fly';
-  else if (c.mode === 'swim' && p !== 'gasp') p = 'swim';
+  else if (c.mode === 'swim' && p !== 'gasp' && p !== 'bask') p = 'swim';
   else if (c.mode === 'air') p = 'jump';
   else if (p === 'sleep' || p === 'idle' || p === 'eat') {
     if (c.moving && p !== 'sleep') p = c.carry ? 'carry' : 'walk';
@@ -1240,12 +1240,18 @@ export class Renderer {
     }
     for (const z of ['desert', 'jungle']) {
       const x = MISTER_X[z];
-      if (!this.visible(x + 20, 0, 90)) continue;
       const e = env[z];
       const ms = { setting: Math.round(e.mister * 20) / 20, spraying: env.misting(z), water: Math.round(e.water * 32) / 32, time };
+      // its spray fans out over the whole zone, down to the ground
+      const aim = LAMP_X[z] - x;
+      const reach = MIST_HALF[z];
+      const depth = t.surfaceY(x + aim) - 6;
+      const seeBody = this.visible(x + 20, 0, 90);
+      if (!seeBody && !(ms.spraying > 0.02 && this.visible(x + aim, depth / 2, reach + depth / 2))) continue;
       const empty = ms.water < 0.15 && ms.setting > 0.02;
-      this.blit(g, `eq|mister|${ms.setting}|${ms.water}|${empty}|${ms.spraying > 0.02}`, b, [-8, -34, 53, 30], x, 0, (gg) => mister(gg, 0, { ...ms, part: 'body' }));
-      mister(g, x, { ...ms, part: 'live' });
+      if (seeBody) this.blit(g, `eq|mister|${ms.setting}|${ms.water}|${empty}|${ms.spraying > 0.02}`, b, [-8, -34, 53, 30], x, 0, (gg) => mister(gg, 0, { ...ms, part: 'body' }));
+      mister(g, x, { ...ms, part: 'live', aim, reach, depth, puff: this.glowSprite('rgba(196,226,244,1)') });
+      if (!seeBody) continue;
       tag(g, 'mister', x, 8, -18, 14, tagA);
       tag(g, 'water jug', x + 42, 20, 10, 10, tagA);
     }

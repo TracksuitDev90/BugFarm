@@ -47,8 +47,22 @@ expect(before === after, 'critter counts survive');
 expect(w2.coins === w.coins && JSON.stringify(w2.perks) === JSON.stringify(w.perks) && w2.stock.buns === w.stock.buns, `coins, wares and buns survive (${w2.coins}, ${Object.keys(w2.perks).join(' ')}, ${w2.stock.buns} buns)`);
 expect(w2.colonies.map((c) => c.kind).join() === w.colonies.map((c) => c.kind).join(), 'ant colony kinds survive');
 expect(w2.creatures.filter((c) => c.role === 'courier').length === 1, 'the mail dragonfly survives');
-const vineKey = (ww) => ww.vines.list.map((v) => `${v.kind}@${v.x}:${Math.round(v.len)}:${v.wither.toFixed(2)}`).join();
+// (at the precision a save keeps them)
+const vineKey = (ww) => ww.vines.list.map((v) => `${v.kind}@${v.x}:${v.len.toFixed(1)}:${v.wither.toFixed(3)}`).join();
 expect(w.vines.list.length > 0 && vineKey(w2) === vineKey(w), `the jungle's vines survive (${w2.vines.list.length})`);
+{
+  // a farm saved before the lamp and mister moved to the middle of the
+  // jungle: a vine hanging where the lamp hangs now moves along to a free hook
+  const { LAMP_X } = await import('../src/world/environment.js');
+  const old = JSON.parse(JSON.stringify(w.serialize()));
+  delete old.vines.gear;
+  const v = old.vines.list.find((vv) => !vv.span);
+  v.x = LAMP_X.jungle;
+  const w4 = new World();
+  w4.load(old);
+  const moved = w4.vines.list.find((vv) => vv.id === v.id);
+  expect(!moved || Math.abs(moved.x - LAMP_X.jungle) > 36, `a vine in the way of the jungle lamp is re-hung (${moved ? Math.round(moved.x) : 'let go'})`);
+}
 w.keeper = { name: 'Juniper', kind: 'town' };
 const w3 = new World();
 w3.load(JSON.parse(JSON.stringify(w.serialize())));

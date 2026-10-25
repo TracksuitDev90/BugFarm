@@ -67,15 +67,21 @@ export class Particles {
   mist(x, y) {
     this.add({ type: 'mist', x, y, vx: rrange(-5, 5), vy: -rrange(0.5, 2), r: rrange(14, 26), life: rrange(5, 8) });
   }
-  rain(x, power, dt, terrain) {
-    const rate = power * 60;
+  // Spray from a nozzle at x, falling across the ground from aim - reach to
+  // aim + reach either side of it (a mister fans out over its whole zone).
+  rain(x, power, dt, terrain, aim = 0, reach = 190) {
+    // (a wider spray throws more drops, so it's just as wet all over)
+    const rate = power * 60 * Math.max(1, reach / 160);
     const zone = x < ZONE_MID.pond ? 'desert' : 'jungle';
     this.rainAcc[zone] += rate * dt;
     while (this.rainAcc[zone] >= 1) {
       this.rainAcc[zone] -= 1;
+      // (leave room for everything else: the mist itself is painted)
+      if (this.list.length > this.max * 0.6) continue;
       // drops leave the nozzle in a cone, so the far ones start lower
-      const d = rrange(-190, 190);
-      this.add({ type: 'rain', x: x + d, y: 12 + Math.abs(d) * 0.34 + rrange(0, 8), vx: d * 0.04 + rrange(-6, 6), vy: rrange(240, 300), r: 1, life: 3, terrain });
+      const d = aim + rrange(-reach, reach);
+      const k = rrange(0.55, 1);
+      this.add({ type: 'rain', x: x + d * k, y: 12 + Math.abs(d * k) * 0.3 + rrange(0, 10), vx: d * 0.05 + rrange(-6, 6), vy: rrange(240, 300), r: 1, life: 3, terrain });
     }
   }
   update(dt, terrain, time) {
@@ -267,13 +273,13 @@ export class Particles {
           break;
         case 'drop':
         case 'rain':
-          g.globalAlpha = p.type === 'rain' ? 0.6 : 0.8 * k;
+          g.globalAlpha = p.type === 'rain' ? 0.7 : 0.8 * k;
           g.beginPath();
           if (p.type === 'rain') {
-            g.moveTo(p.x, p.y - 4);
+            g.moveTo(p.x - p.vx * 0.02, p.y - 6);
             g.lineTo(p.x, p.y);
-            g.lineWidth = 0.9;
-            g.strokeStyle = '#8fc8ea';
+            g.lineWidth = 1.1;
+            g.strokeStyle = '#74b6e0';
             g.stroke();
           } else {
             g.arc(p.x, p.y, p.r, 0, TAU);

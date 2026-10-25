@@ -240,7 +240,7 @@ export const SPECIES = {
     habitat: 'amphibious',
     size: 48,
     body: [26, 13],
-    blurb: 'A gentle paddler who climbs onto the rock to bask under the lamp. Slow, steady and very fond of lettuce.',
+    blurb: 'A gentle paddler who basks under the lamp, floating at the top with its shell in the warm air. Slow, steady and very fond of lettuce.',
     facts: [
       'Turtles bask to warm up and to help their shells stay healthy.',
       'A turtle cannot climb out of its shell — it is part of its body.',

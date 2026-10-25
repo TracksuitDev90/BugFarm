@@ -1,7 +1,7 @@
 // The World owns every entity and runs the simulation step.
 import { W, H, CELL, GW, GH, MAT, DAY_LEN, MAX_CREATURES, MAX_FOOD, MAX_PLANTS, MAX_DECOR, ZONE_X, ZONE_MID, ZONE_SCALE, TANK, X, parseTank } from '../config.js';
-import { Terrain, POND_L, POND_R } from './terrain.js';
-import { Environment, LAMP_X, MISTER_X, FILTER_X } from './environment.js';
+import { Terrain, POND_L, POND_R, NEST_CX } from './terrain.js';
+import { Environment, LAMP_X, MISTER_X, MIST_HALF, FILTER_X } from './environment.js';
 import { SpatialHash } from './spatial.js';
 import { breeze } from './breeze.js';
 import { Emitter } from '../util/events.js';
@@ -112,11 +112,11 @@ export class World {
     const farm = starter === 'farm';
     const t = this.terrain;
     // ant colony (its nest starts somewhere new every time)
-    this.foundColony(rint(26, 82) + TANK.desert / CELL);
+    this.foundColony(rint(NEST_CX[0], NEST_CX[1]) + TANK.desert / CELL);
     // plants
     const plant = (type, x, growth = rrange(0.55, 0.95)) => this.addPlant(type, x, null, { growth });
     for (const [type, x] of [
-      ['cactus', 120], ['cactus', 520], ['succulent', 330], ['marigold', 300], ['marigold', 470], ['drygrass', 30], ['drygrass', 250], ['drygrass', 540],
+      ['cactus', 120], ['cactus', 520], ['succulent', 400], ['marigold', 360], ['marigold', 470], ['drygrass', 30], ['drygrass', 210], ['drygrass', 540],
       ['reed', 588], ['reed', 1040], ['eelgrass', 720], ['eelgrass', 860], ['eelgrass', 960], ['lilypad', 790], ['lilypad', 930],
       ['palm', 1086], ['palm', 1556], ['monstera', 1160], ['monstera', 1452], ['bromeliad', 1236], ['bromeliad', 1512], ['bigleaf', 1272],
       ['fern', 1132], ['fern', 1300], ['fern', 1584], ['daisy', 1180], ['tulip', 1305], ['sunflower', 1400], ['clover', 1350], ['grass', 1340],
@@ -124,7 +124,7 @@ export class World {
     ]) plant(type, X(x) + rrange(-6, 6));
     // decor (a new farm earns its bee hotel, library and lamp post later)
     this.addDecor('sign', X(505));
-    this.addDecor('flowerpot', X(300));
+    this.addDecor('flowerpot', X(430));
     this.addDecor('castle', X(880));
     this.addDecor('pipe', X(690));
     this.addDecor('log', X(1480));
@@ -152,7 +152,7 @@ export class World {
     add('butterfly', X(1420), 260);
     this.adopt('butterfly', X(1180), 420);
     if (!farm) {
-      add('gecko', X(420));
+      add('gecko', X(290));
       add('beetle', X(160));
       add('beetle', X(360));
       add('frog', X(700), 480, { stage: 'tadpole' });
@@ -1889,7 +1889,7 @@ export class World {
     if (this.fx) {
       for (const z of ['desert', 'jungle']) {
         const m = env.misting(z);
-        if (m > 0.02) this.fx.rain(MISTER_X[z], m, dt, this.terrain);
+        if (m > 0.02) this.fx.rain(MISTER_X[z], m, dt, this.terrain, LAMP_X[z] - MISTER_X[z], MIST_HALF[z]);
       }
       // a humid jungle breathes out wisps of ground mist
       const hum = env.jungle.moist;

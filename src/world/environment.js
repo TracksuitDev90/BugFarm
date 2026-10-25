@@ -1,4 +1,4 @@
-import { DAY_LEN, ZONE_X, ZONE_BLEND, CELL, W, X } from '../config.js';
+import { DAY_LEN, ZONE_X, ZONE_MID, ZONE_BLEND, CELL, W, X } from '../config.js';
 import { clamp, clamp01, lerp, smoothstep } from '../util/math.js';
 import { rrange } from '../util/rng.js';
 
@@ -192,7 +192,15 @@ export class Environment {
     const pondAir = (this.roomTemp + this.pond.lamp * 8) * 0.6 + (this.desert.temp + this.jungle.temp) * 0.2;
     let air = wd * this.desert.temp + wj * this.jungle.temp + wp * pondAir;
     if (terrain) {
-      if (terrain.waterAt(x, y)) return this.pond.temp;
+      if (terrain.waterAt(x, y)) {
+        // the skin of the water right under a lamp is warm (a turtle floats
+        // up there to bask, shell in the air)
+        const lamp = this.lampAt(x);
+        if (lamp.power <= 0) return this.pond.temp;
+        const near = 1 - smoothstep(30, 140, Math.abs(x - lamp.x));
+        const top = 1 - smoothstep(2, 26, y - terrain.waterSurfY(x));
+        return this.pond.temp + lamp.power * 6 * near * top;
+      }
       const gy = terrain.groundY(x);
       if (y > gy + CELL) {
         const depth = y - gy;
@@ -267,8 +275,15 @@ export class Environment {
   }
 }
 
-export const LAMP_X = { desert: X(416), pond: X(624), jungle: X(1330) };
-export const MISTER_X = { desert: X(240), jungle: X(1250) };
+// Each heat lamp hangs over the middle of the zone it's for, and stays there
+// as the builder widens the tank. Its mister clips on just beside it and fans
+// its spray out across the whole zone (MIST_HALF either side of the middle).
+export const LAMP_X = { desert: ZONE_MID.desert, pond: ZONE_MID.pond, jungle: ZONE_MID.jungle };
+export const MISTER_X = { desert: LAMP_X.desert - 100, jungle: LAMP_X.jungle - 100 };
+export const MIST_HALF = {
+  desert: (ZONE_X.desert[1] - ZONE_X.desert[0]) * 0.42,
+  jungle: (ZONE_X.jungle[1] - ZONE_X.jungle[0]) * 0.42,
+};
 // The pond heater and filter stand in the water by the jungle bank.
 export const HEATER_X = X(970);
 export const FILTER_X = X(1016);

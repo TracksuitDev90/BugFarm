@@ -1,4 +1,4 @@
-import { W, H, CELL, GW, GH, MAT, OOB, ZONE_X } from '../config.js';
+import { W, H, CELL, GW, GH, MAT, OOB, ZONE_X, ZONE_MID } from '../config.js';
 import { RNG, fbm1 } from '../util/rng.js';
 import { clamp } from '../util/math.js';
 import { WaterSim } from './water.js';
@@ -10,6 +10,10 @@ export const CHH = Math.ceil(GH / CHUNK);
 export const POND_L = Math.floor(ZONE_X.pond[0] / CELL);
 export const POND_R = Math.floor(ZONE_X.pond[1] / CELL) - 1;
 export const ISLAND_CX = 156;
+// The desert's basking rock sits under its heat lamp, in the middle of the
+// sand, and a new farm's ant nest starts somewhere off to the side of it.
+export const BASK_CX = Math.round(ZONE_MID.desert / CELL);
+export const NEST_CX = [20, 46];
 
 const N8X = [-1, 0, 1, -1, 1, -1, 0, 1];
 const N8Y = [-1, -1, -1, 0, 0, 1, 1, 1];
@@ -294,7 +298,7 @@ export class Terrain {
     };
     // Basking rock in the desert, under the heat lamp.
     {
-      const cx = 104;
+      const cx = BASK_CX;
       const gy = this.groundTop[cx];
       rockBlob(cx, gy + 1, 11, 6.5);
     }
@@ -326,7 +330,7 @@ export class Terrain {
     // Pebbles buried deep in the sand, away from the starter nest.
     for (let i = 0; i < 7; i++) {
       const cx = rng.int(6, POND_L - 12);
-      if (cx > 30 && cx < 80) continue;
+      if (cx > NEST_CX[0] - 10 && cx < NEST_CX[1] + 10) continue;
       const cy = rng.int(this.groundTop[cx] + 30, GH - 6);
       rockBlob(cx, cy, rng.range(1.6, 3.4), rng.range(1.4, 2.6));
     }

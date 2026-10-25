@@ -9,7 +9,9 @@ import { mix } from './plants.js';
 import { clamp01 } from '../util/math.js';
 
 const LW = 1;
-export const LAMP_SHADE = { desert: '#e2553f', pond: '#77b255', jungle: '#4c8fd6' };
+// each zone's lamp has its own colour: sunset for the sand, blue for the
+// water, leaf green for the jungle
+export const LAMP_SHADE = { desert: '#e2553f', pond: '#4c8fd6', jungle: '#77b255' };
 
 function rrect(g, x, y, w, h, r) {
   g.beginPath();
@@ -184,40 +186,22 @@ function lampBody(g, p, shade) {
 // --------------------------------------------------------------- mister
 // A misting pump clipped to the rail, drinking from a water jug through a
 // hose and spraying through a nozzle under the lid.
-//   s: { setting 0..1, spraying 0..1, water 0..1, time, part }
+//   s: { setting 0..1, spraying 0..1, water 0..1, time, part,
+//        aim, reach, depth, puff }
+// The spray fans out over the zone it's for: aim is how far along from the
+// nozzle the middle of the zone is, reach how far either side of that the
+// mist falls, depth how far down the ground is; puff is a soft round sprite
+// for the billows of mist (plain circles without one).
 // part 'body' is the hardware as its dials and jug stand (cacheable), 'live'
 // the spray and the warning blink; leave it out for both.
+const fract = (v) => v - Math.floor(v);
 export function mister(g, x, s) {
   const empty = s.water < 0.15 && s.setting > 0.02;
   const body = s.part !== 'live';
   const live = s.part !== 'body';
   g.save();
   g.translate(x, 0);
-  // spray: a fine cone of mist from the nozzle
-  if (live && s.spraying > 0.02) {
-    g.save();
-    const a = 0.22 * s.spraying;
-    const gr = g.createLinearGradient(0, 8, 0, 90);
-    gr.addColorStop(0, `rgba(225,244,252,${a * 2})`);
-    gr.addColorStop(1, 'rgba(225,244,252,0)');
-    g.fillStyle = gr;
-    g.beginPath();
-    g.moveTo(-2.5, 8);
-    g.lineTo(2.5, 8);
-    g.lineTo(80, 90);
-    g.lineTo(-80, 90);
-    g.closePath();
-    g.fill();
-    // droplet streaks shooting out of the nozzle
-    for (let i = 0; i < 9; i++) {
-      const ang = Math.PI / 2 + (i / 8 - 0.5) * 1.5;
-      const t = (s.time * 1.6 + i * 0.37) % 1;
-      const r0 = 8 + t * 46;
-      g.globalAlpha = (1 - t) * 0.8 * s.spraying;
-      line(g, Math.cos(ang) * r0, 8 + Math.sin(ang) * r0, Math.cos(ang) * (r0 + 5), 8 + Math.sin(ang) * (r0 + 5), 0.9, '#cfeaf8');
-    }
-    g.restore();
-  }
+  if (live && s.spraying > 0.02) misterSpray(g, s);
   if (live && empty && Math.sin(s.time * 6) > 0) {
     // the pump's light blinks red when the jug runs dry
     led(g, 26.5, -15, '#e2553f', true);
@@ -225,6 +209,72 @@ export function mister(g, x, s) {
     stroke(g, 2, '#e2553f');
   }
   if (body) misterBody(g, s, empty);
+  g.restore();
+}
+// The spray: a veil of mist that bursts out of the nozzle, spreads wide and
+// drifts down over the whole zone, painted like a picture-book shower: a
+// pale blue wash, billows rolling down through it and dashes of droplets
+// (white mist alone would vanish against the pale sky).
+function misterSpray(g, s) {
+  const sp = s.spraying;
+  const aim = s.aim || 0;
+  const reach = s.reach || 80;
+  const depth = Math.max(60, s.depth || 90);
+  g.save();
+  // the veil: a wide soft one, and a denser one in its heart. Its sides
+  // flare out fast near the nozzle, then fall more or less straight down.
+  for (const [k, a] of [[1, 0.11], [0.55, 0.1]]) {
+    const gr = g.createLinearGradient(0, 8, 0, depth);
+    gr.addColorStop(0, `rgba(128,190,228,${(a * 3 * sp).toFixed(3)})`);
+    gr.addColorStop(0.3, `rgba(128,190,228,${(a * sp).toFixed(3)})`);
+    gr.addColorStop(1, `rgba(128,190,228,${(a * 0.25 * sp).toFixed(3)})`);
+    g.fillStyle = gr;
+    const l = aim - reach * k;
+    const r = aim + reach * k;
+    g.beginPath();
+    g.moveTo(-2.5, 8);
+    g.bezierCurveTo(l * 0.5, 14, l, depth * 0.3, l, depth);
+    g.lineTo(r, depth);
+    g.bezierCurveTo(r, depth * 0.3, r * 0.5, 14, 2.5, 8);
+    g.closePath();
+    g.fill();
+  }
+  // billows of mist rolling down through it, spreading as they go
+  for (let i = 0; i < 18; i++) {
+    const f = fract(Math.sin(i * 12.9898) * 43758.5453) * 2 - 1; // across the fan
+    const u = fract(s.time * (0.15 + 0.06 * fract(i * 0.618)) + i / 18); // down it
+    const out = Math.min(1, u * 3);
+    const px = (aim + f * reach) * out + Math.sin(s.time * 0.8 + i * 2.3) * 10 * u;
+    const py = 8 + (depth - 8) * u;
+    const r = 6 + 30 * u;
+    g.globalAlpha = Math.sin(Math.PI * Math.min(1, u * 1.15)) * 0.32 * sp;
+    if (s.puff) g.drawImage(s.puff, px - r, py - r, r * 2, r * 2);
+    else {
+      circ(g, px, py, r * 0.6);
+      fill(g, '#cfe8f6');
+    }
+  }
+  // droplets: little dashes falling all through it
+  g.lineCap = 'round';
+  for (let i = 0; i < 64; i++) {
+    const f = fract(Math.sin(i * 78.233) * 24634.6345) * 2 - 1;
+    const u = fract(s.time * (0.42 + 0.2 * fract(i * 0.37)) + fract(i * 0.7548));
+    const out = Math.min(1, u * 3);
+    const px = (aim + f * reach) * out;
+    const py = 8 + (depth - 8) * u;
+    g.globalAlpha = Math.min(1, (1 - u) * 3) * Math.min(1, u * 8) * 0.75 * sp;
+    line(g, px, py, px + f * 1.2, py + 6, 1.15, '#6fb2df');
+  }
+  // fine jets shooting out of the nozzle, fanned toward both edges
+  const angL = Math.atan2(depth * 0.3, aim - reach);
+  const angR = Math.atan2(depth * 0.3, aim + reach);
+  for (let i = 0; i < 13; i++) {
+    const ang = angR + (angL - angR) * (i / 12);
+    const t = fract(s.time * 1.7 + i * 0.37);
+    const r0 = 8 + t * 80;
+    g.globalAlpha = (1 - t) * 0.85 * sp;
+    line(g, Math.cos(ang) * r0, 8 + Math.sin(ang) * r0, Math.cos(ang) * (r0 + 7), 8 + Math.sin(ang) * (r0 + 7), 1, '#8cc6ea');
+  }
   g.restore();
 }
 function misterBody(g, s, empty) {

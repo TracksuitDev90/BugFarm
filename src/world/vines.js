@@ -31,16 +31,23 @@ const KIND_IDS = Object.keys(VINE_KINDS);
 export const VINE_MIN = 52;
 const STEP = 36; // spacing between hooks in the lid
 
-// Where vines can hang: hooks along the jungle's lid, clear of the mister's
-// spray, the lamp, the thermometer, the sprinklers and anything hung there.
+// The stretches of the jungle's lid that are spoken for: the mister (nozzle,
+// pump and jug) and the lamp beside it, the thermometer, the sprinklers, the
+// rain barrel and anything hung there. [from, to]
+function lidTaken(w) {
+  const keep = [[MISTER_X.jungle - 30, LAMP_X.jungle + 36], [GAUGE_AT.jungle[0] - 16, GAUGE_AT.jungle[0] + 16]];
+  if (w.owns && w.owns('sprinkler')) for (const x of SPRINKLER_X) keep.push([x - 14, x + 14]);
+  if (w.owns && w.owns('rainBarrel')) keep.push([MISTER_X.jungle - 60, MISTER_X.jungle]);
+  for (const d of w.decor) if (d.def.place === 'top') keep.push([d.x - d.def.w / 2 - 12, d.x + d.def.w / 2 + 12]);
+  return keep;
+}
+// Where vines can hang: hooks along the jungle's lid, clear of all that.
 export function vineHooks(w) {
   const x0 = ZONE_X.jungle[0] + 12;
   const x1 = W - 14;
-  const keep = [[MISTER_X.jungle, 34], [LAMP_X.jungle, 36], [GAUGE_AT.jungle[0], 16]];
-  if (w.owns && w.owns('sprinkler')) for (const x of SPRINKLER_X) keep.push([x, 14]);
-  for (const d of w.decor) if (d.def.place === 'top') keep.push([d.x, d.def.w / 2 + 12]);
+  const keep = lidTaken(w);
   const out = [];
-  for (let x = x0; x <= x1; x += STEP) if (!keep.some(([kx, r]) => Math.abs(kx - x) < r)) out.push(x);
+  for (let x = x0; x <= x1; x += STEP) if (!keep.some(([a, b]) => x > a && x < b)) out.push(x);
   return out;
 }
 
@@ -212,7 +219,8 @@ export class Vines {
       }
       return o;
     });
-    return { seq: this.seq, nextT: Math.round(this.nextT), recent: this.recent, list };
+    // (gear: the vines were hung round the lamp and mister where they hang now)
+    return { seq: this.seq, nextT: Math.round(this.nextT), recent: this.recent, list, gear: 1 };
   }
   load(d, w) {
     if (!d || !Array.isArray(d.list)) return this.seed(w);
@@ -220,5 +228,27 @@ export class Vines {
     this.seq = d.seq || this.list.length + 1;
     this.nextT = d.nextT || w.time;
     this.recent = (d.recent || []).filter((k) => VINE_KINDS[k]);
+    if (!d.gear) this.clearGear(w);
+  }
+
+  // A farm saved before the lamps and misters moved to the middle of their
+  // zones: a vine hanging where the gear hangs now is re-hung on the nearest
+  // free hook, or let go if there's no room for it.
+  clearGear(w) {
+    const keep = lidTaken(w);
+    const hooks = vineHooks(w);
+    // (by the same rule new vines are hung by: no hook, or liana's rope, in the way)
+    const inWay = (x, v) => keep.some(([a, b]) => x < b && x + (v.span || 0) > a);
+    for (const v of this.list.filter((v) => inWay(v.x, v))) {
+      let best = null;
+      for (const h of hooks) {
+        if (best != null && Math.abs(h - v.x) >= Math.abs(best - v.x)) continue;
+        if (inWay(h, v) || !this.free(h, v.kind, v)) continue;
+        if (v.span && !hooks.some((h2) => Math.abs(h2 - (h + v.span)) < STEP * 0.6)) continue;
+        best = h;
+      }
+      if (best != null) v.x = best;
+      else this.list.splice(this.list.indexOf(v), 1);
+    }
   }
 }

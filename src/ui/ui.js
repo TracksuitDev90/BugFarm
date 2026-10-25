@@ -2014,6 +2014,7 @@ export class UI {
   // the Visitors' Book).
   answerOffer(id, offer, v, yes) {
     const vs = this.journal.visitors;
+    if (!vs.pending(offer, v)) return;
     if (!yes) {
       vs.decline(id, offer, v);
       this.toast(`${VISITORS[id].name} doesn't mind a bit. Maybe another time!`, 'heart');

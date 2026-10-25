@@ -26,7 +26,7 @@ import { VISITOR_ART, drawVisitor } from '../art/visitors.js';
 import { OUTFITS } from '../data/outfits.js';
 import { drawHat } from '../art/ink.js';
 
-function DRAW_HAT(g, id, col) {
+function hatAt(g, id, col) {
   drawHat(g, id, 0, 4, 5.4, 0.9, col);
 }
 
@@ -144,15 +144,15 @@ export function wareCanvas(ware, css = 56) {
     return artCanvas(size, [-20, -16, 20, 8], (g) => {
       g.save();
       g.translate(-9, 0);
-      DRAW_HAT(g, 'beret', '#4c8fd6');
+      hatAt(g, 'beret', '#4c8fd6');
       g.restore();
       g.save();
       g.translate(9, 1);
-      DRAW_HAT(g, 'beanie', '#77b255');
+      hatAt(g, 'beanie', '#77b255');
       g.restore();
       g.save();
       g.translate(0, -3);
-      DRAW_HAT(g, 'bow', '#e57a8a');
+      hatAt(g, 'bow', '#e57a8a');
       g.restore();
     });
   }

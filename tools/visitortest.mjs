@@ -84,6 +84,9 @@ for (const id of VISITOR_ORDER) {
   const n = j.visitors.notes[0];
   const r = j.visitors.accept(n.id, n.offer, null);
   check(r.ok && !j.visitors.notes.length && w.decor.some((d) => d.type === 'leafPile'), 'and saying yes to the note builds the leaf pile');
+  const piles = w.decor.filter((d) => d.type === 'leafPile').length;
+  const again = j.visitors.accept(n.id, n.offer, null);
+  check(!again.ok && w.decor.filter((d) => d.type === 'leafPile').length === piles, 'an idea can only be answered once');
 }
 
 // the lotus and the visitors' buildings are locked until a visitor brings them

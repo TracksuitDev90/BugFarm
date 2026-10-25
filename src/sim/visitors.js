@@ -220,10 +220,17 @@ export class Visitors {
     if (this.onGift) this.onGift(id, gift, v);
   }
 
+  // Is this idea still waiting for an answer (on the visitor, or as a
+  // note)? (Its card can be answered only once.)
+  pending(offer, v) {
+    return !!offer && ((v && v.waiting && v.offer === offer) || this.notes.some((n) => n.offer === offer));
+  }
+
   // The keeper said yes. Does the visitor's good deed, and says what
   // happened (or why it couldn't be done after all).
   accept(id, offer, v) {
     const w = this.world;
+    if (!this.pending(offer, v)) return { ok: false, done: true, text: '' };
     const def = VISITORS[id];
     const x = v ? v.x : ZONE_MID[def.zone];
     let ok = false;

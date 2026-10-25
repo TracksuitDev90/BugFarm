@@ -2204,8 +2204,10 @@ export class World {
   spotNear(type, zone, x) {
     const def = DECOR[type];
     const [x0, x1] = ZONE_X[zone];
-    for (let i = 0; i < 40; i++) {
-      const xx = Math.round(clamp(x + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 18, x0 + 30, x1 - 30));
+    const spots = [];
+    for (let xx = x0 + 30; xx <= x1 - 30; xx += 12) spots.push(Math.round(xx));
+    spots.sort((a, b) => Math.abs(a - x) - Math.abs(b - x));
+    for (const xx of spots) {
       if (this.decor.some((d) => Math.abs(d.x - xx) < (d.def.w + def.w) * 0.45)) continue;
       if (this.plants.some((p) => !p.dead && p.def.h > 40 && Math.abs(p.x - xx) < def.w * 0.4)) continue;
       if (this.canPlace('decor', type, xx, null).ok) return xx;
@@ -2229,9 +2231,14 @@ export class World {
     const def = PLANTS[type];
     const out = [];
     const [x0, x1] = ZONE_X[zone];
-    for (let i = 0; i < 60 && out.length < n; i++) {
-      const xx = clamp(x + rrange(-1, 1) * (40 + i * 6), x0 + 14, x1 - 14);
-      if (this.plants.some((p) => !p.dead && Math.abs(p.x - xx) < (def.aquatic ? 34 : 16))) continue;
+    // the nearest open spots (only plants of the same sort crowd it: a
+    // lotus doesn't mind the eelgrass underneath)
+    const spots = [];
+    for (let xx = x0 + 14; xx <= x1 - 14; xx += 10) spots.push(xx + rrange(-3, 3));
+    spots.sort((a, b) => Math.abs(a - x) - Math.abs(b - x));
+    for (const xx of spots) {
+      if (out.length >= n) break;
+      if (this.plants.some((p) => !p.dead && p.def.place === def.place && Math.abs(p.x - xx) < (def.aquatic ? 30 : 16))) continue;
       if (!this.canPlace('plant', type, xx, null).ok) continue;
       const p = this.addPlant(type, xx, null, { growth: 0.45 });
       if (!p) break;

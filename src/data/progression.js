@@ -26,7 +26,7 @@ export const ZONE_PLAN = {
     {
       critters: ['beetle', 'harvesterAnt'],
       foods: ['corn', 'sunflower', 'carrot', 'pumpkin'],
-      plants: ['succulent', 'marigold'],
+      plants: ['succulent', 'marigold', 'poppy'],
       decor: ['flatRock'],
       goals: [
         { id: 'd2born', text: 'Baby crickets or beetles hatch', kind: 'event', on: 'birth', sp: ['cricket', 'beetle'], n: 1, tip: 'Well-fed, comfy grown-ups have babies.' },
@@ -37,6 +37,7 @@ export const ZONE_PLAN = {
     {
       critters: ['gecko', 'honeypotAnt'],
       foods: ['bugbites', 'banana', 'cookie', 'grape'],
+      plants: ['lavender'],
       decor: ['feeder'],
     },
   ],
@@ -55,7 +56,7 @@ export const ZONE_PLAN = {
     {
       critters: ['shrimp', 'guppy'],
       foods: ['pellets', 'pea', 'bread'],
-      plants: ['eelgrass'],
+      plants: ['eelgrass', 'iris'],
       decor: ['bubbler'],
       goals: [
         { id: 'p2grass', text: 'Plant eelgrass to freshen the water', kind: 'event', on: 'plant', test: (d) => d.plant.type === 'eelgrass', n: 1, tip: 'Water plants add air to the pond.' },
@@ -93,7 +94,7 @@ export const ZONE_PLAN = {
     {
       critters: ['worm', 'pillbug'],
       foods: ['kale', 'mushroom', 'eggshell', 'leaves'],
-      plants: ['mushroom', 'bigleaf', 'clover', 'palm'],
+      plants: ['mushroom', 'bigleaf', 'clover', 'palm', 'cornflower'],
       decor: ['library'],
       goals: [
         { id: 'j2pupa', text: 'A caterpillar wraps up in a chrysalis', kind: 'event', on: 'pupate', n: 1, tip: 'Caterpillars need leafy plants. No caterpillars? Adopt one.' },
@@ -104,7 +105,7 @@ export const ZONE_PLAN = {
     {
       critters: ['aphid', 'ladybug', 'moth'],
       foods: ['honey', 'pollen'],
-      plants: ['tulip', 'strawberry', 'bromeliad'],
+      plants: ['tulip', 'strawberry', 'bromeliad', 'bluebell'],
       goals: [
         { id: 'j3lady', text: 'A ladybug snacks on an aphid', kind: 'event', on: 'predation', test: (d) => d.pred.sp === 'ladybug', n: 1, tip: 'Aphids live on leafy plants; ladybugs come hunting.' },
         { id: 'j3born', text: 'Baby snails, worms or pill bugs arrive', kind: 'event', on: 'birth', sp: ['snail', 'worm', 'pillbug'], n: 1, tip: 'They breed when damp, comfy and well fed.' },
@@ -125,6 +126,7 @@ export const ZONE_PLAN = {
     {
       critters: ['firefly', 'grasshopper'],
       foods: ['melon', 'watermelon', 'pear', 'doughnut', 'cheese'],
+      plants: ['hibiscus'],
       decor: ['lampPost'],
     },
   ],

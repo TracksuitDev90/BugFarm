@@ -231,7 +231,7 @@ export function wing(ctx, x, y, rx, ry, rot, lw, tint = 'rgba(214,236,250,0.62)'
 // Accessories: tiny hats, bows and scarves, placed at a head anchor.
 // (x,y) is the top of the head, s is a size unit (~head radius), lw the ink width.
 export const ACCESSORIES = ['beret', 'cap', 'bow', 'scarf', 'bowtie', 'flower', 'sunhat', 'bowler', 'beanie'];
-const ACC_COLORS = ['#d9483b', '#4c8fd6', '#f0bf45', '#77b255', '#e57a8a', '#8d6cc0', '#f0913a'];
+export const ACC_COLORS = ['#d9483b', '#4c8fd6', '#f0bf45', '#77b255', '#e57a8a', '#8d6cc0', '#f0913a'];
 
 export function accessoryColor(seed) {
   return ACC_COLORS[Math.floor(hash1(seed, 77) * ACC_COLORS.length)];
@@ -352,6 +352,211 @@ export function drawHat(ctx, kind, x, y, s, lw, color, facing = 1) {
       fill(ctx, '#d9483b');
       break;
     }
+    // ---- the Busytown hats (each neighbour sells one at the Market), and
+    // a visitor's feather
+    case 'toque': {
+      // a chef's tall white hat
+      paint(ctx, '#fffdf6', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.75, 0);
+        ctx.lineTo(-s * 0.7, -s * 0.9);
+        ctx.quadraticCurveTo(-s * 1.25, -s * 1.3, -s * 0.75, -s * 1.75);
+        ctx.quadraticCurveTo(-s * 0.4, -s * 2.15, 0, -s * 1.8);
+        ctx.quadraticCurveTo(s * 0.4, -s * 2.15, s * 0.75, -s * 1.75);
+        ctx.quadraticCurveTo(s * 1.25, -s * 1.3, s * 0.7, -s * 0.9);
+        ctx.lineTo(s * 0.75, 0);
+        ctx.closePath();
+      });
+      line(ctx, -s * 0.72, -s * 0.35, s * 0.72, -s * 0.35, lw * 0.6);
+      break;
+    }
+    case 'tophat': {
+      paint(ctx, '#2d2a33', lw, () => ell(ctx, 0, 0, s * 1.15, s * 0.22));
+      paint(ctx, '#2d2a33', lw, () => {
+        ctx.beginPath();
+        ctx.rect(-s * 0.62, -s * 1.55, s * 1.24, s * 1.55);
+      });
+      paint(ctx, '#2d2a33', lw, () => ell(ctx, 0, -s * 1.55, s * 0.62, s * 0.16));
+      line(ctx, -s * 0.62, -s * 0.3, s * 0.62, -s * 0.3, lw * 2, color);
+      break;
+    }
+    case 'mortar': {
+      // a schoolroom mortarboard with a tassel
+      paint(ctx, '#2d2a33', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.6, 0);
+        ctx.lineTo(-s * 0.6, -s * 0.55);
+        ctx.lineTo(s * 0.6, -s * 0.55);
+        ctx.lineTo(s * 0.6, 0);
+        ctx.closePath();
+      });
+      paint(ctx, '#2d2a33', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 1.3, -s * 0.7);
+        ctx.lineTo(0, -s * 1.05);
+        ctx.lineTo(s * 1.3, -s * 0.7);
+        ctx.lineTo(0, -s * 0.38);
+        ctx.closePath();
+      });
+      line(ctx, 0, -s * 0.72, s * 0.9, -s * 0.55, lw * 0.7, color);
+      line(ctx, s * 0.9, -s * 0.55, s * 0.95, -s * 0.05, lw * 0.9, color);
+      break;
+    }
+    case 'mailcap': {
+      // the postman's peaked cap with a gold badge
+      paint(ctx, '#3f6aa8', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.85, 0);
+        ctx.lineTo(-s * 0.95, -s * 0.85);
+        ctx.quadraticCurveTo(0, -s * 1.15, s * 0.95, -s * 0.85);
+        ctx.lineTo(s * 0.85, 0);
+        ctx.closePath();
+      });
+      paint(ctx, '#2d2a33', lw, () => ell(ctx, s * 0.75, s * 0.02, s * 0.65, s * 0.16, 0.08));
+      circ(ctx, 0, -s * 0.5, s * 0.2);
+      fill(ctx, '#f3c43c');
+      stroke(ctx, lw * 0.6);
+      break;
+    }
+    case 'nurse': {
+      paint(ctx, '#fffdf6', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.95, 0);
+        ctx.lineTo(-s * 0.7, -s * 0.8);
+        ctx.lineTo(s * 0.7, -s * 0.8);
+        ctx.lineTo(s * 0.95, 0);
+        ctx.closePath();
+      });
+      line(ctx, 0, -s * 0.62, 0, -s * 0.18, lw * 1.6, '#e2553f');
+      line(ctx, -s * 0.22, -s * 0.4, s * 0.22, -s * 0.4, lw * 1.6, '#e2553f');
+      break;
+    }
+    case 'flowercrown': {
+      line(ctx, -s * 0.95, -s * 0.15, s * 0.95, -s * 0.15, lw * 1.2, '#5f9e45');
+      const cols = [color, '#fffdf6', '#f6d64a', color, '#fffdf6'];
+      for (let i = 0; i < 5; i++) {
+        const fx = -s * 0.85 + i * s * 0.42;
+        const fy = -s * 0.3 - (i % 2) * s * 0.12;
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * TAU;
+          circ(ctx, fx + Math.cos(a) * s * 0.14, fy + Math.sin(a) * s * 0.14, s * 0.13);
+          fill(ctx, cols[i]);
+        }
+        circ(ctx, fx, fy, s * 0.08);
+        fill(ctx, '#e8a33a');
+      }
+      break;
+    }
+    case 'straw': {
+      // the farmer's straw hat, with a wheat ear in the band
+      paint(ctx, '#f0d48a', lw, () => ell(ctx, 0, 0, s * 1.65, s * 0.32));
+      paint(ctx, '#f0d48a', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.72, 0);
+        ctx.lineTo(-s * 0.62, -s * 0.85);
+        ctx.quadraticCurveTo(0, -s * 1.05, s * 0.62, -s * 0.85);
+        ctx.lineTo(s * 0.72, 0);
+        ctx.closePath();
+      });
+      for (const k of [-0.4, 0, 0.4]) line(ctx, k * s, -s * 0.05, k * s * 0.9, -s * 0.85, lw * 0.4, 'rgba(160,120,50,0.6)');
+      line(ctx, -s * 0.7, -s * 0.2, s * 0.7, -s * 0.2, lw * 1.8, color);
+      line(ctx, s * 0.5, -s * 0.25, s * 0.85, -s * 1.15, lw * 0.6, '#c99a3a');
+      for (let i = 0; i < 3; i++) {
+        ell(ctx, s * (0.62 + i * 0.08), -s * (0.55 + i * 0.2), s * 0.1, s * 0.05, -1.1);
+        fill(ctx, '#e8b84a');
+      }
+      break;
+    }
+    case 'bucket': {
+      // the gardener's floppy bucket hat
+      paint(ctx, color, lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 1.15, s * 0.2);
+        ctx.lineTo(-s * 0.7, -s * 0.85);
+        ctx.quadraticCurveTo(0, -s * 1.05, s * 0.7, -s * 0.85);
+        ctx.lineTo(s * 1.15, s * 0.2);
+        ctx.quadraticCurveTo(0, -s * 0.15, -s * 1.15, s * 0.2);
+        ctx.closePath();
+      });
+      curve(ctx, -s * 0.85, -s * 0.12, 0, -s * 0.35, s * 0.85, -s * 0.12, lw * 0.6);
+      break;
+    }
+    case 'propeller': {
+      // the inventor's propeller beanie
+      paint(ctx, color, lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.9, 0);
+        ctx.quadraticCurveTo(-s * 0.9, -s * 1.05, 0, -s * 1.05);
+        ctx.quadraticCurveTo(s * 0.9, -s * 1.05, s * 0.9, 0);
+        ctx.closePath();
+      });
+      line(ctx, 0, -s * 1.05, 0, -s * 1.4, lw * 0.8);
+      paint(ctx, '#f3c43c', lw * 0.7, () => ell(ctx, -s * 0.45, -s * 1.42, s * 0.45, s * 0.14));
+      paint(ctx, '#e2553f', lw * 0.7, () => ell(ctx, s * 0.45, -s * 1.42, s * 0.45, s * 0.14));
+      circ(ctx, 0, -s * 1.42, s * 0.1);
+      fill(ctx, INK);
+      break;
+    }
+    case 'kerchief': {
+      // a knotted headscarf, the way Odette wears hers
+      paint(ctx, color, lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.95, s * 0.05);
+        ctx.quadraticCurveTo(-s * 0.9, -s * 1.0, 0, -s * 1.0);
+        ctx.quadraticCurveTo(s * 0.9, -s * 1.0, s * 0.95, s * 0.05);
+        ctx.closePath();
+      });
+      for (const [dx, dy] of [[-0.4, -0.55], [0.2, -0.7], [0.5, -0.3], [-0.1, -0.25]]) {
+        circ(ctx, dx * s, dy * s, s * 0.08);
+        fill(ctx, '#fffdf6');
+      }
+      paint(ctx, color, lw * 0.7, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.9, -s * 0.1);
+        ctx.lineTo(-s * 1.4, -s * 0.35);
+        ctx.lineTo(-s * 1.3, s * 0.15);
+        ctx.closePath();
+      });
+      break;
+    }
+    case 'party': {
+      paint(ctx, color, lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.7, 0);
+        ctx.lineTo(0, -s * 1.7);
+        ctx.lineTo(s * 0.7, 0);
+        ctx.closePath();
+      });
+      for (const [dx, dy] of [[-0.25, -0.35], [0.2, -0.7], [-0.05, -1.1], [0.35, -0.2]]) {
+        circ(ctx, dx * s, dy * s, s * 0.09);
+        fill(ctx, '#fffdf6');
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU;
+        line(ctx, 0, -s * 1.75, Math.cos(a) * s * 0.28, -s * 1.75 + Math.sin(a) * s * 0.28, lw * 0.7, '#f3c43c');
+      }
+      break;
+    }
+    case 'feather': {
+      // a little cap with Kip the kingfisher's shining blue feather
+      paint(ctx, '#e8dcc0', lw, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.85, 0);
+        ctx.quadraticCurveTo(-s * 0.8, -s * 0.9, 0, -s * 0.9);
+        ctx.quadraticCurveTo(s * 0.8, -s * 0.9, s * 0.85, 0);
+        ctx.closePath();
+      });
+      line(ctx, -s * 0.8, -s * 0.15, s * 0.8, -s * 0.15, lw * 1.5, '#f08a2c');
+      paint(ctx, '#2f8ad0', lw * 0.7, () => {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.3, -s * 0.5);
+        ctx.quadraticCurveTo(-s * 1.2, -s * 1.3, -s * 1.1, -s * 2.0);
+        ctx.quadraticCurveTo(-s * 0.4, -s * 1.4, -s * 0.15, -s * 0.55);
+        ctx.closePath();
+      });
+      line(ctx, -s * 0.25, -s * 0.5, -s * 1.05, -s * 1.9, lw * 0.4, '#bfe6f6');
+      break;
+    }
     default:
       break;
   }
@@ -371,6 +576,14 @@ export function drawNeckwear(ctx, kind, x, y, s, lw, color) {
       ctx.lineTo(s * 0.1, s * 0.75);
       ctx.closePath();
     });
+  } else if (kind === 'pearls') {
+    // a string of tiny pearls (Hector the hermit crab's present)
+    for (let i = 0; i < 7; i++) {
+      const a = Math.PI * 0.1 + (i / 6) * Math.PI * 0.8;
+      circ(ctx, Math.cos(a) * s * 0.95 - s * 0.1, Math.sin(a) * s * 0.65 - s * 0.35, s * 0.27);
+      fill(ctx, '#fbf8f0');
+      stroke(ctx, lw * 0.4);
+    }
   } else if (kind === 'bowtie') {
     paint(ctx, color, lw, () => {
       ctx.beginPath();
@@ -390,7 +603,7 @@ export function drawNeckwear(ctx, kind, x, y, s, lw, color) {
 }
 
 export function isNeckwear(kind) {
-  return kind === 'scarf' || kind === 'bowtie';
+  return kind === 'scarf' || kind === 'bowtie' || kind === 'pearls';
 }
 
 // Wobbly helper: deterministic offset for hand-drawn jitter.

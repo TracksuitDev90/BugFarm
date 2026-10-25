@@ -5,8 +5,14 @@
 //   value: thank-you stars each one earns on an order
 //   batch: [min, max] a neighbour usually asks for
 //   life:  game days a good waits in the tank before it fades (or sows)
+//   oneF/manyF: its words with a flavour in them ({f}: "clover")
+import { PLANTS, PLANT_ORDER, blooms, tasteOf } from './plants.js';
+
 export const GOODS = {
   seeds: {
+    oneF: '{f} seed head',
+    manyF: '{f} seed heads',
+    short: 'seeds',
     name: 'Seeds',
     one: 'seed head',
     many: 'seed heads',
@@ -17,6 +23,9 @@ export const GOODS = {
     life: 1.2,
   },
   lily: {
+    oneF: '{f} water lily',
+    manyF: '{f} water lilies',
+    short: 'lilies',
     name: 'Water lilies',
     one: 'water lily',
     many: 'water lilies',
@@ -27,6 +36,9 @@ export const GOODS = {
     life: 2,
   },
   compost: {
+    oneF: 'ball of {f} compost',
+    manyF: 'balls of {f} compost',
+    short: 'compost',
     name: 'Compost',
     one: 'ball of compost',
     many: 'balls of compost',
@@ -37,6 +49,9 @@ export const GOODS = {
     life: 2.5,
   },
   silk: {
+    oneF: '{f} silk chrysalis',
+    manyF: '{f} silk chrysalises',
+    short: 'silk',
     name: 'Silk',
     one: 'silk chrysalis',
     many: 'silk chrysalises',
@@ -47,6 +62,9 @@ export const GOODS = {
     life: 6,
   },
   honey: {
+    oneF: 'jar of {f} honey',
+    manyF: 'jars of {f} honey',
+    short: 'honey',
     name: 'Honey',
     one: 'jar of honey',
     many: 'jars of honey',
@@ -61,9 +79,95 @@ export const GOODS = {
 export const GOOD_ORDER = ['seeds', 'lily', 'compost', 'silk', 'honey'];
 for (const id of GOOD_ORDER) GOODS[id].id = id;
 
-export function goodWord(id, n) {
+// ---------------------------------------------------------------- flavours
+// Every good takes something of where it came from, so what the keeper
+// plants, how they keep the pond and who lives in the tank all show in
+// what the farm makes:
+//   honey:   the flowers the bees visited ("clover honey"); a jar from many
+//            kinds of flower is wildflower honey, and the honeypot ants make
+//            desert honey
+//   seeds:   the flower that ripened them
+//   lilies:  the water they bloom in: cool water white, mild pink, warm
+//            gold, and a rare blue in very clear water full of neon tetras;
+//            a lotus gives lotus blooms
+//   silk:    the butterfly or moth that spun it (a blue morpho's silk has a
+//            blue sheen)
+//   compost: a beetle's compost ball, or a worm's castings
+// Each flavour: { name (for lists), adj (in a sentence), col (its colour
+// in pictures), one/many (words of its own, if "{f} good" doesn't suit) }.
+export const FLAVOURS = { honey: {}, seeds: {}, lily: {}, silk: {}, compost: {} };
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+for (const id of PLANT_ORDER) {
+  const def = PLANTS[id];
+  if (!blooms(def)) continue;
+  const adj = tasteOf(def);
+  FLAVOURS.honey[id] = { adj, col: def.honey || '#f0a830', label: def.petals || '#fbf3df' };
+  if (!def.aquatic) FLAVOURS.seeds[id] = { adj, col: def.petals || '#d9b072' };
+}
+FLAVOURS.honey.wild = { adj: 'wildflower', col: '#eba73a' };
+FLAVOURS.honey.desert = { adj: 'desert', col: '#d9902a', label: '#e8c483' };
+FLAVOURS.seeds.wild = { adj: 'wildflower', col: '#d9b072' };
+Object.assign(FLAVOURS.lily, {
+  white: { adj: 'white', col: '#fbf8ee' },
+  pink: { adj: 'pink', col: '#f4b3cc' },
+  gold: { adj: 'golden', col: '#f6cf4a' },
+  blue: { adj: 'blue star', col: '#8fb4f0' },
+  lotus: { adj: 'lotus', col: '#f9b8d0', one: 'lotus bloom', many: 'lotus blooms' },
+});
+// silk: one for each butterfly and moth variety (see PALETTES in
+// art/creatures.js), with its chrysalis colour (cocoon for the moths)
+// and the sheen of its thread
+const SILKS = [
+  ['monarch', 'butterfly', 0, '#7ccf9a', '#f08a2c'],
+  ['morpho', 'butterfly', 1, '#a7d27a', '#4f9be0'],
+  ['swallowtail', 'butterfly', 2, '#c7d98a', '#f2d24a'],
+  ['rose', 'butterfly', 3, '#e8c7d6', '#f39ac0'],
+  ['white', 'butterfly', 4, '#dfe8cf', '#fbf8ee'],
+  ['peacock', 'butterfly', 5, '#c9b07a', '#c9473a'],
+  ['glasswing', 'butterfly', 6, '#e6f0e2', '#cfe6f2'],
+  ['emerald', 'butterfly', 7, '#7ccf9a', '#3fa874'],
+  ['luna', 'moth', 0, '#ece2c0', '#b8e09a'],
+  ['rosymaple', 'moth', 1, '#efe2c4', '#f39ac0'],
+  ['polyphemus', 'moth', 2, '#d9c8a0', '#c9a06a'],
+];
+const SILK_ADJ = { morpho: 'blue morpho', rose: 'rose', white: 'snow-white', rosymaple: 'rosy maple', swallowtail: 'swallowtail' };
+export const SILK_OF = {}; // 'butterfly:2' -> 'swallowtail'
+for (const [k, sp, pal, chrys, sheen] of SILKS) {
+  const adj = SILK_ADJ[k] || k;
+  const f = { adj, col: sheen, chrys, sp };
+  if (sp === 'moth') Object.assign(f, { one: `${adj} silk cocoon`, many: `${adj} silk cocoons`, name: cap(`${adj} silk`) });
+  FLAVOURS.silk[k] = f;
+  SILK_OF[sp + ':' + pal] = k;
+}
+FLAVOURS.compost.compost = { adj: 'beetle', col: '#6a4a30', one: 'ball of compost', many: 'balls of compost', name: 'Beetle compost' };
+FLAVOURS.compost.castings = { adj: 'worm', col: '#5e4230', one: 'heap of worm castings', many: 'heaps of worm castings', name: 'Worm castings' };
+for (const id of GOOD_ORDER) {
+  for (const f of Object.values(FLAVOURS[id])) {
+    if (!f.name) f.name = f.one && !f.one.includes(' of ') ? cap(f.many) : cap(`${f.adj} ${GOODS[id].short}`);
+  }
+}
+// What goods made before flavours (or by nobody in particular) count as.
+export const PLAIN = { honey: 'wild', seeds: 'wild', lily: 'pink', silk: 'monarch', compost: 'compost' };
+
+export function flavourOf(id, f) {
+  return (FLAVOURS[id] && FLAVOURS[id][f]) || null;
+}
+
+// "2 jars of honey", "1 jar of clover honey", "3 prize golden water lilies"
+export function goodWord(id, n, flav, best) {
   const g = GOODS[id];
-  return `${n} ${n === 1 ? g.one : g.many}`;
+  const f = flav ? flavourOf(id, flav) : null;
+  let w = n === 1 ? g.one : g.many;
+  if (f) w = n === 1 ? f.one || g.oneF.replace('{f}', f.adj) : f.many || g.manyF.replace('{f}', f.adj);
+  return `${n} ${best ? 'prize ' : ''}${w}`;
+}
+
+// A basket entry's key: its flavour, with a '+' for a prize one.
+export function basketKey(flav, prize) {
+  return flav + (prize ? '+' : '');
+}
+export function splitKey(k) {
+  return k.endsWith('+') ? [k.slice(0, -1), true] : [k, false];
 }
 
 // Every critter has a job, like everyone in Busytown, and every job does

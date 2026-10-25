@@ -14,6 +14,7 @@ import { drawFood } from '../art/food.js';
 import { drawPlant } from '../art/plants.js';
 import { drawVine, vineBox } from '../art/vines.js';
 import { DECOR_ART, decorBox } from '../art/decor.js';
+import { VISITOR_ART, drawVisitor } from '../art/visitors.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { drawIcon } from '../art/icons.js';
 import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops.js';
@@ -456,12 +457,14 @@ export class Renderer {
     }
     this.homeLife(w);
     this.drawWaterSurface(g);
+    if (w.visitors.length) this.drawVisitors(g, alpha);
     this.ambient.drawBits(g, view, this);
     this.drawGoods(g, true);
     this.light.draw(this, g, w, this.time, { rays: this.q.rays, liveWater: this.q.liveRays });
     this.fx.draw(g, view, cam.zoom);
     this.drawEquipment(g);
     this.drawGauges(g);
+    if (w.departures.length) this.drawDepartures(g);
     if (sel && !sel.removed) this.drawSelection(g, sel, alpha);
     this.drawNight(g, view);
     if (this.lens !== 'none') this.drawLens(g, view, dt);
@@ -572,7 +575,7 @@ export class Renderer {
     const b = Math.min(this.bucket, 3);
     for (const gd of w.goods) {
       if ((gd.type === 'lily') !== floating || !this.visible(gd.x, gd.y, 30)) continue;
-      const s = this.sprites.get('gd|' + gd.type + gd.look, b, goodBox(gd.type), (gg) => drawGood(gg, gd.type, gd.look));
+      const s = this.sprites.get('gd|' + gd.type + gd.look + '|' + gd.flav + (gd.prize ? '+' : ''), b, goodBox(gd.type, gd.prize), (gg) => drawGood(gg, gd.type, gd.look, gd.flav, gd.prize));
       const k = Math.sin(this.time * 2.2 + gd.id);
       const sc = 0.5 + 0.5 * clamp01(gd.age / 0.5);
       const bob = gd.type === 'lily' ? k * 0.6 : gd.type === 'honey' || gd.type === 'compost' ? 0 : k * 0.4;
@@ -794,7 +797,7 @@ export class Renderer {
       closed = bt < 0.13;
     }
     const acc = c.sp === 'ant' && (c.pose === 'dig' || c.carry === 'sand') ? 'hardhat' : c.acc;
-    const key = c.sp + '|' + c.stage + '|' + pose + '|' + frame + '|' + c.palIdx + '|' + (acc || '') + '|' + (closed ? 1 : 0) + '|' + c.accSeed % 7 + (wspec ? '|w' : '');
+    const key = c.sp + '|' + c.stage + '|' + pose + '|' + frame + '|' + c.palIdx + '|' + (acc || '') + '|' + (closed ? 1 : 0) + '|' + (acc ? c.accColor : '') + (wspec ? '|w' : '');
     const [bw, bh] = art.box(c.stage);
     const bucket = Math.min(this.q.maxBucket, bucketFor(this.k * c.drawScale));
     const spr = this.sprites.get(key, bucket, [-bw, -bh, bw, bh], (gg) =>
@@ -1422,12 +1425,17 @@ export class Renderer {
       g.setLineDash([]);
       return;
     }
-    if (c.kind !== 'creature' && c.kind !== 'plant' && c.kind !== 'decor' && c.kind !== 'food') return;
+    if (c.kind !== 'creature' && c.kind !== 'plant' && c.kind !== 'decor' && c.kind !== 'food' && c.kind !== 'visitor') return;
+    if (c.kind === 'visitor' && c.hidden) return;
     this.setWorld(g);
     let x = c.x;
     let y = c.y;
     let r = 14;
-    if (c.kind === 'creature') {
+    if (c.kind === 'visitor') {
+      x = c.px + (c.x - c.px) * alpha;
+      y = c.py + (c.y - c.py) * alpha - 11;
+      r = 20;
+    } else if (c.kind === 'creature') {
       x = c.px + (c.x - c.px) * alpha;
       y = c.py + (c.y - c.py) * alpha;
       r = Math.max(8, c.size * 0.7);
@@ -1752,6 +1760,16 @@ export class Renderer {
     const dpr = this.dpr;
     g.setTransform(1, 0, 0, 1, 0, 0);
     const size = 30 * dpr * clamp(0.75 + cam.zoom * 0.25, 0.8, 1.1);
+    // a visitor with an idea (tap them to hear it), or a happy one
+    for (const v of this.world.visitors) {
+      const icon = v.waiting ? '!' : v.emoteT > 0 ? v.emoteIcon : null;
+      if (!icon || v.hidden || v.vis < 0.5 || !this.visible(v.x, v.y, 30)) continue;
+      const [sx, sy] = cam.toScreen(v.px + (v.x - v.px) * alpha, v.py + (v.y - v.py) * alpha - 30);
+      const bob = Math.sin(this.time * (v.waiting ? 5 : 4) + v.id) * (v.waiting ? 3 : 2) * dpr;
+      g.globalAlpha = v.waiting ? 1 : clamp01(v.emoteT * 2);
+      g.drawImage(this.emoteSprite(icon), sx * dpr - size / 2, sy * dpr - size + bob, size, size);
+    }
+    g.globalAlpha = 1;
     for (const c of this.world.creatures) {
       if (c.emoteT <= 0 || !c.emoteIcon || c.hidden && c.emoteIcon !== 'zzz') continue;
       if (!this.visible(c.x, c.y, 20)) continue;
@@ -1766,6 +1784,90 @@ export class Renderer {
     }
     g.globalAlpha = 1;
     this.drawCoinFloats(g);
+  }
+
+  // Visitors from the garden outside (see sim/visitors.js), fading in over
+  // the glass and away again.
+  drawVisitors(g, alpha) {
+    const w = this.world;
+    const bucket = Math.min(this.q.maxBucket, bucketFor(this.k));
+    for (const v of w.visitors) {
+      if (v.hidden || v.vis <= 0.01 || !this.visible(v.x, v.y, 50)) continue;
+      const art = VISITOR_ART[v.type];
+      if (!art) continue;
+      const x = v.px + (v.x - v.px) * alpha;
+      const y = v.py + (v.y - v.py) * alpha;
+      const s = this.sprites.get('vis|' + v.type + '|' + v.pose + '|' + v.frame, bucket, art.box, (gg) => drawVisitor(gg, v.type, v.pose, v.frame));
+      // (a little hop in their step)
+      const hop = v.moving && v.pose === 'walk' ? -Math.abs(Math.sin(v.anim * 9)) * 0.8 : 0;
+      this.put(g, x, y + hop, 0, v.facing, 1);
+      g.globalAlpha = v.vis;
+      g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+      g.globalAlpha = 1;
+    }
+    this.setWorld(g);
+  }
+
+  // Critters off to live in Busytown float up and out under a balloon (a
+  // swimmer travels in a bubble of pond water).
+  drawDepartures(g) {
+    const w = this.world;
+    const dt = this.paused ? 0 : this.dt || 0.016;
+    for (let i = w.departures.length - 1; i >= 0; i--) {
+      const d = w.departures[i];
+      d.t += dt;
+      const c = d.c;
+      const rise = d.t < 1 ? 0 : (d.t - 1) ** 1.5 * 45;
+      const y = d.y - 6 - rise;
+      if (y < -120 || d.t > 14) {
+        w.departures.splice(i, 1);
+        continue;
+      }
+      const x = d.x + Math.sin(d.t * 1.7) * 6 * Math.min(1, d.t);
+      Object.assign(c, { x, y, px: x, py: y, pangle: 0, angle: 0, hidden: false, inside: null, doorT: 0, mode: d.wet ? 'swim' : 'still', moving: false });
+      if (c.pose === 'sleep' || c.pose === 'dig' || c.pose === 'burrow') c.pose = 'idle';
+      const top = y - c.size * 0.6 - 26;
+      const sway = Math.sin(d.t * 2.3) * 3;
+      this.setWorld(g);
+      // the string, then the critter, then the balloon
+      g.beginPath();
+      g.moveTo(x, y - c.size * 0.35);
+      g.quadraticCurveTo(x + sway * 0.5, (y + top) / 2, x + sway, top + 8);
+      g.lineWidth = 0.6;
+      g.strokeStyle = INK;
+      g.stroke();
+      if (d.wet) {
+        g.beginPath();
+        g.arc(x, y, c.size * 0.75 + 4, 0, TAU);
+        g.fillStyle = 'rgba(160,210,236,0.45)';
+        g.fill();
+        g.lineWidth = 0.7;
+        g.strokeStyle = 'rgba(58,42,31,0.6)';
+        g.stroke();
+      }
+      this.drawCreatureE(g, c, 1);
+      this.setWorld(g);
+      g.beginPath();
+      g.ellipse(x + sway, top, 8, 9.5, 0, 0, TAU);
+      g.fillStyle = d.col;
+      g.fill();
+      g.lineWidth = 0.9;
+      g.strokeStyle = INK;
+      g.stroke();
+      g.beginPath();
+      g.ellipse(x + sway - 3, top - 3.5, 1.6, 2.8, -0.4, 0, TAU);
+      g.fillStyle = 'rgba(255,255,255,0.6)';
+      g.fill();
+      g.beginPath();
+      g.moveTo(x + sway - 1.6, top + 9.4);
+      g.lineTo(x + sway + 1.6, top + 9.4);
+      g.lineTo(x + sway, top + 7.6);
+      g.closePath();
+      g.fillStyle = d.col;
+      g.fill();
+      g.stroke();
+    }
+    this.setWorld(g);
   }
 
   // "+3" and a coin, floating up from wherever Busytown coins turned up.

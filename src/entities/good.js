@@ -3,7 +3,7 @@
 // chrysalis, a ripe seed head, a water lily in bloom. Left alone, it still
 // does some good when its time is up: seeds sow themselves and compost
 // melts into the soil.
-import { GOODS } from '../data/goods.js';
+import { GOODS, PLAIN, flavourOf } from '../data/goods.js';
 import { DAY_LEN } from '../config.js';
 import { nextId } from './creature.js';
 
@@ -23,12 +23,17 @@ export class Good {
     this.look = opts.look || ''; // 'castings' for worm-made compost
     this.plant = opts.plant || ''; // plant type a seed head would sow
     this.fi = opts.fi || 0; // which flower of its plant it grew from
+    // what it tastes of, or what colour it is (see FLAVOURS), and whether
+    // it's a prize one (made by a master, or grown somewhere just right)
+    this.flav = opts.flav && flavourOf(type, opts.flav) ? opts.flav : PLAIN[type] || '';
+    this.prize = !!opts.prize;
     this.gone = false;
     this.claim = 0; // the mail dragonfly on its way to fetch it
   }
 
   get name() {
-    return this.def.one;
+    const f = flavourOf(this.type, this.flav);
+    return (this.prize ? 'prize ' : '') + (f ? f.one || this.def.oneF.replace('{f}', f.adj) : this.def.one);
   }
 
   update(dt, w) {
@@ -49,10 +54,12 @@ export class Good {
     if (this.look) o.k = this.look;
     if (this.plant) o.p = this.plant;
     if (this.fi) o.f = this.fi;
+    if (this.flav) o.v = this.flav;
+    if (this.prize) o.z = 1;
     return o;
   }
 
   static load(o) {
-    return new Good(o.t, o.x, o.y, { id: o.id, age: o.a, life: o.l, src: o.s, look: o.k, plant: o.p, fi: o.f });
+    return new Good(o.t, o.x, o.y, { id: o.id, age: o.a, life: o.l, src: o.s, look: o.k, plant: o.p, fi: o.f, flav: o.v, prize: !!o.z });
   }
 }

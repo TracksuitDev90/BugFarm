@@ -269,7 +269,7 @@ export class Colony {
     this.store -= need;
     const side = chance(0.5) ? 1 : -1;
     const x = ex + side * rrange(8, 18);
-    const g = w.addGood(type, x, w.terrain.surfaceY(x), { by: c, plant: type === 'seeds' ? 'marigold' : '', look: 'ant' });
+    const g = w.addGood(type, x, w.terrain.surfaceY(x), { by: c, plant: type === 'seeds' ? 'marigold' : '', look: 'ant', flav: type === 'seeds' ? 'wild' : 'desert' });
     if (!g) return;
     w.credit(c);
     w.sparkle(x, g.y - 4, 5);

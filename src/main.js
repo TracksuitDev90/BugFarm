@@ -58,6 +58,10 @@ function wireWorld() {
   journal.onUnlock = (d) => ui && ready && ui.discovery(d);
   journal.progress.onLevel = (z, lv, unlocks) => ui && ready && ui.levelUp(z, lv, unlocks);
   journal.orders.onOrder = (o) => ui && ready && !w.awayMode && ui.newLetter(o);
+  // visitors from the garden: their arrivals, ideas and presents
+  journal.visitors.onArrive = (v, first) => ui && ready && !w.awayMode && ui.visitorArrived(v, first);
+  journal.visitors.onOffer = (v) => ui && ready && !w.awayMode && ui.visitorOffer(v);
+  journal.visitors.onGift = (id, gift, v) => ui && ready && !w.awayMode && v && ui.visitorGift(id, gift, v);
   w.events.on('coins', ({ n, x, y }) => ui && ready && !w.awayMode && game.renderer.coinFloat(x, y, n));
   // the delivery van posts orders by itself: the thank-yous still pop up
   w.events.on('van', ({ sent }) => ui && ready && !w.awayMode && sent.forEach((r) => ui.thanked(r)));
@@ -147,7 +151,10 @@ async function loadFromData(data, elapsedReal) {
     summary = await catchUp(w, secs, (p) => {
       if (bar) bar.style.width = Math.round(p * 100) + '%';
     });
-    if (summary) summary.letters = journal.orders.catchUp();
+    if (summary) {
+      summary.letters = journal.orders.catchUp();
+      summary.visit = journal.visitors.awayVisit(elapsedReal);
+    }
   }
   return summary;
 }
@@ -319,6 +326,7 @@ async function boot() {
         const s = await catchUp(game.world, awaySeconds(gone));
         if (s) {
           s.letters = journal.orders.catchUp();
+          s.visit = journal.visitors.awayVisit(gone);
           ui.showAway(s, gone);
         }
       }

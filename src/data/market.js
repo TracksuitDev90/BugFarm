@@ -11,6 +11,8 @@
 //         build  - makes a zone of the tank bigger, a step at a time (see
 //                  sim/tank.js); each step (tier) needs the zone to have
 //                  reached a level, and costs more
+//         outfit - things for the critters to wear (items: outfit ids, see
+//                  data/outfits.js), put in the wardrobe
 //   hearts: friendship needed with `who` before they'll sell it
 import { X, ZONE_X } from '../config.js';
 
@@ -65,6 +67,17 @@ export const WARES = [
     cost: 30,
     what: 'Moonflowers open at night and glow softly. Moths and fireflies sip from them in the dark, and their seed heads count double on orders.',
     pitch: 'They only bloom by moonlight. Ever so romantic.',
+  },
+  {
+    id: 'orchid',
+    who: 'florist',
+    kind: 'plant',
+    plant: 'orchid',
+    name: 'Orchid cuttings',
+    hearts: 3,
+    cost: 55,
+    what: 'Exotic orchids for the jungle: frilly, spotted flowers that make the most delicate honey, and orchid seed heads florists can never get enough of.',
+    pitch: 'My rarest flowers. I only part with them for my favourite customers.',
   },
   {
     id: 'buns',
@@ -164,6 +177,31 @@ export const WARES = [
     what: 'A smiling pink axolotl with frilly gills. All of Busytown adores it: while one lives in your pond every order pays extra coins.',
     pitch: 'My very favourite. I only sell them to the best keepers.',
   },
+  // ---- things for the critters to wear: Tilly's sewing basket, and a hat
+  // of every trade in Busytown
+  {
+    id: 'sewing',
+    who: 'tailor',
+    kind: 'outfit',
+    items: ['beret', 'cap', 'beanie', 'sunhat', 'bowler', 'bow', 'flower', 'scarf', 'bowtie'],
+    name: 'Sewing basket',
+    hearts: 1,
+    cost: 25,
+    what: 'Tilly sews tiny berets, caps, bobble hats, sun hats, bowlers, bows, flowers, scarves and bow ties, in any colour you like. Tap a critter, then Dress up.',
+    pitch: 'Every critter deserves something nice to wear!',
+  },
+  { id: 'hatToque', who: 'chef', kind: 'outfit', items: ['toque'], name: 'Chef\'s hat', hearts: 1, cost: 15, what: 'A tall white chef\'s hat, just like Chef Crumble\'s.', pitch: 'Every good cook needs a proper hat!' },
+  { id: 'hatParty', who: 'baker', kind: 'outfit', items: ['party'], name: 'Party hat', hearts: 1, cost: 12, what: 'A spotty party hat in any colour, for birthdays and every other day too.', pitch: 'Every day is cake day at my bakery!' },
+  { id: 'hatTop', who: 'mayor', kind: 'outfit', items: ['tophat'], name: 'Top hat', hearts: 2, cost: 30, what: 'A very grand top hat with a ribbon in any colour. Simply splendid.', pitch: 'A top hat makes anyone look important. Ahem.' },
+  { id: 'hatMortar', who: 'school', kind: 'outfit', items: ['mortar'], name: 'Mortarboard', hearts: 1, cost: 15, what: 'A mortarboard with a tassel: just the thing for a critter whose dream came true.', pitch: 'Top marks!' },
+  { id: 'hatMail', who: 'postie', kind: 'outfit', items: ['mailcap'], name: 'Postie\'s cap', hearts: 1, cost: 12, what: 'A real postman\'s cap with a gold badge, just like Pip\'s.', pitch: 'Fancy joining the round?' },
+  { id: 'hatNurse', who: 'doctor', kind: 'outfit', items: ['nurse'], name: 'Nurse\'s cap', hearts: 1, cost: 12, what: 'A crisp white nurse\'s cap with a red cross.', pitch: 'Keep calm and carry a thermometer.' },
+  { id: 'hatCrown', who: 'florist', kind: 'outfit', items: ['flowercrown'], name: 'Flower crown', hearts: 2, cost: 20, what: 'A crown of tiny flowers in any colour. They never wilt!', pitch: 'Picked fresh this morning.' },
+  { id: 'hatStraw', who: 'farmer', kind: 'outfit', items: ['straw'], name: 'Straw hat', hearts: 1, cost: 12, what: 'A farmer\'s straw hat with a ribbon in any colour and an ear of wheat.', pitch: 'Keeps the sun off while you work.' },
+  { id: 'hatBucket', who: 'gardener', kind: 'outfit', items: ['bucket'], name: 'Bucket hat', hearts: 1, cost: 12, what: 'A floppy gardener\'s hat in any colour.', pitch: 'My lucky gardening hat. Well, one just like it.' },
+  { id: 'hatHard', who: 'builder', kind: 'outfit', items: ['hardhat'], name: 'Hard hat', hearts: 1, cost: 12, what: 'A yellow builder\'s hard hat. Safety first!', pitch: 'Nobody steps on my building site without one.' },
+  { id: 'hatPropeller', who: 'inventor', kind: 'outfit', items: ['propeller'], name: 'Propeller cap', hearts: 2, cost: 20, what: 'A cap in any colour with a real propeller on top. (It doesn\'t fly. Yet.)', pitch: 'My latest invention! It very nearly works.' },
+  { id: 'hatKerchief', who: 'petshop', kind: 'outfit', items: ['kerchief'], name: 'Headscarf', hearts: 1, cost: 12, what: 'A spotty knotted headscarf in any colour, just like Odette\'s.', pitch: 'Everyone looks smart in spots.' },
   {
     id: 'buildDesert',
     who: 'builder',

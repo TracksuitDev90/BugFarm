@@ -351,6 +351,197 @@ function flower(g, f, def, lw) {
       blob(g, f.x, f.y, r * 0.3, r * 0.2, cc, lw * 0.6);
       break;
     }
+    case 'spike': {
+      // lavender: a tall spike of little florets, tightest at the tip
+      line(g, f.x, f.y + r * 0.8, f.x, f.y - r * 1.75, lw * 0.6, '#6f8a5a');
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const yy = f.y + r * 0.7 - t * r * 2.3;
+        const w = r * (0.44 - t * 0.2);
+        const col = f.pollinated && i < 2 ? '#a08a6a' : i % 2 ? pc : mix(pc, '#ffffff', 0.18);
+        for (const side of [-1, 1]) blob(g, f.x + side * w * 0.55, yy, w * 0.62, w * 0.5, col, lw * 0.45, side * 0.5);
+      }
+      blob(g, f.x, f.y - r * 1.75, r * 0.16, r * 0.24, mix(pc, '#ffffff', 0.25), lw * 0.4);
+      break;
+    }
+    case 'cup': {
+      // a poppy: two silky petals behind, the dark heart, two in front
+      const back = darker(pc, 0.14);
+      paint(g, back, lw * 0.7, () => ell(g, f.x - r * 0.45, f.y - r * 0.25, r * 0.62, r * 0.72, -0.3));
+      paint(g, back, lw * 0.7, () => ell(g, f.x + r * 0.45, f.y - r * 0.25, r * 0.62, r * 0.72, 0.3));
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i - 2) * 0.38;
+        line(g, f.x, f.y - r * 0.25, f.x + Math.cos(a) * r * 0.62, f.y - r * 0.25 + Math.sin(a) * r * 0.62, lw * 0.4);
+      }
+      circ(g, f.x, f.y - r * 0.3, r * 0.3);
+      fill(g, f.pollinated ? '#7a5a3a' : cc);
+      stroke(g, lw * 0.5);
+      paint(g, pc, lw * 0.8, () => {
+        g.beginPath();
+        g.moveTo(f.x - r * 0.95, f.y - r * 0.3);
+        g.quadraticCurveTo(f.x - r * 0.9, f.y + r * 0.75, f.x, f.y + r * 0.7);
+        g.quadraticCurveTo(f.x + r * 0.9, f.y + r * 0.75, f.x + r * 0.95, f.y - r * 0.3);
+        g.quadraticCurveTo(f.x + r * 0.4, f.y - r * 0.02, f.x, f.y - r * 0.15);
+        g.quadraticCurveTo(f.x - r * 0.4, f.y - r * 0.02, f.x - r * 0.95, f.y - r * 0.3);
+        g.closePath();
+      });
+      highlight(g, f.x - r * 0.38, f.y + r * 0.2, r * 0.18, r * 0.32, 0.35, 0.3);
+      break;
+    }
+    case 'ray': {
+      // a cornflower: a ring of ragged little trumpets round a dark eye
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        g.save();
+        g.translate(f.x, f.y);
+        g.rotate((i / n) * TAU + 0.15);
+        paint(g, i % 2 ? pc : mix(pc, '#ffffff', 0.15), lw * 0.55, () => {
+          g.beginPath();
+          g.moveTo(r * 0.2, -r * 0.12);
+          g.lineTo(r * 0.95, -r * 0.32);
+          g.lineTo(r * 0.84, -r * 0.1);
+          g.lineTo(r * 1.06, 0);
+          g.lineTo(r * 0.84, r * 0.1);
+          g.lineTo(r * 0.95, r * 0.32);
+          g.lineTo(r * 0.2, r * 0.12);
+          g.closePath();
+        });
+        g.restore();
+      }
+      blob(g, f.x, f.y, r * 0.36, r * 0.36, f.pollinated ? '#5a4a6a' : cc, lw * 0.7);
+      for (let i = 0; i < 6; i++) {
+        circ(g, f.x + Math.cos(i * 1.05) * r * 0.18, f.y + Math.sin(i * 1.05) * r * 0.18, r * 0.06);
+        fill(g, '#f6f0d8');
+      }
+      break;
+    }
+    case 'bell': {
+      // a bluebell: the tip of the stalk arches over and the bells nod
+      // down from it in a row
+      const dir = f.i % 2 ? -1 : 1;
+      const x0 = f.x;
+      const y0 = f.y + r * 0.6;
+      const cx = f.x + dir * r * 0.5;
+      const cy = f.y - r * 1.7;
+      const x2 = f.x + dir * r * 1.9;
+      const y2 = f.y - r * 0.95;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.quadraticCurveTo(cx, cy, x2, y2);
+      stroke(g, lw * 0.9, '#5f8a45');
+      const s = r * 0.72;
+      for (let k = 0; k < 3; k++) {
+        const t = 0.42 + k * 0.27;
+        const u = 1 - t;
+        const bx = u * u * x0 + 2 * u * t * cx + t * t * x2;
+        const by = u * u * y0 + 2 * u * t * cy + t * t * y2;
+        const ss = s * (1 - k * 0.12);
+        line(g, bx, by, bx, by + ss * 0.55, lw * 0.5, '#5f8a45');
+        paint(g, k === 2 && f.pollinated ? '#a3a0c0' : pc, lw * 0.6, () => {
+          g.beginPath();
+          g.moveTo(bx - ss * 0.45, by + ss * 0.6);
+          g.quadraticCurveTo(bx - ss * 0.5, by + ss * 1.4, bx - ss * 0.78, by + ss * 1.55);
+          g.lineTo(bx - ss * 0.35, by + ss * 1.45);
+          g.lineTo(bx, by + ss * 1.62);
+          g.lineTo(bx + ss * 0.35, by + ss * 1.45);
+          g.lineTo(bx + ss * 0.78, by + ss * 1.55);
+          g.quadraticCurveTo(bx + ss * 0.5, by + ss * 1.4, bx + ss * 0.45, by + ss * 0.6);
+          g.quadraticCurveTo(bx, by + ss * 0.32, bx - ss * 0.45, by + ss * 0.6);
+          g.closePath();
+        });
+        highlight(g, bx - ss * 0.2, by + ss * 0.95, ss * 0.1, ss * 0.3, 0.35, 0);
+      }
+      break;
+    }
+    case 'orchid': {
+      // three slim sepals, two broad petals and a spotted, frilly lip
+      const sep = mix(pc, '#ffffff', 0.28);
+      const petal = (a, len, wid, col) => {
+        g.save();
+        g.translate(f.x, f.y);
+        g.rotate(a);
+        paint(g, col, lw * 0.6, () => {
+          g.beginPath();
+          g.moveTo(0, 0);
+          g.quadraticCurveTo(-wid, -len * 0.55, 0, -len);
+          g.quadraticCurveTo(wid, -len * 0.55, 0, 0);
+          g.closePath();
+        });
+        g.restore();
+      };
+      petal(0, r * 1.05, r * 0.32, sep);
+      petal(2.2, r * 0.95, r * 0.3, sep);
+      petal(-2.2, r * 0.95, r * 0.3, sep);
+      petal(1.15, r * 0.95, r * 0.62, pc);
+      petal(-1.15, r * 0.95, r * 0.62, pc);
+      paint(g, darker(pc, 0.18), lw * 0.6, () => {
+        g.beginPath();
+        g.moveTo(f.x - r * 0.3, f.y + r * 0.1);
+        g.quadraticCurveTo(f.x - r * 0.6, f.y + r * 0.88, f.x, f.y + r * 0.8);
+        g.quadraticCurveTo(f.x + r * 0.6, f.y + r * 0.88, f.x + r * 0.3, f.y + r * 0.1);
+        g.closePath();
+      });
+      for (const [dx, dy] of [[-0.12, 0.45], [0.14, 0.5], [0, 0.63]]) {
+        circ(g, f.x + dx * r, f.y + dy * r, r * 0.06);
+        fill(g, '#7a2a5a');
+      }
+      blob(g, f.x, f.y, r * 0.2, r * 0.16, f.pollinated ? '#c98a3a' : cc, lw * 0.5);
+      break;
+    }
+    case 'trumpet': {
+      // a hibiscus: five wide petals, a deep throat and a long stamen
+      // column dusted with pollen
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU - Math.PI / 2;
+        blob(g, f.x + Math.cos(a) * r * 0.5, f.y + Math.sin(a) * r * 0.5, r * 0.62, r * 0.5, i % 2 ? pc : mix(pc, '#ffffff', 0.1), lw * 0.7, a);
+      }
+      circ(g, f.x, f.y, r * 0.3);
+      fill(g, darker(pc, 0.4));
+      line(g, f.x, f.y, f.x + r * 0.72, f.y - r * 0.66, lw * 1.1, mix(pc, '#ffffff', 0.45));
+      for (const [dx, dy] of [[0.7, -0.76], [0.84, -0.6], [0.6, -0.62], [0.8, -0.82]]) {
+        circ(g, f.x + dx * r, f.y + dy * r, r * 0.08);
+        fill(g, f.pollinated ? '#c98a3a' : cc);
+      }
+      break;
+    }
+    case 'iris': {
+      // three petals standing up, three falling over, veined at the throat
+      const std = (a) => {
+        g.save();
+        g.translate(f.x, f.y);
+        g.rotate(a);
+        paint(g, mix(pc, '#ffffff', 0.2), lw * 0.6, () => {
+          g.beginPath();
+          g.moveTo(-r * 0.12, 0);
+          g.quadraticCurveTo(-r * 0.42, -r * 0.6, 0, -r * 1.0);
+          g.quadraticCurveTo(r * 0.42, -r * 0.6, r * 0.12, 0);
+          g.closePath();
+        });
+        g.restore();
+      };
+      const fall = (a) => {
+        g.save();
+        g.translate(f.x, f.y);
+        g.rotate(a);
+        paint(g, pc, lw * 0.7, () => {
+          g.beginPath();
+          g.moveTo(-r * 0.15, 0);
+          g.quadraticCurveTo(-r * 0.58, r * 0.6, -r * 0.08, r * 1.05);
+          g.quadraticCurveTo(r * 0.48, r * 0.8, r * 0.15, 0);
+          g.closePath();
+        });
+        for (const k of [-1, 0, 1]) line(g, k * r * 0.06, r * 0.15, k * r * 0.12, r * 0.55, lw * 0.4, f.pollinated ? '#a07a4a' : cc);
+        g.restore();
+      };
+      std(-0.38);
+      std(0.38);
+      std(0);
+      fall(-0.95);
+      fall(0.95);
+      fall(0);
+      break;
+    }
     default: {
       // daisy-style
       const n = def.memorial ? 5 : 10;

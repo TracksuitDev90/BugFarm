@@ -2,7 +2,7 @@
 import { W, H, CELL, DAY_LEN, ZONE_X, ZONE_MID } from '../config.js';
 import { SPECIES, SPECIES_ORDER, stageName, adoptLabel, ADOPT_ORDER, ANT_KINDS, adoptSpecies } from '../data/species.js';
 import { FOODS, FOOD_ORDER, lovedBy } from '../data/foods.js';
-import { PLANTS, PLANT_ORDER } from '../data/plants.js';
+import { PLANTS, PLANT_ORDER, blooms, tasteOf } from '../data/plants.js';
 import { DECOR, DECOR_ORDER } from '../data/decor.js';
 import { DISCOVERIES } from '../data/discoveries.js';
 import { CREATURE_ART, PALETTES, drawWorm, varietyName } from '../art/creatures.js';
@@ -21,14 +21,20 @@ import { maxLevel } from '../data/progression.js';
 import { equipmentAt, equipmentInfo } from '../sim/equipment.js';
 import { LAMP_X } from '../world/environment.js';
 import { heatLamp, mister, pondHeater, pondFilter } from '../art/equipment.js';
-import { GOODS, GOOD_ORDER, JOBS, goodWord, jobOf } from '../data/goods.js';
+import { GOODS, GOOD_ORDER, JOBS, goodWord, jobOf, flavourOf, splitKey, FLAVOURS } from '../data/goods.js';
 import { drawGood, goodBox } from '../art/goods.js';
-import { neighbour, needsWords } from '../sim/orders.js';
-import { $, el, esc, artCanvas, creatureArt, wormIcon } from './dom.js';
+import { neighbour, needsWords, orderWords, critterWords } from '../sim/orders.js';
+import { $, el, esc, artCanvas, creatureArt, wormIcon, outfitIcon } from './dom.js';
 import { Postbag, buildMarket, folkCanvas, heartsEl, coinsEl, nextOffer, goodIcon } from './busytown.js';
 import { onSale, wareKey } from '../sim/market.js';
 import { NAME_MAX, NAME_IDEAS, cleanName, dear, plateText, hasName } from '../sim/keeper.js';
 import { Herald, newsPriority } from './herald.js';
+import { VISITORS, VISITOR_ORDER, visitorName } from '../data/visitors.js';
+import { VISITOR_ART, drawVisitor } from '../art/visitors.js';
+import { tankCheer } from '../sim/visitors.js';
+import { OUTFITS, OUTFIT_ORDER, canWear } from '../data/outfits.js';
+import { ACC_COLORS } from '../art/ink.js';
+import { WARE_BY_ID } from '../data/market.js';
 
 const TOOLS = [
   { id: 'look', icon: 'hand', label: 'Look' },
@@ -79,8 +85,13 @@ const TIPS = [
   'Warm water holds less air. Watch the fish!',
 ];
 
-function goodCanvas(type, css = 28, look = '') {
-  return artCanvas([css, css], goodBox(type), (g) => drawGood(g, type, look));
+function goodCanvas(type, css = 28, look = '', flav = '', prize = false) {
+  return artCanvas([css, css], goodBox(type, prize), (g) => drawGood(g, type, look, flav, prize));
+}
+
+// A visitor's picture (for their card, letters and the Visitors' Book).
+function visitorCanvas(type, css = [72, 64], pose = 'idle', frame = 0) {
+  return artCanvas(css, VISITOR_ART[type].box, (g) => drawVisitor(g, type, pose === 'idle' && type === 'mole' ? 'pop' : pose, type === 'mole' ? 2 : frame));
 }
 
 export class UI {
@@ -836,7 +847,7 @@ export class UI {
     const w = this.world;
     const ord = this.journal.orders;
     const E = this.ordEls;
-    const key = GOOD_ORDER.map((g) => w.pantry[g] || 0).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id).join(',') + '|' + ord.stars + '|' + w.coins;
+    const key = GOOD_ORDER.map((g) => JSON.stringify(w.tallyFlavours(g))).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id + (o.critter ? ':' + ord.eligible(o).length : '')).join(',') + '|' + ord.stars + '|' + w.coins;
     if (!force && key === this.ordKey) return;
     this.ordKey = key;
     // the letters
@@ -850,33 +861,58 @@ export class UI {
       const nb = neighbour(o.who);
       const ok = ord.canSend(o);
       const needs = el('div', { class: 'oneeds' });
+      let btn = ok ? 'Send it!' : 'Not enough yet';
+      if (o.critter) {
+        const n = ord.eligible(o).length;
+        const cr = o.critter;
+        const pic = creatureArt(cr.sp, cr.stage || SPECIES[cr.sp].adultStage, SPECIES[cr.sp].fish ? 'swim' : 'idle', cr.pal || 0, null, '#e2553f', [30, 24]);
+        needs.append(el('span', { class: 'oneed' + (n ? ' ok' : '') }, pic, n ? `${n} in your tank to choose from` : `None in your tank right now`));
+        btn = n ? 'Choose who goes' : 'Nobody yet';
+      }
       for (const [g, n] of Object.entries(o.needs)) {
-        const have = Math.min(n, w.pantry[g] || 0);
-        needs.append(el('span', { class: 'oneed' + (have >= n ? ' ok' : ''), title: GOODS[g].how }, goodIcon(g, 22), `${have} of ${n} ${n === 1 ? GOODS[g].one : GOODS[g].many}`));
+        const f = o.flav && o.flav[g];
+        const have = Math.min(n, w.basketHas(g, f, !!o.best));
+        const fd = f ? flavourOf(g, f) : null;
+        const tip = fd ? `${GOODS[g].how} ${this.flavourHow(g, f)}` : GOODS[g].how;
+        needs.append(el('span', { class: 'oneed' + (have >= n ? ' ok' : ''), title: tip, onclick: () => fd || o.best ? this.toast(o.best ? 'Prize goods come from master critters (their dream came true) and from plants and ponds kept just right.' : `<b>${esc(fd.name)}:</b> ${esc(this.flavourHow(g, f))}`, goodCanvas(g, 26, '', f, !!o.best), false, 6000) : null }, goodIcon(g, 22, f, !!o.best), `${have} of ${goodWord(g, n, f, !!o.best)}`));
       }
       const offer = nextOffer(this.journal, w, nb.id);
+      const pay = ord.pay(o);
       E.list.append(
-        el('div', { class: 'order' + (ok ? ' ready' : '') },
+        el('div', { class: 'order' + (ok ? ' ready' : '') + (o.flav || o.best ? ' picky' : '') + (o.critter ? ' pet' : '') },
           el('div', { class: 'ohead' }, folkCanvas(nb, ok ? 'happy' : 'ask', 46), el('span', {}, el('b', {}, nb.name), ', ' + nb.job, el('br'), heartsEl(ord.heartsOf(nb.id)))),
-          el('p', { class: 'letter' }, `“${dear(w.keeper)}, could you send ${needsWords(o.needs)}? ${o.why}”`),
+          el('p', { class: 'letter' }, `“${dear(w.keeper)}, could you send ${orderWords(o)}? ${o.why}”`),
           needs,
           offer ? el('div', { class: 'small ooffer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} to unlock the ${offer.ware.name.toLowerCase()}.`) : null,
           el('div', { class: 'ofoot' },
-            el('span', { class: 'ostars' }, coinsEl(ord.pay(o).total), ` + ★${o.stars} + treats`),
+            el('span', { class: 'ostars' }, coinsEl(pay.total), ` + ★${o.stars} + treats`),
             el('button', { class: 'btn small', onclick: () => {
               ord.decline(o);
               this.refreshNeeds();
               this.updateOrders(true);
             } }, 'Not now'),
-            el('button', { class: 'btn small' + (ok ? ' yellow' : ''), disabled: !ok, onclick: () => this.sendOrder(o) }, ok ? 'Send it!' : 'Not enough yet')))
+            el('button', { class: 'btn small' + (ok ? ' yellow' : ''), disabled: !ok, onclick: () => this.sendOrder(o) }, btn)))
       );
     }
-    // the basket: tap a good to hear who makes it
+    // the basket: tap a good to hear who makes it; underneath, what
+    // flavours are in it
     E.pantry.innerHTML = '';
     for (const g of GOOD_ORDER) {
       const n = w.pantry[g] || 0;
       E.pantry.append(el('button', { class: 'pgood' + (n ? '' : ' none'), title: GOODS[g].how, onclick: () => this.toast(`<b>${esc(GOODS[g].name)}:</b> ${esc(GOODS[g].how)}`, goodCanvas(g, 26), false, 5000) }, goodCanvas(g, 30), el('b', {}, String(n)), el('span', {}, GOODS[g].name)));
     }
+    const chips = el('div', { class: 'flavours' });
+    for (const g of GOOD_ORDER) {
+      const L = w.tallyFlavours(g);
+      const keys = Object.keys(L).filter((k) => L[k] > 0).sort((a, b) => L[b] - L[a]);
+      for (const k of keys) {
+        const [f, pz] = splitKey(k);
+        const fd = flavourOf(g, f);
+        if (!fd) continue;
+        chips.append(el('button', { class: 'fchip' + (pz ? ' prize' : ''), title: this.flavourHow(g, f), onclick: () => this.toast(`<b>${pz ? 'Prize ' + esc(fd.name.toLowerCase()) : esc(fd.name)}:</b> ${esc(this.flavourHow(g, f))}`, goodCanvas(g, 26, '', f, pz), false, 6000) }, goodCanvas(g, 20, '', f, pz), el('span', {}, `${pz ? 'Prize ' + fd.name.toLowerCase() : fd.name}`), el('b', {}, '×' + L[k])));
+      }
+    }
+    if (chips.children.length) E.pantry.append(chips);
     // goods still waiting in the tank
     E.waiting.innerHTML = '';
     if (w.goods.length) {
@@ -893,9 +929,35 @@ export class UI {
     }
     const next = ord.nextGift();
     E.foot.innerHTML = '';
+    // critters who've gone to live in Busytown, and with whom
+    if (ord.moved.length) {
+      const who = ord.moved.slice(0, 6).map((m) => `${m.name} the ${SPECIES[m.sp].name.toLowerCase()} (with ${neighbour(m.who).name})`);
+      E.foot.append(el('p', { class: 'small' }, el('b', {}, 'Living in Busytown: '), listWords(who) + (ord.moved.length > 6 ? ` and ${ord.moved.length - 6} more` : '') + '.'));
+    }
     E.foot.append(
       el('div', { class: 'row ototal' }, coinsEl(w.coins), el('span', { class: 'small', style: 'flex:1' }, `Orders sent: ${ord.sent} · ★${ord.stars}${next ? ` · next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}` : ''}`), el('button', { class: 'btn small yellow', onclick: () => this.openMarket() }, iconCanvas('shop', 20), 'Market'))
     );
+  }
+
+  // Where a flavour comes from, as a hint the keeper can act on.
+  flavourHow(g, f) {
+    const fd = flavourOf(g, f);
+    if (!fd) return '';
+    if (g === 'honey') {
+      if (f === 'wild') return 'Bees make it from lots of different flowers at once.';
+      if (f === 'desert') return 'The honeypot ants store it up in the desert.';
+      return `Bees make it when most of their pollen comes from ${PLANTS[f].name.toLowerCase()} flowers. Plant a patch near the bee hotel!`;
+    }
+    if (g === 'seeds') return f === 'wild' ? 'Harvester ants pile them by their nest door.' : `They ripen on ${PLANTS[f].name.toLowerCase()} flowers once they've been pollinated.`;
+    if (g === 'lily') {
+      if (f === 'lotus') return 'Lotus plants bloom like water lilies.';
+      if (f === 'blue') return 'A rare bloom in crystal-clear water with a school of neon tetras.';
+      const u = this.settings.units;
+      return `Water lilies bloom ${fd.adj} in ${f === 'white' ? `cool water (under ${fmtTemp(20, u)})` : f === 'pink' ? `mild water (${fmtTemp(20, u)} to ${fmtTemp(24, u)})` : `warm water (${fmtTemp(25, u)} and up)`}. The pond heater sets it.`;
+    }
+    if (g === 'silk') return `Left behind when a ${fd.adj} ${fd.sp === 'moth' ? 'moth' : 'butterfly'} hatches.`;
+    if (g === 'compost') return f === 'castings' ? 'Earthworms leave them at the surface.' : 'Beetles roll them from leftovers and fallen leaves.';
+    return '';
   }
 
   updateClipboard(force) {
@@ -1084,6 +1146,7 @@ export class UI {
     const zr = 18 / this.cam.zoom;
     let best = null;
     let bd = 1e9;
+    for (const v of w.visitors) if (v.hit(wx, wy)) return v;
     for (const c of w.creatures) {
       if (c.dead || (c.hidden && c.pose !== 'burrow')) continue;
       const r = Math.max(zr, c.size * 0.6);
@@ -1255,9 +1318,13 @@ export class UI {
     this.haptic(10);
     const first = !this.settings.seenGoods;
     const more = first ? '<br>Neighbours in Busytown send orders for goods like this. Open the clipboard\'s Orders tab.' : '';
-    this.toast(`Collected a ${esc(gd.def.one)}! <small>(${goodWord(gd.type, w.pantry[gd.type])} in your basket)</small>${more}`, goodCanvas(gd.type, 26, gd.look), false, first ? 6500 : 2400);
-    if (first) {
+    // the first prize one gets a word of explanation
+    const firstPrize = gd.prize && !this.settings.seenPrize;
+    const why = firstPrize ? '<br>Prize goods come from master critters and from plants and ponds kept just right. Neighbours who ask for the very best pay double for them.' : '';
+    this.toast(`Collected a ${esc(gd.name)}! <small>(${goodWord(gd.type, w.pantry[gd.type])} in your basket)</small>${more}${why}`, goodCanvas(gd.type, 26, gd.look, gd.flav, gd.prize), false, first || firstPrize ? 6500 : 2400);
+    if (first || firstPrize) {
       this.settings.seenGoods = true;
+      if (gd.prize) this.settings.seenPrize = true;
       this.hooks.saveSettings();
     }
     this.updateClipboard(true);
@@ -1272,11 +1339,53 @@ export class UI {
     if (this.tool === 'clip') this.renderSheet();
   }
 
-  sendOrder(o) {
-    const r = this.journal.orders.send(o);
+  sendOrder(o, c) {
+    if (o.critter && !c) {
+      this.pickCritter(o);
+      return;
+    }
+    const r = this.journal.orders.send(o, c);
     if (!r) return;
+    if (c && this.selected === c) this.select(null);
     this.thanked(r);
     this.renderSheet();
+  }
+
+  // A neighbour would love to give a critter a home: the keeper chooses
+  // who goes (and can see who they'd be saying goodbye to).
+  pickCritter(o) {
+    const ord = this.journal.orders;
+    const nb = neighbour(o.who);
+    this.openModal(`Who'll go to ${nb.name}?`, (b) => {
+      b.append(el('p', { class: 'small' }, `${nb.name} would love ${critterWords(o.critter)}. Whoever goes will have a lovely new home in Busytown, and ${nb.name} will write to say how they're getting on.`));
+      // (masters of their trade last, so nobody sends one by accident)
+      const list = ord.eligible(o).sort((a, c) => (a.memory.master ? 1 : 0) - (c.memory.master ? 1 : 0) || c.age - a.age);
+      const grid = el('div', { class: 'pick-critters' });
+      for (const c of list) {
+        const pose = c.mode === 'swim' ? 'swim' : c.mode === 'fly' ? 'fly' : 'idle';
+        const pic = c.sp === 'worm' ? wormIcon([56, 48], c.palIdx, c.acc, c.accColor) : creatureArt(c.sp, c.stage, pose, c.palIdx, c.acc, c.accColor, [56, 48]);
+        const v = c.isAdult ? varietyName(c.sp, c.palIdx) : '';
+        const chips = [this.mood(c)];
+        if (c.memory.master) chips.push('★ ' + c.memory.master);
+        if (c.traits.social > 0.66) chips.push('Friendly');
+        if (c.traits.lazy < 0.3) chips.push('Busy');
+        const age = c.age / DAY_LEN;
+        grid.append(el('div', { class: 'pick' }, pic,
+          el('div', { class: 'pick-text' }, el('b', {}, c.name), el('div', { class: 'small' }, `${v || c.def.name} · ${age < 1 ? Math.max(1, Math.round(age * 24)) + ' hours' : age.toFixed(1) + ' days'} old`), el('div', { class: 'small' }, chips.join(' · '))),
+          el('div', { class: 'pick-btns' },
+            el('button', { class: 'btn small', onclick: () => {
+              this.closeModal();
+              this.select(c);
+              this.cam.flyTo(c.x, c.y, Math.max(this.cam.zoom, this.cam.fitHeight * 2.2));
+            } }, 'Find'),
+            el('button', { class: 'btn small yellow', onclick: () => {
+              this.closeModal();
+              this.sendOrder(o, c);
+            } }, `Send ${c.name}`))));
+      }
+      if (!list.length) grid.append(el('p', {}, 'Nobody suitable right now.'));
+      b.append(grid);
+    });
   }
   // A thank-you from Busytown, whether the keeper posted the order or the
   // delivery van did.
@@ -1542,6 +1651,16 @@ export class UI {
         el('button', { class: 'btn small', onclick: () => this.rename(e) }, 'Rename'),
         el('button', { class: 'btn small', onclick: () => this.rehome(e) }, 'Say bye')
       );
+      if (canWear(e)) actions.append(el('button', { class: 'btn small', onclick: () => this.dressUp(e) }, 'Dress up'));
+      // a neighbour has written asking for a critter just like this one
+      const ord = this.journal.orders;
+      const want = ord.list.find((o) => o.critter && ord.eligible(o).includes(e));
+      if (want) {
+        const nb = neighbour(want.who);
+        actions.prepend(el('button', { class: 'btn small yellow', onclick: () => {
+          if (window.confirm(`Send ${e.name} to live with ${nb.name} in Busytown?`)) this.sendOrder(want, e);
+        } }, `Send to ${nb.name.split(' ')[0]}`));
+      }
     } else if (e.kind === 'plant') {
       c.append(this.cardMeters);
       actions.append(el('button', { class: 'btn small', onclick: () => {
@@ -1577,6 +1696,22 @@ export class UI {
     } else if (e.kind === 'equip') {
       this.cardWhat = el('p', { class: 'what' });
       c.append(this.cardWhat, this.cardMeters);
+    } else if (e.kind === 'visitor') {
+      this.cardWhat = el('p', { class: 'what' });
+      c.append(this.cardThought, this.cardWhat);
+      actions.append(
+        el('button', { class: 'btn small yellow', onclick: () => {
+          this.cam.follow = this.cam.follow === e ? null : e;
+          if (this.cam.follow) this.cam.flyTo(e.x, e.y, Math.max(this.cam.zoom, this.cam.fitHeight * 2.2));
+          this.cam.target = null;
+          this.buildCard();
+        } }, this.cam.follow === e ? 'Stop following' : 'Follow'),
+        el('button', { class: 'btn small', onclick: () => {
+          e.emote('heart', 2);
+          this.world.sparkle(e.x, e.y - 14, 5);
+          this.sound.play('sparkle', 0.4);
+        } }, 'Wave')
+      );
     }
     c.append(actions);
     this.cardActions = actions;
@@ -1592,12 +1727,36 @@ export class UI {
       return;
     }
     const u = this.settings.units;
+    if (e.kind === 'visitor') {
+      if (this.portraitKey !== 'v' + e.type) {
+        this.portraitKey = 'v' + e.type;
+        const p = visitorCanvas(e.type);
+        p.className = 'portrait';
+        this.portrait.replaceWith(p);
+        this.portrait = p;
+      }
+      const def = e.def;
+      this.cardName.textContent = e.name;
+      this.cardSub.textContent = e.state === 'out' ? 'Off home now. Bye!' : `Visiting the ${def.zone} from the garden outside`;
+      this.cardThought.textContent = e.hidden ? '(tunnelling about underground)' : e.thought;
+      const what = `Likes: ${def.likes}`;
+      if (this.cardWhat.textContent !== what) this.cardWhat.textContent = what;
+      // their idea, while it's waiting for an answer
+      const key = e.waiting ? 'w' : '';
+      if (key !== this.actionsKey) {
+        this.actionsKey = key;
+        const old = this.cardActions.querySelector('.idea');
+        if (old) old.remove();
+        if (e.waiting) this.cardActions.prepend(el('button', { class: 'btn small yellow idea', onclick: () => this.post.offer(e.type, e.offer, e) }, `Hear ${def.name}'s idea`));
+      }
+      return;
+    }
     if (e.kind === 'creature') {
-      const key = e.sp + e.stage + e.palIdx + e.acc;
+      const key = e.sp + e.stage + e.palIdx + e.acc + e.accColor;
       if (key !== this.portraitKey) {
         this.portraitKey = key;
         const pose = e.mode === 'swim' ? 'swim' : e.mode === 'fly' ? 'fly' : 'idle';
-        const p = e.sp === 'worm' ? wormIcon([72, 64], e.palIdx) : creatureArt(e.sp, e.stage, pose, e.palIdx, e.acc, e.accColor, [72, 64]);
+        const p = e.sp === 'worm' ? wormIcon([72, 64], e.palIdx, e.acc, e.accColor) : creatureArt(e.sp, e.stage, pose, e.palIdx, e.acc, e.accColor, [72, 64]);
         p.className = 'portrait';
         this.portrait.replaceWith(p);
         this.portrait = p;
@@ -1663,7 +1822,16 @@ export class UI {
       this.cardSub.textContent = `${Math.round(e.growth * 100)}% grown · ${state}`;
       const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
       const fl = e.flowers.length ? `<span>Flowers</span><span>${e.flowers.filter((f) => f.pollinated).length}/${e.flowers.length} pollinated</span>` : '';
-      this.cardMeters.innerHTML = `<span>Growth</span>${bar(e.growth, '#77b255')}<span>Health</span>${bar(e.health, e.health < 0.4 ? '#e2553f' : '#e57a8a')}${fl}`;
+      // what its flowers give the farm
+      let gives = '';
+      if (blooms(e.def)) {
+        const t = tasteOf(e.def);
+        const what = [`${t} honey (when the bees visit it most)`];
+        if (e.def.kind === 'lily') what.push(e.def.lotus ? 'lotus blooms' : 'water lilies, coloured by the water');
+        else if (FLAVOURS.seeds[e.type] && e.def.kind !== 'strawberry') what.push(`${t} seed heads`);
+        gives = `<span>Gives</span><span>${esc(listWords(what))}</span>`;
+      }
+      this.cardMeters.innerHTML = `<span>Growth</span>${bar(e.growth, '#77b255')}<span>Health</span>${bar(e.health, e.health < 0.4 ? '#e2553f' : '#e57a8a')}${fl}${gives}`;
     } else if (e.kind === 'decor') {
       if (!this.portraitKey) {
         this.portraitKey = 'd';
@@ -1693,7 +1861,12 @@ export class UI {
       } else if (e.def.hive) {
         const jars = this.world.goods.filter((g) => g.type === 'honey' && g.src === e.id).length;
         const bar = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
-        this.cardMeters.innerHTML = `<span>Honeycomb</span>${bar(this.world.honeyFill(e), '#f0a830')}<span>Jars ready</span><span>${jars ? `${jars} beside the hotel — tap to collect` : 'none yet'}</span>`;
+        // what the honey in the comb will taste of, from where the pollen came from
+        const [flav, prize, shares] = this.world.combFlavour(e);
+        const fd = flavourOf('honey', flav);
+        const parts = shares.slice(0, 3).map(([k, v]) => `${Math.round(v * 100)}% ${k === 'wild' ? 'all sorts' : flavourOf('honey', k).adj}`);
+        const taste = shares.length ? `${fd.name}${prize ? ' (prize!)' : ''} <small>${esc(parts.join(', '))}</small>` : 'nothing yet';
+        this.cardMeters.innerHTML = `<span>Honeycomb</span>${bar(this.world.honeyFill(e), (fd && shares.length && fd.col) || '#f0a830')}<span>Next jar</span><span>${taste}</span><span>Jars ready</span><span>${jars ? `${jars} beside the hotel — tap to collect` : 'none yet'}</span>`;
       } else this.cardMeters.innerHTML = '';
     } else if (e.kind === 'equip') {
       const info = equipmentInfo(this.world, e, (t) => fmtTemp(t, u));
@@ -1818,6 +1991,125 @@ export class UI {
     this.world.addLog(`${c.name} the ${c.def.name.toLowerCase()} moved out to the big garden.`, 'leaf');
     this.world.removeCreature(c);
     this.select(null);
+  }
+
+  // ------------------------------------------------------------------ visitors
+  // Someone's come to visit: a card, and the camera can take the keeper
+  // to them.
+  visitorArrived(v, first) {
+    this.sound.play('sparkle', 0.6);
+    this.post.visitor(v, first);
+  }
+  // They have an idea for the tank (it always asks first).
+  visitorOffer(v) {
+    this.sound.play('pop', 0.6);
+    this.post.offer(v.type, v.offer, v);
+  }
+  visitorGift(id, gift, v) {
+    this.sound.play('sparkle', 0.8);
+    this.post.gift(id, gift, v);
+    this.updateHUD(true);
+  }
+  // The keeper's answer to a visitor's idea (from the card, or a note in
+  // the Visitors' Book).
+  answerOffer(id, offer, v, yes) {
+    const vs = this.journal.visitors;
+    if (!vs.pending(offer, v)) return;
+    if (!yes) {
+      vs.decline(id, offer, v);
+      this.toast(`${VISITORS[id].name} doesn't mind a bit. Maybe another time!`, 'heart');
+      return;
+    }
+    const r = vs.accept(id, offer, v);
+    this.sound.play(r.ok ? 'sparkle' : 'pop', r.ok ? 0.9 : 0.4);
+    this.toast(r.ok ? `<b>Thank you, ${esc(VISITORS[id].name)}!</b><br>${esc(r.text)}` : esc(r.text), r.ok ? 'star' : 'leaf', r.ok, r.ok ? 7000 : 4000);
+    if (r.ok && r.at) this.cam.flyTo(r.at[0], r.at[1], Math.max(this.cam.zoom, this.cam.fitHeight * 1.8));
+    if (r.ok) {
+      this.haptic(25);
+      this.hooks.save();
+    }
+    if (this.selected === v) this.buildCard();
+  }
+  goToVisitor(v) {
+    if (!v || v.removed) return;
+    this.select(v);
+    this.cam.flyTo(v.x, v.y - 10, Math.max(this.cam.zoom, this.cam.fitHeight * 2.2));
+  }
+
+  // ------------------------------------------------------------------ dressing up
+  // Choose something for a critter to wear (from the wardrobe), and its
+  // colour. The picture updates as the keeper tries things on.
+  dressUp(c) {
+    const w = this.world;
+    const free = this.journal.sandbox;
+    let item = c.acc && OUTFITS[c.acc] ? c.acc : null;
+    let colour = c.accC || c.accColor;
+    this.openModal(`Dress up ${c.name}`, (b) => {
+      const pic = el('div', { class: 'dress-pic' });
+      const draw = () => {
+        pic.innerHTML = '';
+        const pose = c.mode === 'swim' || c.def.fish ? 'swim' : 'idle';
+        pic.append(c.sp === 'worm' ? wormIcon([120, 100], c.palIdx, item, colour) : creatureArt(c.sp, c.stage, pose, c.palIdx, item, colour, [120, 100]));
+      };
+      const grid = el('div', { class: 'wardrobe' });
+      const swatches = el('div', { class: 'swatches' });
+      const done = el('button', { class: 'btn green', onclick: () => {
+        w.dress(c, item, item && OUTFITS[item].colour ? colour : null);
+        this.closeModal();
+        this.sound.play(item ? 'sparkle' : 'pop', 0.6);
+        if (this.selected === c) this.updateCard(true);
+      } }, 'Done');
+      const refresh = () => {
+        draw();
+        done.textContent = item ? 'Looking good!' : 'Done';
+        for (const btn of grid.children) {
+          btn.classList.toggle('on', btn.dataset.item === (item || ''));
+          const id = btn.dataset.item;
+          if (id && OUTFITS[id].colour && btn.dataset.col !== colour && !btn.classList.contains('locked')) {
+            btn.dataset.col = colour;
+            btn.firstChild.replaceWith(outfitIcon(id, colour));
+          }
+        }
+        swatches.classList.toggle('hidden', !item || !OUTFITS[item].colour);
+        for (const sw of swatches.children) sw.classList.toggle('on', sw.dataset.col === colour);
+      };
+      grid.append(el('button', { class: 'wear', 'data-item': '', onclick: () => {
+        item = null;
+        refresh();
+      } }, el('span', { class: 'none' }, '×'), el('small', {}, 'Nothing')));
+      let have = 0;
+      for (const id of OUTFIT_ORDER) {
+        const o = OUTFITS[id];
+        if (!canWear(c, id)) continue;
+        const owned = free || w.wardrobeHas(id);
+        if (owned) have++;
+        const art = outfitIcon(id, o.colour ? colour : '#d9483b');
+        const hint = o.visitor ? `A present from ${visitorName(o.visitor)}.` : (() => {
+          const wr = WARE_BY_ID[o.from];
+          const nb = wr && neighbour(wr.who);
+          return nb ? `From ${nb.name} at the Busytown Market.` : '';
+        })();
+        if (!owned) art.style.filter = 'brightness(0) opacity(0.22)';
+        grid.append(el('button', { class: 'wear' + (owned ? '' : ' locked'), 'data-item': id, title: owned ? o.name : hint, onclick: () => {
+          if (!owned) {
+            this.toast(`<b>${esc(o.name)}:</b> ${esc(hint)}`, 'shop', false, 4000);
+            return;
+          }
+          item = id;
+          refresh();
+        } }, art, el('small', {}, owned ? o.name : '?')));
+      }
+      for (const col of ACC_COLORS) {
+        swatches.append(el('button', { class: 'swatch', 'data-col': col, style: `background:${col}`, 'aria-label': 'Colour', onclick: () => {
+          colour = col;
+          refresh();
+        } }));
+      }
+      b.append(pic);
+      if (!have) b.append(el('p', { class: 'small' }, 'The wardrobe is empty! Tilly Thimble sells a whole sewing basket of hats and scarves at the Busytown Market, and every neighbour has a hat of their trade.'));
+      b.append(grid, swatches, el('div', { class: 'row', style: 'margin-top:8px;justify-content:flex-end' }, done));
+      refresh();
+    });
   }
 
   // ------------------------------------------------------------------ HUD
@@ -1973,7 +2265,7 @@ export class UI {
     const j = this.journal;
     this.openModal('Field Journal', (b, head) => {
       const tabs = el('div', { class: 'tabs', style: 'margin-right:4px' });
-      for (const [k, l] of [['disc', 'Discoveries'], ['guide', 'Field guide'], ['diary', 'Diary'], ['census', 'Census']]) {
+      for (const [k, l] of [['disc', 'Discoveries'], ['guide', 'Field guide'], ['visitors', 'Visitors'], ['diary', 'Diary'], ['census', 'Census']]) {
         tabs.append(el('button', { class: this.tab.journal === k ? 'on' : '', onclick: () => this.openJournal(k) }, l));
       }
       head.insertBefore(tabs, head.lastChild);
@@ -2009,6 +2301,8 @@ export class UI {
                 met ? this.varietiesEl(sp) : null))
           );
         }
+      } else if (t === 'visitors') {
+        this.visitorsBook(b);
       } else if (t === 'diary') {
         const ul = el('ul', { class: 'diary' });
         for (const l of this.world.log) {
@@ -2047,6 +2341,50 @@ export class UI {
         }
       }
     });
+  }
+
+  // The Visitors' Book: how cheerful the tank is (visitors love a happy
+  // one), notes visitors left, and everyone who's been, or a hint for how
+  // to tempt the ones who haven't.
+  visitorsBook(b) {
+    const w = this.world;
+    const vs = this.journal.visitors;
+    const cheer = tankCheer(w);
+    const stars = Math.round(cheer * 5);
+    b.append(el('p', {}, el('b', {}, 'Tank cheer: '), el('span', { class: 'stars' }, '★'.repeat(stars) + '☆'.repeat(5 - stars)), ` · Visitors from the garden come by now and then, more often when the critters are happy, fed and comfy. Who comes depends on how you build their world.`));
+    for (const n of vs.notes) {
+      const def = VISITORS[n.id];
+      b.append(el('div', { class: 'vnote' }, visitorCanvas(n.id, [56, 50]),
+        el('div', { style: 'flex:1' }, el('b', {}, `A note from ${visitorName(n.id)}`), el('div', { class: 'small' }, `“${n.offer.ask}”`),
+          el('div', { class: 'row', style: 'gap:6px;margin-top:4px' },
+            el('button', { class: 'btn small', onclick: () => {
+              this.answerOffer(n.id, n.offer, null, false);
+              this.openJournal('visitors');
+            } }, 'No, thank you'),
+            el('button', { class: 'btn small yellow', onclick: () => {
+              this.answerOffer(n.id, n.offer, null, true);
+              this.closeModal();
+            } }, `Yes please, ${def.name}!`)))));
+    }
+    const grid = el('div', { class: 'vbook' });
+    for (const id of VISITOR_ORDER) {
+      const def = VISITORS[id];
+      const bk = vs.book[id];
+      const met = bk && bk.n > 0;
+      const pic = visitorCanvas(id, [74, 62]);
+      if (!met) pic.style.filter = 'brightness(0) opacity(0.22)';
+      const here = w.visitors.find((v) => v.type === id && v.state !== 'gone');
+      grid.append(el('div', { class: 'guide' }, pic,
+        el('div', {},
+          el('h3', {}, met ? visitorName(id) : '???', el('span', { class: 'small' }, met ? `  · visited ${bk.n} time${bk.n === 1 ? '' : 's'}` : `  · from the ${def.zone === 'pond' ? 'pond side' : def.zone}`)),
+          el('div', { class: 'small' }, met ? `Likes: ${def.likes}` : `Hint: ${def.hint}`),
+          met && bk.yes ? el('div', { class: 'small job' }, `Has helped out ${bk.yes} time${bk.yes === 1 ? '' : 's'}.`) : null,
+          here ? el('button', { class: 'btn small yellow', style: 'margin-top:4px', onclick: () => {
+            this.closeModal();
+            this.goToVisitor(here);
+          } }, 'Here now! Go and see') : null)));
+    }
+    b.append(grid);
   }
 
   // Every named variety of a species, greyed out until the keeper has met
@@ -2233,6 +2571,10 @@ export class UI {
       const made = Object.entries(summary.goods || {});
       if (made.length) li('star', `The critters made ${listWords(made.map(([g, n]) => goodWord(g, n)))}. Collect them from the tank!`);
       if (summary.letters) li('star', `${summary.letters} letter${summary.letters > 1 ? 's' : ''} arrived from Busytown. See the clipboard's Orders.`);
+      if (summary.visit) {
+        const vv = summary.visit;
+        li('heart', vv.note ? `${visitorName(vv.id)} came by and left a note with an idea for the tank. Read it in the Journal's Visitors' Book.` : `${visitorName(vv.id)} came by. ${vv.gift.done}`);
+      }
       if (summary.eaten) li('paw', `${summary.eaten} critters became somebody's snack.`);
       for (const n of summary.died.slice(0, 6)) li('flower', `${n} passed away.`);
       if (!ul.children.length) li('leaf', 'It was a quiet, peaceful time.');

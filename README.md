@@ -6,8 +6,13 @@ critter has a job, like everyone in Busytown: bees make honey, beetles and worms
 make compost, butterflies leave silk behind. Every grown-up has a dream of its
 own, too. Collect what they make and send it to the neighbours who write in
 asking for it; they pay in coins, become friends, and sell the farm the
-wonderful things they make. Look after the critters, rearrange their world,
-and run gentle experiments to see what happens.
+wonderful things they make. What the farm makes depends on how it's kept:
+honey tastes of the flowers the bees visited, lilies bloom the colour of the
+water, and masters of their trade make prize goods. Now and then a neighbour
+would love to give one of the critters a home, visitors drop in from the
+garden outside with presents and ideas for the tank, and the critters can
+dress up in hats from every trade in Busytown. Look after the critters,
+rearrange their world, and run gentle experiments to see what happens.
 
 ![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond beside its heater and filter, and a misty rainforest jungle hung with all sorts of vines, with dome heat lamps and misters on the lid and thermometers on the glass](docs/tank.jpg)
 
@@ -15,7 +20,7 @@ and run gentle experiments to see what happens.
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
-- **Small and quick to load.** About 230 KB of gzipped JavaScript and two
+- **Small and quick to load.** About 260 KB of gzipped JavaScript and two
   small fonts. All the art is drawn in code, so there are no image downloads.
 - **Smooth on old hardware.** The static scenery is cached, critters are
   pre-rendered sprites, and the simulation runs at a fixed 30 steps a second.
@@ -97,7 +102,33 @@ sleeping or hiding, it works:
 
 Goods sparkle in the tank until you tap them to collect them. Anything you
 leave still does some good: seeds sow themselves and compost melts into the
-soil. The other critters' jobs matter too: ladybugs guard the plants from
+soil.
+
+### Flavours and prize goods
+
+Every good takes something of where it came from, so what you plant and how
+you keep the tank shows in what the farm makes:
+
+| Good | What decides its flavour |
+| --- | --- |
+| **Honey** | The flowers the bees visited. If half the pollen in the comb came from one kind of flower, the jar is that flower's honey (clover, lavender, orchid, moonflower and the rest); a bit of everything makes wildflower honey. Plant a patch of one flower near the bee hotel to choose. The honeypot ants make desert honey. The bee hotel's card says what the next jar will taste of. |
+| **Seeds** | The flower that ripened them: sunflower, poppy, cornflower... (harvester ants pile wildflower seeds). |
+| **Water lilies** | The water. Lilies bloom white in cool water (under 20°C), pink in mild water and golden in warm water (25°C and up), so the pond heater decides. Very clear water with a school of neon tetras now and then gives a rare blue star lily, and a lotus gives lotus blooms. |
+| **Silk** | Whoever spun it: monarch, blue morpho, swallowtail, rose, snow-white, luna, rosy maple and the rest, with the rare peacock, glasswing and emerald silks from the butterfly house. |
+| **Compost** | A beetle's compost ball, or a heap of worm castings. |
+
+**Prize goods** wear a little gold rosette. A jar of one flower's honey made
+mostly by master bees (whose dreams came true) is a prize jar; master
+recyclers often make prize compost; healthy, comfy plants in rich, well
+composted soil grow prize seed heads now and then; a crystal-clear pond with
+well tended lilies grows prize blooms; and a caterpillar that grew up well
+fed and healthy leaves prize silk. The basket on the Orders tab lists every
+flavour you have (tap one to hear where it comes from).
+
+Seven newer flowers give the bees more to choose from: desert poppies and
+lavender in the desert, cornflowers, bluebells and hibiscus in the jungle,
+yellow irises by the pond (they unlock as the zones grow), and orchids from
+Flora Petal at the Market. The other critters' jobs matter too: ladybugs guard the plants from
 aphids; frogs, guppies, geckos and dragonflies keep the fruit flies down; pea
 puffers keep the snails from overrunning the pond; the crickets' night chorus
 lulls the whole tank to sleep, so everyone wakes up rested; grasshoppers mow
@@ -136,6 +167,23 @@ letters wait on the clipboard's **Orders** tab, and the mailbox flag goes up.
 Send an order and they reply, delighted, with **coins**, thank-you stars, a
 basket of treats for the critters, and a **heart** of friendship.
 
+Once the farm is up and running the letters get more particular. Every
+neighbour has favourite flavours: Baker Bramble's grandmother's recipe
+needs clover honey, Doctor Dot swears by lavender honey for a tickly cough,
+the bride wants snow-white silk, the mayor wants golden lilies for the town
+hall fountain. A letter for a particular flavour pays half as much again (and
+waits a day longer). Once you've made a prize good, someone entering the
+Busytown show may ask for your very best, and pays double. Prize goods on an
+everyday order earn a little extra, and the farm stand never sells them.
+
+Now and then a neighbour would love to give one of your critters a home: a
+cricket to sing at story time in Miss Penny's class, ladybugs for Farmer
+Furrow's beans, a comet goldfish for Odette's shop window. They only ask for
+critters you have a few of, more often when the tank is crowded, and you
+choose who goes (from the letter, or from the critter's own card, which
+gets a "Send to..." button). Off they float under a balloon, and the
+neighbour writes to say how they've settled in.
+
 Every neighbour makes something special and sells it, at the **Busytown
 Market** (the coin purse, top right), to farms that have helped them enough.
 None of them are just for show:
@@ -157,10 +205,59 @@ None of them are just for show:
 | Little schoolhouse | Miss Penny | The young grow up twice as fast, and dreams come true sooner. |
 | Picnic hamper | Chef Crumble | Feeds its corner of the tank at breakfast and supper, never too much. |
 | Clockwork climate keeper | Sprocket | Turns every lamp, mister and the pond heater up and down to suit the residents. |
+| Orchid cuttings | Flora Petal | Exotic orchids for the jungle: orchid honey and orchid seed heads. |
+| Sewing basket | Tilly Thimble | Berets, caps, bobble hats, sun hats, bowlers, bows, flowers, scarves and bow ties for the critters to wear, in any colour. |
+| A hat of every trade | Everyone | A chef's hat, a party hat, a top hat, a mortarboard, a postie's cap, a nurse's cap, a flower crown, a straw hat, a bucket hat, a hard hat, a propeller cap and a headscarf, one from each neighbour. |
 
 Enough stars and Busytown also sends a farm stand (it sells a few spare
 goods for coins each evening) and a delivery van (it posts any order that's
 ready each morning), which you can't get any other way.
+
+### Dressing up
+
+Tap a critter and press **Dress up** to choose something for it to wear from
+the wardrobe, and its colour. The picture shows how it looks before you
+decide. Crickets, grasshoppers, geckos, beetles, goldfish, koi, frogs,
+turtles, ladybugs, butterflies, snails, bees, earthworms, fireflies, pill
+bugs and the axolotl can all dress up. Hats come from the Market (above),
+and two things only come from visitors: Kip the kingfisher's feather cap and
+Hector the hermit crab's pearl necklace. Anything the wardrobe doesn't have
+yet is shown as a silhouette that says where to find it.
+
+## Visitors from the garden
+
+When the tank is happy and lively, someone from the garden outside drops in
+now and then. They come in over the side of the glass (or flutter down
+through the lid), potter about the zone they like for a few hours and go
+home. Who comes depends on how you've built their world, and every visitor
+brings something:
+
+| Visitor | Comes when | Brings |
+| --- | --- | --- |
+| Hazel the hedgehog | the jungle floor has pill bugs or beetles, fallen leaves and a home or two (at night) | rakes the leaves into a **leaf pile**: a home for 4 small critters that drops a leaf for the recyclers every morning |
+| Mortimer the mole | the jungle soil is rich and there are earthworms | digs **tunnels** under the jungle, with a molehill at each way in; plants in airy soil grow faster |
+| Rosie the robin | the jungle is full of flowers of many kinds (by day) | sows a patch of **wildflowers**, often ones you can't plant yet, and from then on you can |
+| Kip the kingfisher | the pond is crystal clear and full of fish, with reeds to perch on (by day) | a **feather cap** for the wardrobe |
+| Wilma the water vole | there are water lilies in a clean pond, and reeds along the bank | plants a **lotus**, whose blooms you pick like water lilies (only Wilma has lotuses) |
+| Hector the hermit crab | the desert by the pond is warm and there's a seashell or treasure chest in the water | a **pearl necklace** for the wardrobe |
+| Tobias the tortoise | the desert is full of plants, with a rock or two (by day) | rolls stones into a cool, shady **stone den** for 4 desert critters |
+
+A visitor who wants to change the tank always asks first. Their card pops
+up with their idea, an "!" floats over them until you answer (tap them to
+hear it again), and if they go home before you've decided they leave it as a
+note in the **Visitors' Book** (the Journal's Visitors tab). Every change is
+for the better, and saying no is fine: they'll ask again another time. Once
+a visitor has built a leaf pile or a stone den you can place more of them
+from Decor, and anything they've sown you can plant from Plants. On later
+visits they bring their present again until they've done all they can, and
+after that a few lucky coins they found on the way.
+
+The Visitors' Book shows the **tank cheer** (how comfy, fed and healthy
+everyone is, how the plants are doing, how clear the pond is and how many
+kinds of critter live there), everyone who's been, and a hint for how to
+tempt the ones who haven't. A happier tank gets visitors more often. If
+you've been away for a few hours, someone may have come by while you were
+gone and left a present or a note.
 
 The decorations all have a purpose too. The houses, logs and hidey-holes are
 homes; the bee hotel makes honey; bubblers add air; the park bench makes for
@@ -227,11 +324,11 @@ None of that comes as a pop-up. Instead:
 | **Look** | Drag to pan, pinch or scroll to zoom. Tap a critter to see its job, needs, mood and what it is thinking, and to pet it or give it a treat. Tap a good to collect it. Tap any equipment to learn what it does. Tap the glass to startle everyone. |
 | **Feed** | 38 foods, from apple slices and blueberries to fish flakes, sinking pellets and cookie crumbs. Each one shows which critters love it. Tap to drop it, or hold to sprinkle: it falls (or sinks) toward whoever nearby is hungriest for it, and hungry critters close by smell it land and come over. Critters eat it bite by bite until it's gone. A critter that isn't hungry may carry a bit home to keep for later, take some to a hungry friend, or just leave it, depending on its character. |
 | **Critters** | Adopt new critters and choose where they live. |
-| **Plants** | 20 plants, including daisies, sunflowers, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, water lilies and eelgrass. Each has its own temperature and moisture needs. |
-| **Decor** | 33 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. Four more (the clinic, butterfly house, schoolhouse and picnic hamper) come from the Market. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
+| **Plants** | 28 plants, including daisies, sunflowers, poppies, lavender, orchids, hibiscus, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, irises, water lilies and eelgrass. Each has its own temperature and moisture needs, and each flower gives the bees a honey of its own. A plant's card says what it gives the farm. |
+| **Decor** | 35 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. Four more (the clinic, butterfly house, schoolhouse and picnic hamper) come from the Market, and two (the leaf pile and the stone den) from visitors. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
 | **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
 | **Climate** | Set each zone's heat lamp (a dome lamp clamped to the lid over the middle of its zone, however wide the zone is built: sunset red for the desert, blue for the pond, leaf green for the jungle, with a dimmer on its cord) and mister (a pump on the lid beside it that drinks from a water jug and sprays a shower of mist out over the whole zone), the pond's glass heater and its filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
-| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 63 discoveries to unlock, and a field guide with every critter's job and the varieties you've collected. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything (and the Market gives its wares away). |
+| **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 68 discoveries to unlock, a field guide with every critter's job and the varieties you've collected, and the Visitors' Book. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything (and the Market gives its wares away). |
 | **Clipboard** | The button at the top right. What needs doing now, Busytown's orders and your basket of goods, how each zone is doing, and the goals for its next level. |
 | **Coin purse** | Next to the clipboard. Your Busytown coins, and the way into the Market. |
 
@@ -307,14 +404,16 @@ Other tools in `tools/`:
 | `node tools/savetest.mjs` | Save and load round-trip, plus the "while you were away" catch-up. |
 | `node tools/experiments.mjs` | Runs each experiment and checks that the expected outcome happens. |
 | `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods, sends orders and shops at the Market) and checks that every zone levels up. Reports coins, friendships, dreams and what was bought when. |
-| `node tools/markettest.mjs` | Buys every ware at the Market in turn and checks that each one does its job. |
+| `node tools/markettest.mjs` | Buys every ware at the Market in turn and checks that each one does its job (hats and all). |
+| `node tools/visitortest.mjs` | Brings in every visitor and checks it keeps to its patch, makes its offer or leaves its present, that saying yes really changes the tank, that a visit survives a save, that a happy tank gets visitors by itself, and that time away can bring one. |
 | `node tools/tanktest.mjs` | Widens each zone of a farm (and all of them, twice) and loads the result into a tank of the new size, checking the ground, water, ant nest, critters and plants all came through in the right places. |
 | `node tools/pacingtest.mjs [minutes] [seed] [-v]` | Plays the first hour of a new farm at 1× and logs everything the keeper would see pop up (discoveries, news, letters, new to-dos), and fails if a new farm gets noisy. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
 
 `tools/dev.html` and `tools/gallery.html` show every critter, food, plant and
 decoration on one page, `tools/varieties.html` every variety of every critter,
-and `tools/folk.html` every Busytown neighbour.
+`tools/folk.html` every Busytown neighbour, and `tools/flavours.html` every
+flower, every flavour of every good, every visitor and critters dressed up.
 
 ## Deploy
 
@@ -334,16 +433,18 @@ src/
                        environment (zone climate, pond chemistry, day/night),
                        the breeze and the pond's current, the jungle's living
                        vines, spatial hash, A* pathfinding, the World itself
-  entities/            Creature (needs, life stages, movement), Plant, Food, Decor
+  entities/            Creature (needs, life stages, movement), Plant, Food, Decor,
+                       Good, Visitor (a visitor's comings and goings)
   ai/                  utility brain, shared behaviours, food/prey/mate search,
                        ant colony (castes, brood, digging, scent trails, aphid herding)
   data/                species, foods, plants, decor, names, discoveries,
                        progression (what each zone level unlocks), goods and
-                       jobs, Busytown's neighbours, the Market's wares,
-                       critters' dreams
+                       jobs and flavours, Busytown's neighbours, the Market's
+                       wares, critters' dreams, visitors, outfits
   art/                 procedural ink-and-watercolour drawing of everything
                        (critters, plants, vines, equipment, goods, the
-                       townsfolk's portraits, the Market's gadgets...),
+                       townsfolk's portraits, visitors, hats, the Market's
+                       gadgets...),
                        paper grain and watercolour washes
   render/              sprite cache, chunked terrain and water, the pond's
                        depth, light shafts, particles, drifting specks and
@@ -354,7 +455,8 @@ src/
   sim/                 away catch-up, journal, care (comfy ranges and the
                        to-do list), progress (zone levels and goals), orders
                        (Busytown's letters, coins and friendship), market
-                       (buying wares), dreams, equipment (what each gadget is),
+                       (buying wares), dreams, visitors (who comes, their
+                       offers and presents), equipment (what each gadget is),
                        the keeper's name, tank (building it bigger)
   save/                localStorage save, backup, export/import
   audio/               tiny procedural sound effects (WebAudio, no files)
@@ -446,7 +548,9 @@ The catalogs are plain data, and most additions are a single line:
   its art, and give it `tags` (fruit, leaf, seed, protein, nectar…) so the
   critters know whether to eat it.
 - **Plant:** add an entry to `src/data/plants.js` with a `kind`, colours and
-  comfort ranges.
+  comfort ranges. A flowering one gets a honey flavour and a seed flavour of
+  its own automatically; give it a `honey` colour (and a `taste` if its name
+  doesn't make a good adjective).
 - **Decoration:** add an entry to `src/data/decor.js`, plus a draw function in
   `src/art/decor.js` if it needs new art.
 - **Critter:** add a species to `src/data/species.js`, built from existing
@@ -466,7 +570,12 @@ The catalogs are plain data, and most additions are a single line:
   `src/art/townsfolk.js`).
 - **Ware:** add it to `src/data/market.js` with who sells it, the hearts it
   takes and its price, then give it its job (a perk the world checks with
-  `world.owns(id)`, a decoration with a flag, a critter or a plant).
+  `world.owns(id)`, a decoration with a flag, a critter, a plant or
+  something to wear).
+- **Outfit:** add it to `src/data/outfits.js`, draw it in `drawHat` (or
+  `drawNeckwear`) in `src/art/ink.js`, and sell it as an `outfit` ware.
+- **Visitor:** add one to `src/data/visitors.js` with what tempts it (`want`),
+  how it moves and what it brings, and draw it in `src/art/visitors.js`.
 
 ## Credits
 

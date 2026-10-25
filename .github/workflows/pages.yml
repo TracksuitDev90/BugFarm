@@ -29,6 +29,7 @@ jobs:
           node tools/savetest.mjs
           node tools/progresstest.mjs 10 3
           node tools/markettest.mjs
+          node tools/visitortest.mjs
           node tools/tanktest.mjs
           node tools/pacingtest.mjs 60 3
       - name: Build

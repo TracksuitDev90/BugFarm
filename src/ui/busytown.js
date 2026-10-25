@@ -1,7 +1,7 @@
 // Busytown in the UI: the neighbours' portraits, the letters that pop up
 // when they write, their thank-yous when an order arrives, and the Market
 // where the farm spends its coins on each neighbour's special ware.
-import { el, esc, artCanvas, creatureArt } from './dom.js';
+import { el, esc, artCanvas, creatureArt, outfitIcon } from './dom.js';
 import { iconCanvas } from '../art/icons.js';
 import { NEIGHBOURS, MAX_HEARTS } from '../data/neighbours.js';
 import { WARES } from '../data/market.js';
@@ -17,10 +17,23 @@ import { drawPlant } from '../art/plants.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { WARE_ART } from '../art/wares.js';
 import { Plant } from '../entities/plant.js';
-import { neighbour, needsWords } from '../sim/orders.js';
+import { neighbour, orderWords } from '../sim/orders.js';
 import { wareState, buy } from '../sim/market.js';
 import { ZONE_NAMES } from '../sim/care.js';
 import { dear, thanksTo } from '../sim/keeper.js';
+import { VISITORS, visitorName } from '../data/visitors.js';
+import { VISITOR_ART, drawVisitor } from '../art/visitors.js';
+import { OUTFITS } from '../data/outfits.js';
+import { drawHat } from '../art/ink.js';
+
+function hatAt(g, id, col) {
+  drawHat(g, id, 0, 4, 5.4, 0.9, col);
+}
+
+// A visitor's portrait for a card.
+function visitorPic(type, css = 84) {
+  return artCanvas([css, Math.round(css * 0.86)], VISITOR_ART[type].box, (g) => drawVisitor(g, type, type === 'mole' ? 'pop' : 'idle', type === 'mole' ? 2 : 0));
+}
 
 // A neighbour's portrait. mood: 'ask' | 'happy'
 export function folkCanvas(nb, mood = 'ask', css = 72) {
@@ -125,6 +138,24 @@ export function wareCanvas(ware, css = 56) {
   if (ware.kind === 'stock') return artCanvas(size, [-11, -12, 11, 3], (g) => drawFood(g, FOODS.bun, 0));
   if (ware.id === 'courier') return creatureArt('dragonfly', 'adult', 'idle', 4, 'post', '#3f6aa8', size);
   if (ware.kind === 'build') return artCanvas(size, [-30, -28, 30, 22], (g) => drawBuild(g, ware.zone));
+  // something to wear (a sewing basket: a few of its things)
+  if (ware.kind === 'outfit') {
+    if (ware.items.length === 1) return outfitIcon(ware.items[0], '#e57a8a', size);
+    return artCanvas(size, [-20, -16, 20, 8], (g) => {
+      g.save();
+      g.translate(-9, 0);
+      hatAt(g, 'beret', '#4c8fd6');
+      g.restore();
+      g.save();
+      g.translate(9, 1);
+      hatAt(g, 'beanie', '#77b255');
+      g.restore();
+      g.save();
+      g.translate(0, -3);
+      hatAt(g, 'bow', '#e57a8a');
+      g.restore();
+    });
+  }
   const a = WARE_ART[ware.id];
   return a ? artCanvas(size, a.box, a.draw) : iconCanvas('shop', css * 0.7);
 }
@@ -184,7 +215,7 @@ export class Postbag {
       el('div', { class: 'pc-art' }, folkCanvas(nb, 'ask', 84)),
       el('div', { class: 'pc-body' },
         el('div', { class: 'pc-name' }, el('b', {}, nb.name), ` · ${nb.job}`),
-        el('div', { class: 'bubble' }, `“${dear(w.keeper)}, could you send ${needsWords(o.needs)}? ${o.why}”`),
+        el('div', { class: 'bubble' }, `“${dear(w.keeper)}, could you send ${orderWords(o)}? ${o.why}”`),
         el('div', { class: 'pc-pay' }, coinsEl(pay.total), el('span', {}, `+ ★${o.stars} and treats`), heartsEl(ord.heartsOf(nb.id))),
         offer ? el('div', { class: 'pc-offer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} and they'll sell you the `, el('b', {}, offer.ware.name.toLowerCase()), '!') : null,
         el('div', { class: 'pc-btns' },
@@ -196,6 +227,65 @@ export class Postbag {
     this.push({ el: card, ms: 14000 });
   }
 
+  // A visitor from the garden has come to the tank.
+  visitor(v, first) {
+    const ui = this.ui;
+    const def = v.def;
+    const card = el('div', { class: 'panel postcard visit' },
+      el('div', { class: 'pc-art' }, visitorPic(v.type)),
+      el('div', { class: 'pc-body' },
+        el('div', { class: 'pc-name' }, el('b', {}, visitorName(v.type)), first ? ' · a new visitor!' : ' is back!'),
+        el('div', { class: 'bubble' }, `${def.name} has come in from the garden to visit the ${def.zone}. ${first ? `${def.name} likes ${def.likes.charAt(0).toLowerCase() + def.likes.slice(1)}` : 'Lovely to see them again!'}`),
+        el('div', { class: 'pc-btns' },
+          el('button', { class: 'btn small', onclick: () => this.next() }, 'Later'),
+          el('button', { class: 'btn small yellow', onclick: () => {
+            this.next();
+            ui.goToVisitor(v);
+          } }, 'Go and say hello'))));
+    this.push({ el: card, ms: 12000 });
+  }
+
+  // A visitor has an idea for the tank: it always asks the keeper first.
+  offer(id, offer, v) {
+    const ui = this.ui;
+    const def = VISITORS[id];
+    const card = el('div', { class: 'panel postcard visit' },
+      el('div', { class: 'pc-art' }, visitorPic(id)),
+      el('div', { class: 'pc-body' },
+        el('div', { class: 'pc-name' }, el('b', {}, visitorName(id)), ' has an idea'),
+        el('div', { class: 'bubble' }, `“${offer.ask}”`),
+        el('div', { class: 'pc-btns' },
+          el('button', { class: 'btn small', onclick: () => {
+            this.next();
+            ui.answerOffer(id, offer, v, false);
+          } }, 'No, thank you'),
+          el('button', { class: 'btn small yellow', onclick: () => {
+            this.next();
+            ui.answerOffer(id, offer, v, true);
+          } }, `Yes please, ${def.name}!`))));
+    // (it waits on the visitor, and in the Visitors' Book, if not answered now)
+    this.push({ el: card, ms: 20000 });
+  }
+
+  // A visitor left a present.
+  gift(id, gift, v) {
+    const ui = this.ui;
+    const item = gift.kind === 'outfit' ? OUTFITS[gift.item] : null;
+    const card = el('div', { class: 'panel postcard visit thanks' },
+      el('div', { class: 'pc-art' }, visitorPic(id)),
+      el('div', { class: 'pc-body' },
+        el('div', { class: 'pc-name' }, el('b', {}, visitorName(id)), ' left you a present!'),
+        el('div', { class: 'bubble' }, gift.done),
+        gift.kind === 'coins' ? el('div', { class: 'pc-pay' }, coinsEl('+' + gift.n, 'big')) : null,
+        el('div', { class: 'pc-btns' },
+          el('button', { class: 'btn small', onclick: () => this.next() }, 'Lovely!'),
+          item && v ? el('button', { class: 'btn small yellow', onclick: () => {
+            this.next();
+            ui.goToVisitor(v);
+          } }, `Say thank you`) : null)));
+    this.push({ el: card, ms: 12000 });
+  }
+
   // An order arrived in Busytown, and they're delighted.
   thanks(r) {
     const ui = this.ui;
@@ -204,6 +294,7 @@ export class Postbag {
     if (r.pay.tip) parts.push(`${r.pay.tip} tip from a friend`);
     if (r.pay.board) parts.push(`${r.pay.board} from the notice board`);
     if (r.pay.fans) parts.push(`${r.pay.fans} from the axolotl's fans`);
+    if (r.pay.prize) parts.push(r.c ? `${r.pay.prize} because ${r.c.name} is a master` : `${r.pay.prize} for the prize ${r.prizes === 1 ? 'one' : 'ones'}`);
     const card = el('div', { class: 'panel postcard thanks' },
       el('div', { class: 'pc-art' }, folkCanvas(nb, 'happy', 84)),
       el('div', { class: 'pc-body' },
@@ -287,8 +378,8 @@ export function buildMarket(ui, b, head) {
 }
 
 // A good's little picture (for letters in the Orders list).
-export function goodIcon(type, css = 22) {
-  return artCanvas([css, css], goodBox(type), (g) => drawGood(g, type, ''));
+export function goodIcon(type, css = 22, flav = '', prize = false) {
+  return artCanvas([css, css], goodBox(type, prize), (g) => drawGood(g, type, '', flav, prize));
 }
 
 export { GOODS };

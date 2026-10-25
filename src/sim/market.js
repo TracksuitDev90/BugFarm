@@ -5,6 +5,7 @@
 import { WARES, WARE_BY_ID } from '../data/market.js';
 import { DECOR } from '../data/decor.js';
 import { SPECIES } from '../data/species.js';
+import { PLANTS } from '../data/plants.js';
 import { ZONE_X, ZONE_MID, W, X, TANK } from '../config.js';
 import { tankTier, tankTiers } from './tank.js';
 import { ZONE_NAMES } from './care.js';
@@ -113,6 +114,10 @@ export function buy(journal, w, ware) {
   if (ware.kind === 'stock') {
     w.stock[ware.id] = (w.stock[ware.id] || 0) + ware.stock;
     out.msg = `${ware.stock} ${ware.name.toLowerCase()} in your basket. Find them in Feed.`;
+  } else if (ware.kind === 'outfit') {
+    w.perks[ware.id] = true;
+    for (const it of ware.items) w.wardrobeAdd(it);
+    out.msg = `${ware.items.length > 1 ? 'They\'re' : 'It\'s'} in the wardrobe. Tap a critter, then Dress up.`;
   } else {
     w.perks[ware.id] = true;
     if (ware.kind === 'decor') {
@@ -129,7 +134,7 @@ export function buy(journal, w, ware) {
       out.msg = `${n === 1 ? 'Your new ' + SPECIES[sp].name.toLowerCase() + ' is' : 'Your new ' + SPECIES[sp].plural.toLowerCase() + ' are'} in the pond! More can be adopted from Critters.`;
     } else if (ware.kind === 'plant') {
       for (const x of [X(1200), X(1450)]) w.placePlant(ware.plant, x + rrange(-30, 30));
-      out.msg = 'Two moonflowers planted in the jungle. Watch them after dark!';
+      out.msg = ware.plant === 'moonflower' ? 'Two moonflowers planted in the jungle. Watch them after dark!' : `Two ${PLANTS[ware.plant].name.toLowerCase()}s planted in the jungle. More can be planted from Plants.`;
     } else if (ware.id === 'courier') {
       out.c = w.ensureCourier();
       out.msg = 'Dash the mail dragonfly is on the job!';

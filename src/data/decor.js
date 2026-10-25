@@ -49,6 +49,11 @@ export const DECOR = {
   butterflyHouse: { name: 'Butterfly house', place: 'ground', w: 46, h: 60, butterflies: true, job: 'Butterflies lay their eggs here, and rare butterflies hatch from its chrysalises.' },
   schoolhouse: { name: 'Little schoolhouse', place: 'ground', w: 56, h: 72, shelter: true, cap: 4, fits: 36, door: [0, 0], win: [-16, -16], school: true, job: 'Young critters grow up twice as fast and dreams come true sooner. A home for 4, too.' },
   hamper: { name: 'Picnic hamper', place: 'top', w: 30, h: 28, hamper: true, job: 'Drops just the right snacks for its corner of the tank at breakfast and supper.' },
+  // Built by visitors from the garden (see data/visitors.js), and then the
+  // keeper's to place too:
+  //   litter: drops a fallen leaf for the recyclers every morning
+  leafPile: { name: 'Leaf pile', place: 'ground', w: 50, h: 24, shelter: true, cap: 4, fits: 24, door: [14, -2], litter: true, job: 'Raked up by Hazel the hedgehog: a cosy home for 4 small critters, and every morning a leaf drifts off it for the recyclers to munch.' },
+  stoneDen: { name: 'Stone den', place: 'ground', w: 52, h: 32, shelter: true, cap: 4, fits: 40, door: [0, -1], job: 'Built by Tobias the tortoise: a cool, shady den where 4 desert critters can rest out of the midday heat.' },
   boulder: { name: 'Boulder', place: 'ground', w: 44, h: 26, stamp: { rx: 6, ry: 4 }, job: 'Becomes part of the ground: a hill to explore and dig under.' },
   pebble: { name: 'Pebble', place: 'ground', w: 20, h: 12, stamp: { rx: 3, ry: 2 }, job: 'Becomes part of the ground: a stepping stone.' },
   flatRock: { name: 'Basking rock', place: 'ground', w: 56, h: 18, stamp: { rx: 8, ry: 2.6 }, job: 'Becomes part of the ground: the best basking spot under a heat lamp.' },

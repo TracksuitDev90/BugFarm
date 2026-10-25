@@ -171,6 +171,7 @@ export class Creature {
     }
     this.acc = opts.acc !== undefined ? opts.acc : Math.random() < (def.accessoryChance || 0) ? ACCESSORIES[rint(0, ACCESSORIES.length - 1)] : null;
     this.accSeed = opts.accSeed || rint(1, 99999);
+    this.accC = opts.accC || null; // a colour the keeper chose (see Dress up)
     this.traits = opts.traits || {
       bold: gaussTrait(),
       curious: gaussTrait(),
@@ -323,7 +324,7 @@ export class Creature {
     return pals[this.palIdx % pals.length];
   }
   get accColor() {
-    return accessoryColor(this.accSeed);
+    return this.accC || accessoryColor(this.accSeed);
   }
   get diet() {
     return this.stageDef.diet || this.def.diet;
@@ -1655,6 +1656,7 @@ export class Creature {
     if (this.memory.dream) o.dr = [this.memory.dream.i, +this.memory.dream.n.toFixed(2)];
     if (this.memory.master) o.ms = this.memory.master;
     if (this.memory.home) o.ho = this.memory.home;
+    if (this.accC) o.acn = this.accC;
     if (this.carryBrood) o.cb = { s: this.carryBrood.stage, t: Math.round(this.carryBrood.t) };
     if (this.climb && this.climb.plant) o.cl = { p: this.climb.plant.id, k: this.climb.slot.kind, i: this.climb.slot.i };
     return o;
@@ -1673,6 +1675,7 @@ export class Creature {
       palIdx: o.p,
       acc: o.ac === undefined ? null : o.ac,
       accSeed: o.as,
+      accC: o.acn,
       traits: o.tr,
       hunger: o.hu,
       energy: o.en,

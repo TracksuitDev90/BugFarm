@@ -13,6 +13,9 @@ const TAU = Math.PI * 2;
 const FLEX = { grass: 0.38, reed: 0.24, flower: 0.22, clover: 0.1, fern: 0.16, strawberry: 0.09, bigleaf: 0.1, monstera: 0.08, palm: 0.07, bromeliad: 0.06, mushroom: 0.012, cactus: 0.006, succulent: 0.025 };
 const CUR = [0, 0];
 
+// How big each shape of flower is when fully open.
+const PETAL_R = { sun: 11, tulip: 4.6, moon: 5.2, spike: 5.2, cup: 5, ray: 4.4, bell: 6.2, orchid: 6.2, trumpet: 7, iris: 6.5 };
+
 function flowerCount(def) {
   if (def.kind === 'flower') return def.branches || 1;
   if (def.kind === 'clover') return 2;
@@ -132,7 +135,7 @@ export class Plant {
             fy = by - H * 0.18;
             S.stems.push({ pts: [[bx, by], [bx + dir * H * 0.1, by - H * 0.12], [fx, fy]], w: 1.1 });
           }
-          const r = (def.petalShape === 'sun' ? 11 : def.petalShape === 'tulip' ? 4.6 : def.petalShape === 'moon' ? 5.2 : def.memorial ? 2.4 : 4.2) * (0.4 + 0.6 * open) * (i > 0 ? 0.8 : 1);
+          const r = (def.memorial ? 2.4 : PETAL_R[def.petalShape] || 4.2) * (0.4 + 0.6 * open) * (i > 0 ? 0.8 : 1);
           S.flowers.push({ x: fx, y: fy, r, i, open, pollinated: f.pollinated, shape: def.petalShape, droop });
           addSlot(fx, fy - r * 0.3, 'flower', i, top[0], top[1]);
         });
@@ -388,8 +391,11 @@ export class Plant {
         }
         this.flowers.forEach((f, i) => {
           if (g < 0.6) return;
-          S.flowers.push({ x: 0, y: top - 2, r: 6 * clamp01((g - 0.6) * 3), i, shape: 'lotus', pollinated: f.pollinated });
-          addSlot(0, top - 4, 'flower', i, 0, top);
+          // a lotus holds its bloom up out of the water on a stalk of its own
+          const up = def.lotus ? 14 * clamp01((g - 0.6) * 3) : 0;
+          if (up) S.stems.push({ pts: [[0, top], [1.2, top - up * 0.55], [0, top - up]], w: 1.4 });
+          S.flowers.push({ x: 0, y: top - 2 - up, r: (def.lotus ? 8.5 : 6) * clamp01((g - 0.6) * 3), i, shape: 'lotus', pollinated: f.pollinated });
+          addSlot(0, top - 4 - up, 'flower', i, 0, top);
         });
         break;
       }
@@ -545,7 +551,7 @@ export class Plant {
     const fert = zone === 'pond' ? 0.5 + env.pond.nutrients * 0.5 : env.fertility[zone] || 0.4;
     const lightF = def.likesDark ? 1.15 - L * 0.5 : 0.12 + 0.88 * L;
     if (this.growth < 1) {
-      const rate = ((dt / (def.growDays * DAY_LEN)) * lightF * comfort * (0.6 + fert * 0.8)) * (world.owns('sprinkler') ? 2 : 1);
+      const rate = ((dt / (def.growDays * DAY_LEN)) * lightF * comfort * (0.6 + fert * 0.8)) * (world.owns('sprinkler') ? 2 : 1) * world.soilBoost(zone);
       this.growth = Math.min(1, this.growth + rate);
     }
     if (comfort < 0.4) this.health -= (dt * (0.4 - comfort)) / (0.5 * DAY_LEN);

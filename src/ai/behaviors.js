@@ -1063,6 +1063,9 @@ def('pollinate', {
         w.eat(c, { kind: 'plant', plant: d.fl.plant, slot: d.fl.slot }, 2);
         if (d.fl.plant.pollinate(d.fl.slot)) w.events.emit('pollinate', { c, plant: d.fl.plant });
         c.memory.pollen = Math.min(6, (c.memory.pollen || 0) + rate);
+        // (and which flowers it came from: the honey will taste of them)
+        const pf = c.memory.pf || (c.memory.pf = {});
+        pf[d.fl.plant.type] = (pf[d.fl.plant.type] || 0) + rate;
         const v = c.memory.visited || (c.memory.visited = []);
         v.push(d.fl.key);
         if (v.length > 6) v.shift();

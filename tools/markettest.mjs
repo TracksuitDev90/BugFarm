@@ -8,6 +8,7 @@ import { Journal } from '../src/sim/journal.js';
 import { buy } from '../src/sim/market.js';
 import { WARES } from '../src/data/market.js';
 import { zoneStatus } from '../src/sim/care.js';
+import { canWear } from '../src/data/outfits.js';
 import { SIM_DT, DAY_LEN } from '../src/config.js';
 
 let failed = 0;
@@ -186,6 +187,28 @@ function run(w, j, days) {
   const { w, j } = tank();
   buy(j, w, 'moonflower');
   check(w.plants.filter((p) => p.type === 'moonflower').length === 2 && j.canUse('plant', 'moonflower'), 'moonflower seeds are sown and can be planted');
+}
+
+// orchids: planted, and they can be planted
+{
+  const { w, j } = tank();
+  check(!j.canUse('plant', 'orchid'), 'orchids wait for the florist');
+  buy(j, w, 'orchid');
+  check(w.plants.filter((p) => p.type === 'orchid').length === 2 && j.canUse('plant', 'orchid'), 'orchid cuttings are planted and can be planted again');
+}
+
+// outfits: into the wardrobe, and a critter can wear them
+{
+  const { w, j } = tank();
+  const hats = WARES.filter((wr) => wr.kind === 'outfit');
+  for (const wr of hats) buy(j, w, wr);
+  const items = hats.flatMap((wr) => wr.items);
+  check(items.every((it) => w.wardrobeHas(it)), `every outfit at the Market goes in the wardrobe (${items.length})`);
+  const c = w.creatures.find((k) => canWear(k, 'tophat'));
+  w.dress(c, 'tophat', '#4c8fd6');
+  check(c.acc === 'tophat' && c.accColor === '#4c8fd6', `a critter can wear one, in the colour picked (a ${c.def.name.toLowerCase()} in a top hat)`);
+  const back = c.serialize();
+  check(back.ac === 'tophat' && back.acn === '#4c8fd6', 'what a critter wears is saved');
 }
 
 // the builder: a bigger zone once it has grown enough, a step at a time

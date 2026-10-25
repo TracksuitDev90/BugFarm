@@ -316,7 +316,9 @@ export function comfortSpot(c, w) {
     if (c.amphibious) {
       const sx = w.nearestShore(c.x, LAMP_X.pond);
       if (sx) add(sx, t.surfaceY(sx) - 2, { kind: 'point', x: sx, y: t.surfaceY(sx) });
-      add(LAMP_X.pond, t.surfaceY(LAMP_X.pond) - 2, { kind: 'point', x: LAMP_X.pond, y: t.surfaceY(LAMP_X.pond) });
+      // or float in the warm water right under the pond's lamp
+      const ly = t.waterSurfY(LAMP_X.pond) + 4;
+      if (t.waterAt(LAMP_X.pond, ly)) add(LAMP_X.pond, ly, { kind: 'point', x: LAMP_X.pond, y: ly });
     }
     for (let i = 0; i < 3; i++) {
       const p = w.randomWaterPoint(c.x, 200, c.mode === 'walk');
@@ -333,7 +335,8 @@ export function comfortSpot(c, w) {
     const lamp = env.lampAt(c.x);
     if (lamp.power > 0) {
       const lx = lamp.x + rrange(-20, 20);
-      add(lx, t.surfaceY(lx) - 3, { kind: 'point', x: lx, y: t.surfaceY(lx) });
+      // (the pond's lamp hangs over the water: no warm ground under it)
+      if (!t.waterAt(lx, t.surfaceY(lx) - 2)) add(lx, t.surfaceY(lx) - 3, { kind: 'point', x: lx, y: t.surfaceY(lx) });
     }
     for (const dec of w.decor) {
       if (!suits(c, dec) || Math.abs(dec.x - c.x) > 320) continue;
@@ -602,6 +605,15 @@ export function lampSpot(c, w) {
     const y = t.surfaceY(x);
     if (t.waterAt(x, y - 2)) continue;
     if (reachable(c, w, x, y - 3) || c.amphibious) return { kind: 'point', x, y };
+  }
+  // a lamp hung over open water: a swimmer floats up under it and basks at
+  // the top, shell out in the warm air, the way pond turtles do
+  if (c.amphibious) {
+    for (let i = 0; i < 6; i++) {
+      const x = lamp.x + rrange(-40, 40);
+      const top = t.waterSurfY(x);
+      if (t.waterAt(x, top + 6) && t.surfaceY(x) - top > 30) return { kind: 'point', x, y: top + 4, float: true };
+    }
   }
   return null;
 }

@@ -187,6 +187,38 @@ export function smoothPath(terrain, path, CELL) {
   return out;
 }
 
+// Let a smoothed path wander from side to side where the way is roomy (a
+// wide tunnel, a room), so crawlers don't all walk the same ruled line down
+// the middle. Hugging a wall or walking the surface, it stays put.
+// amp: how far either side (world units), wave: how long each sway.
+export function weavePath(terrain, pts, CELL, amp, wave, ph) {
+  const n = pts.length >> 1;
+  let s = 0;
+  const cell = (x, y) => terrain.walkable(Math.floor(x / CELL), Math.floor(y / CELL));
+  for (let k = 2; k < n - 2; k++) {
+    const x = pts[k * 2];
+    const y = pts[k * 2 + 1];
+    s += Math.hypot(x - pts[k * 2 - 2], y - pts[k * 2 - 1]);
+    let tx = pts[k * 2 + 2] - pts[k * 2 - 2];
+    let ty = pts[k * 2 + 3] - pts[k * 2 - 1];
+    const L = Math.hypot(tx, ty);
+    if (L < 0.01) continue;
+    tx /= L;
+    ty /= L;
+    // (room on both sides, a whole cell's worth)
+    if (!cell(x - ty * CELL, y + tx * CELL) || !cell(x + ty * CELL, y - tx * CELL)) continue;
+    // (and the sway fades in and out at the ends)
+    const o = amp * Math.sin(ph + (s / wave) * Math.PI * 2) * Math.min(1, k / 6, (n - 1 - k) / 6);
+    const nx = x - ty * o;
+    const ny = y + tx * o;
+    if (cell(nx, ny)) {
+      pts[k * 2] = nx;
+      pts[k * 2 + 1] = ny;
+    }
+  }
+  return pts;
+}
+
 // ------------------------------------------------------------------ swimming
 // Is there open water all the way along this line? (Swimmers head straight
 // for anywhere they can see; only round a corner do they need a route.)

@@ -3,7 +3,7 @@
 // Tunnels are really dug out of the sand and the sand is carried up to build
 // the mound, just like an ant farm.
 import { CELL, GW, GH, MAT, DAY_LEN, W } from '../config.js';
-import { findPath, nearestWalkable, smoothPath } from '../world/pathfind.js';
+import { findPath, nearestWalkable, smoothPath, weavePath } from '../world/pathfind.js';
 import { BEHAVIORS, SPECIES_BEHAVIORS } from './behaviors.js';
 import { clamp, clamp01, smoothstep, angleDiff } from '../util/math.js';
 import { rrange, rint, chance, rpick } from '../util/rng.js';
@@ -477,7 +477,8 @@ function antTo(c, w, cx, cy) {
   }
   c.path = p;
   c.pathI = 0;
-  c.pts = smoothPath(w.terrain, p, CELL);
+  // (no two trips down the same tunnel quite alike)
+  c.pts = weavePath(w.terrain, smoothPath(w.terrain, p, CELL), CELL, rrange(1.2, 3.2), rrange(24, 60), Math.random() * TAU);
   // start from the next point, not the cell we're already in
   c.ptI = p.length > 1 ? 1 : 0;
   c.ptChecked = -1;
@@ -517,6 +518,20 @@ function surfaceHot(c, w) {
   const col = colonyOf(c, w);
   const x = col ? col.entrance.cx * CELL : c.x;
   return w.env.tempAt(x, w.terrain.surfaceY(x) - 4, w.terrain);
+}
+// How hot the ground out there is for foraging. Foragers feel it out round
+// the door, not just on the doorstep: a nest right under the heat lamp still
+// sends them out to the cooler sand on either side.
+function forageHot(c, w) {
+  const col = colonyOf(c, w);
+  const x = col ? col.entrance.cx * CELL : c.x;
+  const t = w.terrain;
+  let T = surfaceHot(c, w);
+  for (const dx of [-110, 110]) {
+    const xx = clamp(x + dx, 10, W - 10);
+    if (w.regionOf(xx) === w.regionOf(x)) T = Math.min(T, w.env.tempAt(xx, t.surfaceY(xx) - 4, t));
+  }
+  return T;
 }
 
 function def(id, b) {
@@ -592,7 +607,7 @@ def('antForage', {
     const col = colonyOf(c, w);
     if (!col) return 0;
     const n = col.needs(w);
-    const T = surfaceHot(c, w);
+    const T = forageHot(c, w);
     const heat = T > 36 ? 0.08 : T > 33 ? 0.5 : T < 12 ? 0.15 : 1;
     const older = clamp01(c.age / (DAY_LEN * 1.5));
     const day = 0.2 + 0.8 * w.env.sun;
@@ -613,6 +628,7 @@ def('antForage', {
       x = clamp(col.entrance.cx * CELL + rrange(-260, 260), 10, W - 10);
       if (w.regionOf(x) !== w.regionOf(col.entrance.cx * CELL)) x = col.entrance.cx * CELL + rrange(-60, 60);
     }
+    d.dir = x >= col.entrance.cx * CELL ? 1 : -1;
     const sc = surfaceCell(w, x);
     if (!sc || !antTo(c, w, sc[0], sc[1])) d.phase = 'fail';
   },
@@ -639,8 +655,13 @@ def('antForage', {
           if (!sc || !antTo(c, w, sc[0], sc[1])) d.phase = 'fail';
           return true;
         }
-        if (++d.hops > 2) return false;
-        const sc = surfaceCell(w, clamp(c.x + rrange(-120, 120), 10, W - 10));
+        // nothing here: a sniff round, then off on another short cast, mostly
+        // carrying on the same way, sometimes doubling back (the way scouts
+        // really search: never a straight line out and back)
+        if (++d.hops > 4) return false;
+        if (chance(0.6)) c.pauseT = rrange(0.3, 0.9);
+        if (!d.dir || chance(0.35)) d.dir = chance(0.5) ? 1 : -1;
+        const sc = surfaceCell(w, clamp(c.x + d.dir * rrange(30, 100), 10, W - 10));
         if (!sc || w.regionOf(sc[0] * CELL) !== w.regionOf(c.x) || !antTo(c, w, sc[0], sc[1])) return false;
       }
       return c.brain.t < 60;

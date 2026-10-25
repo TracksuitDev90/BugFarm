@@ -9,6 +9,7 @@ import { clamp, clamp01, band, lerp, angleDiff, smoothstep } from '../util/math.
 import { rrange, rint, chance } from '../util/rng.js';
 import { nearestWalkable, lineOfWater, findWaterPath } from '../world/pathfind.js';
 import { breeze } from '../world/breeze.js';
+import { courseTurn, courseBlocked, courseRethink, walkCourse, walkPace } from './course.js';
 
 const GRAV = 620;
 const XY = [0, 0];
@@ -287,6 +288,10 @@ export class Creature {
     this.restBonus = 1; // a nap beside the park bench
     this.flapPh = Math.random() * 6.28; // wing-beat phase as drawn
     this.whim = null;
+    // the shape of the trip it's on (see course.js), and how its pace on
+    // foot comes and goes
+    this.course = null;
+    this.paceN = 0;
     // Home life: the shelter it's tucked up inside right now (if any), a
     // moment peeking out of the front door, and a moment just after coming
     // out (so it's drawn on the doorstep, not behind the house).
@@ -534,9 +539,23 @@ export class Creature {
       let tx = tp[0];
       // climb onto plants from their base
       if (tgt.kind === 'plant' && this.canClimb) tx = tgt.plant.x;
+      // the shape of the trip on foot: a stop now and then for a look round,
+      // maybe a step back to sniff at something it just passed, and a pace
+      // that comes and goes
+      const aim = walkCourse(this, tx, dt);
+      const back = aim !== tx;
       const dx = tx - this.x;
       const tol = tgt.kind === 'plant' && this.canClimb ? 1.5 : Math.max(2, this.size * 0.35) + (tgt.tol || 0);
-      if (Math.abs(dx) <= tol) {
+      if (this.pauseT > 0) {
+        this.pauseT -= dt;
+        this.spd = 0;
+        // (a glance back over its shoulder)
+        const co = this.course;
+        if (co && co.look && this.pauseT < co.look) {
+          co.look = 0;
+          this.facing = -this.facing;
+        }
+      } else if (!back && Math.abs(dx) <= tol) {
         if (tgt.kind === 'plant' && this.canClimb) {
           this.startClimb(tgt.plant, tgt.slot);
           return;
@@ -547,19 +566,20 @@ export class Creature {
         }
         this.arrived = true;
       } else {
-        const dir = Math.sign(dx);
+        const ax = aim - this.x;
+        const dir = Math.sign(ax) || 1;
         // Hop if we're a hopper and it's a long way
         const hop = this.def.hop;
-        if (hop && this.hopCD <= 0 && Math.abs(dx) > 26 && Math.random() < hop.chance * dt * 2.2) {
+        if (!back && hop && this.hopCD <= 0 && Math.abs(dx) > 26 && Math.random() < hop.chance * dt * 2.2) {
           if (this.tryHop(w, dir, Math.abs(dx))) return;
         }
-        if (this.canFly && Math.abs(dx) > 160 && Math.random() < dt * 0.8) {
+        if (!back && this.canFly && Math.abs(dx) > 160 && Math.random() < dt * 0.8) {
           this.takeOff();
           return;
         }
-        const top = this.walkSpeed() * this.speedFactor() * (tgt.speedMul || 1);
+        const top = this.walkSpeed() * this.speedFactor() * (tgt.speedMul || 1) * (back ? 0.7 : walkPace(this, dt));
         // ease in from a standstill or a turn, and ease off when nearly there
-        const want = top * Math.min(1, 0.3 + Math.abs(dx) / 18);
+        const want = top * Math.min(1, 0.3 + Math.abs(ax) / 18);
         if (dir !== this.wdir) {
           this.wdir = dir;
           this.spd *= 0.2;
@@ -582,7 +602,8 @@ export class Creature {
           this.x = nx;
           this.facing = dir;
           moving = true;
-        } else {
+        } else if (back) this.course.via = null; // (no going back that way after all)
+        else {
           this.blocked = true;
           if (this.canFly) this.takeOff();
           else if (this.def.hop && this.hopCD <= 0) this.tryHop(w, dir, Math.abs(dx));
@@ -732,9 +753,14 @@ export class Creature {
     let dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
     const arrive = Math.min(1, d / 40);
-    // a heading of its own that wanders, so flights loop and curve
-    this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 5 - this.wan * dt * 0.2, -1, 1);
-    const off = this.wan * F.curve * clamp((d - 20) / 90, 0, 1);
+    // every trip has a shape of its own (a meander, a zigzag, a loop-the-loop
+    // on the way), so flights curve about instead of beelining
+    let off;
+    if (tp) off = courseTurn(this, dGoal, Math.hypot(this.vx, this.vy) * dt, dt);
+    else {
+      this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 5 - this.wan * dt * 0.2, -1, 1);
+      off = this.wan * F.curve * clamp((d - 20) / 90, 0, 1);
+    }
     const ux = (dx / d) * Math.cos(off) - (dy / d) * Math.sin(off);
     const uy = (dx / d) * Math.sin(off) + (dy / d) * Math.cos(off);
     // Butterflies and moths flap, then glide on open wings for a moment,
@@ -898,7 +924,7 @@ export class Creature {
     // its nose up to the top, of course).
     const body = wantLand || this.paddling ? null : this.swimBody();
     const b = this.brain.b;
-    const atTop = this.pose === 'gasp' || (b && (b.id === 'beg' || b.id === 'breathe'));
+    const atTop = this.pose === 'gasp' || (b && (b.id === 'beg' || b.id === 'breathe')) || (this.target && this.target.float);
     const topY = wl + (atTop || !body ? 3 : body[1] + 1);
     if (tp && body) tp = fitSpot(t, tp[0], tp[1], body[0], body[1], topY, !this.target || this.target.kind === 'point');
     let tx;
@@ -946,14 +972,24 @@ export class Creature {
           const dart = this.sp !== 'turtle' && Math.random() < 0.06 + this.traits.curious * 0.06;
           this.burst = dart ? rrange(0.45, 0.7) : this.sp === 'turtle' ? rrange(0.5, 0.9) : rrange(0.2, 0.45);
           this.glide = (this.sp === 'turtle' ? rrange(0.8, 1.8) : rrange(0.3, 1.5)) * (0.7 + this.traits.lazy * 0.6) / this.tempo;
-          if (dart) this.wan = clamp(this.wan + rrange(-1.2, 1.2), -1, 1);
+          if (dart) {
+            this.wan = clamp(this.wan + rrange(-1.2, 1.2), -1, 1);
+            courseRethink(this);
+          }
         }
       }
     }
-    // its own heading wanders, so it swims in curves instead of beelines
-    // (straightening out as it gets close)
-    this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 4 - this.wan * dt * 0.15, -1, 1);
-    const off = this.wan * 0.85 * clamp((d - 14) / 70, 0, 1);
+    // every trip has a shape of its own (a weave, a long arc, a zigzag of
+    // darts...), straightening out as it gets close; it goes straight when
+    // making for the shore, and nearly so threading its way round a corner
+    let off;
+    if (tp && !wantLand) {
+      off = courseTurn(this, dGoal, Math.hypot(this.vx, this.vy) * dt, dt);
+      if (tx !== tp[0] || ty !== tp[1]) off *= 0.25;
+    } else {
+      this.wan = clamp(this.wan + (Math.random() - 0.5) * dt * 4 - this.wan * dt * 0.15, -1, 1);
+      off = this.wan * 0.85 * clamp((d - 14) / 70, 0, 1);
+    }
     const co = Math.cos(off);
     const so = Math.sin(off);
     const ux = (dx / d) * co - (dy / d) * so;
@@ -1006,6 +1042,7 @@ export class Creature {
         this.vx *= -0.4;
         this.vy *= -0.4;
         this.blocked = true;
+        courseBlocked(this);
       }
     }
     this.x = nx;
@@ -1090,8 +1127,12 @@ export class Creature {
         }
       } else {
         const step = Math.min(d, this.walkSpeed() * this.speedFactor() * 1.25 * dt);
-        let nx = this.x + (dx / d) * step;
-        let ny = Math.min(this.y + (dy / d) * step, floorY);
+        // (a snail's trail on the glass wanders and waves, it's never ruled)
+        const off = courseTurn(this, d, step, dt);
+        const ux = (dx / d) * Math.cos(off) - (dy / d) * Math.sin(off);
+        const uy = (dx / d) * Math.sin(off) + (dy / d) * Math.cos(off);
+        let nx = this.x + ux * step;
+        let ny = Math.min(this.y + uy * step, floorY);
         if (!t.waterAt(nx, ny)) {
           if (t.waterAt(nx, this.y)) ny = this.y;
           else if (t.waterAt(this.x, ny)) nx = this.x;
@@ -1099,14 +1140,15 @@ export class Creature {
             nx = this.x;
             ny = this.y;
             this.blocked = true;
+            courseBlocked(this);
           }
         }
         if (nx !== this.x || ny !== this.y) moving = true;
         this.x = nx;
         this.y = ny;
-        if (Math.abs(dx) > 0.5) this.facing = dx > 0 ? 1 : -1;
+        if (Math.abs(ux) > 0.1) this.facing = ux > 0 ? 1 : -1;
         // the body turns the way it's gliding
-        want = Math.atan2(dy * this.facing, dx * this.facing);
+        want = Math.atan2(uy * this.facing, ux * this.facing);
         // back on the floor and heading along it: walking again
         if (ny >= floorY - 0.5 && ty >= this.groundAt(w, tx) - 3) {
           this.mode = 'walk';
@@ -1285,10 +1327,18 @@ export class Creature {
       if (this.target && !this.path) this.arrived = false;
       return;
     }
-    // ease into a scurry; ants walk in little pulses
-    // (a queen processes along at a stately pace)
+    // now and then a worker stops dead to wave its feelers about and maybe
+    // look back the way it came (hardly ever when hurrying home with food)
+    if (this.stage === 'worker' && this.fear < 0.4 && chance(dt * (this.carry ? 0.05 : 0.2))) {
+      this.pauseT = rrange(0.15, 0.5);
+      if (chance(0.3)) this.facing = -this.facing;
+      this.moving = false;
+      return;
+    }
+    // ease into a scurry; ants walk in little pulses, and their pace comes
+    // and goes (a queen processes along at a stately pace)
     const top = this.walkSpeed() * this.speedFactor() * (this.stage === 'queen' ? 0.45 : 1);
-    const want = top * (0.84 + 0.16 * Math.sin(this.anim * 7 + this.id));
+    const want = top * (0.84 + 0.16 * Math.sin(this.anim * 7 + this.id)) * walkPace(this, dt);
     this.spd = Math.min(want, this.spd + top * 6 * dt);
     let step = this.spd * dt;
     let mvx = 0;

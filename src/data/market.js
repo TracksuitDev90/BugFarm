@@ -12,7 +12,7 @@
 //                  sim/tank.js); each step (tier) needs the zone to have
 //                  reached a level, and costs more
 //   hearts: friendship needed with `who` before they'll sell it
-import { X } from '../config.js';
+import { X, ZONE_X } from '../config.js';
 
 export const WARES = [
   {
@@ -213,7 +213,10 @@ for (const w of WARES) {
 
 // Where the gadgets sit on the tank's lid.
 export const CLIMATE_X = X(880);
-export const SPRINKLER_X = [X(150), X(460), X(1150), X(1470)];
+// two sprinkler heads over each garden, either side of its lamp and mister
+// (however wide the zone has been built)
+const inset = (z, k) => ZONE_X[z][0] + (ZONE_X[z][1] - ZONE_X[z][0]) * k;
+export const SPRINKLER_X = [inset('desert', 0.18), inset('desert', 0.82), inset('jungle', 0.18), inset('jungle', 0.82)].map(Math.round);
 
 // Coins Busytown pays for each thank-you star on an order.
 export const COINS_PER_STAR = 5;

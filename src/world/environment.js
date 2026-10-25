@@ -1,4 +1,4 @@
-import { DAY_LEN, ZONE_X, ZONE_BLEND, CELL, W } from '../config.js';
+import { DAY_LEN, ZONE_X, ZONE_BLEND, CELL, W, X } from '../config.js';
 import { clamp, clamp01, lerp, smoothstep } from '../util/math.js';
 import { rrange } from '../util/rng.js';
 
@@ -14,8 +14,11 @@ export const WEATHER = {
   dry: { name: 'Dry spell', temp: 1.5, moist: -0.15, w: 1.2, icon: 'sun' },
   muggy: { name: 'Muggy', temp: 2, moist: 0.1, w: 1, icon: 'drop' },
 };
-function pickWeather(not) {
-  const ids = Object.keys(WEATHER).filter((k) => k !== not);
+// The big swings (heat waves, cold snaps) hold off until the farm is a few
+// days old, so a new keeper learns the controls on gentler weather.
+const ROUGH = { heat: 1, cold: 1 };
+function pickWeather(not, day = 99) {
+  const ids = Object.keys(WEATHER).filter((k) => k !== not && !(day < 5 && ROUGH[k]));
   let r = Math.random() * ids.reduce((a, k) => a + WEATHER[k].w, 0);
   for (const k of ids) if ((r -= WEATHER[k].w) <= 0) return k;
   return 'mild';
@@ -49,7 +52,7 @@ export class Environment {
     this.jungle = { lamp: 0.25, mister: 0.35, temp: 24, moist: 0.62, water: 1 };
     this.fertility = { desert: 0.3, jungle: 0.6 };
     this.weatherOn = true;
-    this.wx = { now: 'mild', next: 'warm', change: DAY_LEN * 1.6 };
+    this.wx = { now: 'mild', next: 'warm', change: DAY_LEN * 2.6 };
     this.wxT = 0; // weather offsets as felt right now (they ease in)
     this.wxM = 0;
     this.greenery = { desert: 0, jungle: 0 }; // leafy plants breathe out damp air
@@ -118,8 +121,8 @@ export class Environment {
   updateWeather(dt) {
     if (this.time >= this.wx.change) {
       this.wx.now = this.wx.next;
-      this.wx.next = pickWeather(this.wx.now);
-      this.wx.change = this.time + rrange(0.8, 1.5) * DAY_LEN;
+      this.wx.next = pickWeather(this.wx.now, this.day);
+      this.wx.change = this.time + rrange(1.2, 2.2) * DAY_LEN;
     }
     const w = this.weather;
     const k = 1 - Math.exp(-dt / (DAY_LEN * 0.1)); // spells roll in over a couple of hours
@@ -143,8 +146,8 @@ export class Environment {
       const z = this[name];
       const isDesert = name === 'desert';
       const mist = this.misting(name);
-      // misters drink from their bottle: a full one lasts ~2.5 days at 35%
-      if (z.mister > 0) z.water = Math.max(0, z.water - (dt * z.mister) / (DAY_LEN * 0.9));
+      // misters drink from their bottle: a full one lasts ~4 days at 35%
+      if (z.mister > 0) z.water = Math.max(0, z.water - (dt * z.mister) / (DAY_LEN * 1.4));
       const tgt = this.roomTemp + z.lamp * (isDesert ? 20 : 16) + sun * 0.8 - mist * 3;
       z.temp += (tgt - z.temp) * k;
       const base = isDesert ? 0.06 : 0.26;
@@ -264,9 +267,9 @@ export class Environment {
   }
 }
 
-export const LAMP_X = { desert: 416, pond: 624, jungle: 1330 };
-export const MISTER_X = { desert: 240, jungle: 1250 };
+export const LAMP_X = { desert: X(416), pond: X(624), jungle: X(1330) };
+export const MISTER_X = { desert: X(240), jungle: X(1250) };
 // The pond heater and filter stand in the water by the jungle bank.
-export const HEATER_X = 970;
-export const FILTER_X = 1016;
+export const HEATER_X = X(970);
+export const FILTER_X = X(1016);
 export { W };

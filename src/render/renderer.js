@@ -1,6 +1,6 @@
 // Draws the tank. Static things (terrain, backdrop, water body, plants) are
 // cached; per frame we mostly blit sprites with a single setTransform each.
-import { W, H, CELL, GW, INK, ZONE_X } from '../config.js';
+import { W, H, CELL, GW, INK, ZONE_X, ZONE_MID, X } from '../config.js';
 import { TerrainRenderer } from './terrainRender.js';
 import { SpriteCache, bucketFor } from './sprites.js';
 import { Particles } from './particles.js';
@@ -20,12 +20,14 @@ import { paintBackdrop, makeWallpaperTile, makeWoodTile } from '../art/backdrops
 import { setMisregistration } from '../art/ink.js';
 import { finishSprite, grainTile } from '../art/paper.js';
 import { LightRays } from './light.js';
+import { DeepWater } from './deepwater.js';
 import { LAMP_X, MISTER_X, HEATER_X, FILTER_X } from '../world/environment.js';
 import { heatLamp, mister, pondHeater, pondFilter, tag } from '../art/equipment.js';
 import { zoneBand, zoneStatus } from '../sim/care.js';
 import { GAUGE_AT, equipmentBox } from '../sim/equipment.js';
 import { angleDiff, clamp, clamp01, lerp } from '../util/math.js';
-import { hash1 } from '../util/rng.js';
+import { hash1, rrange } from '../util/rng.js';
+import { plateText } from '../sim/keeper.js';
 
 const TAU = Math.PI * 2;
 const QUALITY = {
@@ -65,21 +67,6 @@ const POSES = {
 const FRAMES = { walk: 4, fly: 2, swim: 4, chirp: 2 };
 // How much each walker bobs with its footsteps (snails glide instead).
 const STEP_BOB = { axolotl: 0.3, dragonfly: 0.2, moth: 0.3, cricket: 0.45, grasshopper: 0.4, gecko: 0.5, beetle: 0.35, turtle: 0.45, ladybug: 0.3, pillbug: 0.3, aphid: 0.2, shrimp: 0.25, firefly: 0.25, butterfly: 0.3, frog: 0.3, ant: 0.18 };
-// Vines trailing from the lid over the jungle, each a different plant. They
-// keep clear of the jungle mister's spray, the lamp and the thermometer.
-// liana: a woody rope looped between two hooks `span` apart, sagging `sag`.
-const VINES = [
-  { x: 1072, kind: 'pothos', len: 196, seed: 3 },
-  { x: 1100, kind: 'liana', len: 128, span: 72, sag: 92, seed: 11 },
-  { x: 1202, kind: 'pearls', len: 132, seed: 17 },
-  { x: 1378, kind: 'hoya', len: 158, seed: 23 },
-  { x: 1418, kind: 'passion', len: 236, seed: 29 },
-  { x: 1458, kind: 'moss', len: 104, seed: 31 },
-  { x: 1520, kind: 'morning', len: 252, seed: 37 },
-  { x: 1556, kind: 'pitcher', len: 176, seed: 43 },
-  { x: 1586, kind: 'hearts', len: 214, seed: 41 },
-];
-
 function artPose(c) {
   let p = c.pose;
   if (c.dead) p = 'idle';
@@ -102,6 +89,18 @@ function artPose(c) {
   return p;
 }
 
+// A vine yellowing and browning with age (or a drought): a wash of autumn
+// colour over its leaves, deeper as it goes.
+function withered(g, box, k) {
+  const [x0, y0, x1, y1] = box;
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = k < 0.5 ? `rgba(206,178,74,${(k * 0.9).toFixed(3)})` : `rgba(160,108,52,${(0.3 + k * 0.4).toFixed(3)})`;
+  // (the pot or moss ball it hangs from doesn't wither)
+  g.fillRect(x0, Math.max(y0, 22), x1 - x0, y1 - Math.max(y0, 22));
+  g.restore();
+}
+
 export class Renderer {
   constructor(canvas, world, camera) {
     this.cv = canvas;
@@ -114,6 +113,7 @@ export class Renderer {
     this.fx = new Particles(220);
     this.ambient = new Ambient();
     this.light = new LightRays();
+    this.deep = new DeepWater();
     world.fx = this.fx;
     this.q = QUALITY.medium;
     this.qualityName = 'medium';
@@ -215,16 +215,26 @@ export class Renderer {
         green: [[180, 220, 168], [124, 176, 128], [58, 114, 86]],
         blue: [[140, 196, 244], [90, 146, 222], [40, 80, 164]],
       }[tint] || [[168, 222, 240], [110, 182, 220], [60, 122, 176]];
+      const mixRGB = (col) => [lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7), lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7), lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7)];
       const mixc = (col, a = 1) => {
-        const r = lerp(lerp(col[0], 150, algae * 0.6), 150, murk * 0.7);
-        const gg = lerp(lerp(col[1], 190, algae * 0.6), 135, murk * 0.7);
-        const b = lerp(lerp(col[2], 110, algae * 0.6), 90, murk * 0.7);
+        const [r, gg, b] = mixRGB(col);
         return `rgba(${Math.round(r)},${Math.round(gg)},${Math.round(b)},${a})`;
       };
       const deep = base[2];
+      // how deep the pond goes, so the wash and the far wall darken all the
+      // way to its bottom
+      let bottom = t.waterLevel + 60;
+      for (let x = 0; x < W; x += 8) {
+        const fy = t.surfaceY(x);
+        if (fy > bottom && t.waterAt(x, fy - CELL)) bottom = fy;
+      }
+      const shade = (c, k) => c.map((v) => v * k);
+      const gv = { natural: [150, 132, 108], rainbow: [150, 130, 160], ocean: [96, 140, 170] }[this.world.style.gravel] || [150, 132, 108];
+      this.deep.setLook({ key, top: mixRGB(base[0].map((v) => v * 0.97)), mid: mixRGB(shade(base[1], 0.86)), deep: mixRGB(shade(deep, 0.62)), gravel: gv }, t.waterLevel, bottom, this.q.backdrop);
       this.tr.setWaterLook({
         key,
         top: t.waterLevel,
+        depth: Math.max(80, bottom - t.waterLevel),
         c0: mixc(base[0]),
         c1: mixc(base[1]),
         c2: mixc(base[2]),
@@ -263,7 +273,7 @@ export class Renderer {
     const st = this.world.style;
     // (still pond rays are baked in, so the pond's level and clarity count)
     const rayKey = this.q.rays ? (this.q.liveRays ? 'L' : Math.round(this.world.terrain.waterLevel / 8) + ':' + Math.round(env.pond.clarity * 5)) : 0;
-    const key = [this.k.toFixed(5), this.backdropKey, rayKey, st.frame, st.wallpaper, Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
+    const key = [this.k.toFixed(5), this.backdropKey, rayKey, st.frame, st.wallpaper, plateText(this.world.keeper), Math.round(env.desert.lamp * 10), Math.round(env.pond.lamp * 10), Math.round(env.jungle.lamp * 10), Math.round(env.sun * 6), this.tr.version || 0].join('|');
     let dx = this.ox - this.bgOx;
     let dy = this.oy - this.bgOy;
     if (key !== this.bgKey || !(Math.abs(dx) < mx - 2 && Math.abs(dy) < my - 2)) {
@@ -396,15 +406,25 @@ export class Renderer {
     g.drawImage(this.bg, this.bgDX, this.bgDY);
     this.setWorld(g);
 
-    // --- underwater layer (drawn before the water so it looks submerged)
+    // --- the far side of the pond, then the underwater layer (drawn before
+    // the water so it looks submerged)
+    this.deep.draw(g, this, t, this.tr.waterShape(), this.tr.waterPathVer);
     const sel = this.selected;
     for (const p of w.plants) if (p.def.aquatic && this.visible(p.x, p.y, 120)) this.drawPlantE(g, p);
     for (const d of w.decor) if (d.def.place === 'floor' && t.waterAt(d.x, d.y - 4) && this.visible(d.x, d.y, 80)) this.drawDecorE(g, d);
     for (const f of w.foods) if (f.inWater && f.state !== 'float' && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
+    // swimmers further back are drawn first, so the near ones pass in front
+    const wet = (this.wetList = this.wetList || []);
+    wet.length = 0;
     for (const c of w.creatures) {
       if (!this.visible(c.x, c.y, 40)) continue;
-      if (t.waterAt(c.x, c.y) && c.sp !== 'worm') this.drawCreatureE(g, c, alpha);
+      if (t.waterAt(c.x, c.y) && c.sp !== 'worm') {
+        this.depthOf(c);
+        wet.push(c);
+      }
     }
+    wet.sort((a, b) => b.dz - a.dz);
+    for (const c of wet) this.drawCreatureE(g, c, alpha);
     this.setWorld(g);
     this.ambient.drawMotes(g, view, w);
     this.drawPondGear(g);
@@ -583,27 +603,78 @@ export class Renderer {
     }
   }
 
+  // The jungle's vines (see world/vines.js), each swinging from its hook like
+  // a rope: a little pendulum pushed by the breeze, in real time so it's
+  // smooth at any speed, and bent along its length (stiff at the hook, free
+  // at the tip) by drawing it in thin slices that each lean a little more.
+  // A withering vine yellows, browns and sheds the odd leaf.
   drawVines(g) {
+    const vines = this.world.vines.list;
+    if (!vines.length) return;
     const b = Math.min(this.bucket, 3);
-    VINES.forEach((v, i) => {
+    const dt = this.paused ? 0 : Math.min(0.05, this.dt || 0.016);
+    const tm = this.time;
+    for (const v of vines) {
       const box = vineBox(v);
-      if (!this.visible(v.x + (box[0] + box[2]) / 2, box[3] / 2, (box[2] - box[0]) / 2 + box[3] / 2)) return;
-      const s = this.sprites.get('vine|' + i, b, box, (gg) => drawVine(gg, v));
-      // hanging vines swing from their hook and stream out in a gust; a
-      // looped liana just breathes and sways a little
-      const k = Math.sin(this.world.time * 0.5 + i * 1.7);
-      const wind = breeze.wind(v.x);
-      const flutter = Math.sin(this.world.time * 4.1 + i * 2.3) * 0.15 * Math.abs(wind);
-      if (v.span) {
-        this.put(g, v.x, 0, 0, 1, 1 + k * 0.012);
-        g.transform(1, 0, (wind + flutter) * 0.05, 1, 0, 0);
-      } else {
-        this.put(g, v.x, 0, k * (0.02 + 2 / v.len) - wind * 0.05, 1, 1);
-        g.transform(1, 0, (wind + flutter) * (0.08 + 12 / v.len), 1, 0, 0);
+      if (!this.visible(v.x + (box[0] + box[2]) / 2, box[3] / 2, (box[2] - box[0]) / 2 + box[3] / 2)) continue;
+      // (redrawn as it grows and as it fades, a step at a time)
+      const len = Math.round(v.len / 6) * 6;
+      const wi = Math.round(v.wither * 8);
+      const art = len === v.len ? v : { ...v, len };
+      const s = this.sprites.get('vine|' + v.kind + '|' + v.seed + '|' + len + '|' + wi, b, vineBox(art), (gg) => {
+        drawVine(gg, art);
+        if (wi) withered(gg, vineBox(art), wi / 8);
+      });
+      // the swing: the breeze (smoothed, so a gust builds and fades) pushes
+      // the tip downwind; the vine swings back and settles
+      const sw = v._sw || (v._sw = { a: 0, va: 0, wind: 0, ph: hash1(v.id, 5) * TAU });
+      sw.wind += (breeze.wind(v.x + (v.span || 0) / 2) - sw.wind) * (1 - Math.exp(-dt / 0.45));
+      const L = Math.max(40, v.len);
+      const k = 26 / L; // longer vines swing more slowly
+      const target = -sw.wind * (v.span ? 0.1 : 0.27) + Math.sin(tm * 0.55 + sw.ph) * (v.span ? 0.008 : 0.025);
+      sw.va += ((target - sw.a) * k * 9 - sw.va * 1.6) * dt;
+      sw.a += sw.va * dt;
+      const tip = -Math.sin(sw.a) * L; // how far the tip has swung sideways
+      // a quick ripple running down the strand while the air's moving
+      const flutter = Math.min(1, Math.abs(sw.wind)) * 2.2;
+      const off = (y) => {
+        const u = Math.max(0, y) / L;
+        return tip * Math.pow(Math.min(1, u), 1.6) + flutter * u * Math.sin(y * 0.05 - tm * 4.2 + sw.ph);
+      };
+      this.drawBent(g, s, v.x, off, this.q.budget > 8 ? 14 : 6);
+      // an old vine drops a yellowed leaf now and then
+      if (dt && v.wither > 0.3 && Math.random() < dt * v.wither * 0.35) {
+        this.ambient.add('leaf', v.x + off(L * 0.7) + rrange(-10, 10), rrange(L * 0.35, L * 0.95), v.wither > 0.7 ? '#a8763c' : '#c9b04a');
       }
-      g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
-    });
+    }
     this.setWorld(g);
+  }
+
+  // Draw a hanging sprite (hooked at x, y=0) bent sideways by off(y): it's
+  // cut into horizontal slices and each is sheared so its top and bottom
+  // edges follow the curve, so neighbouring slices meet exactly.
+  drawBent(g, s, x, off, n) {
+    const y0 = Math.max(0, s.y0);
+    const h = s.y0 + s.h - y0;
+    const ph = s.canvas.height / s.h; // sprite pixels per unit
+    const k = this.k;
+    for (let j = 0; j < n; j++) {
+      const ya = y0 + (h * j) / n;
+      const yb = y0 + (h * (j + 1)) / n;
+      const oa = off(ya);
+      const sh = (off(yb) - oa) / (yb - ya);
+      // world point (lx, ly) -> (x + lx + oa + sh * (ly - ya), ly)
+      g.setTransform(k, 0, k * sh, k, k * (x + oa - sh * ya) + this.ox, this.oy);
+      const sy = (ya - s.y0) * ph;
+      const sh2 = Math.min(s.canvas.height - sy, (yb - ya) * ph + 1);
+      g.drawImage(s.canvas, 0, sy, s.canvas.width, sh2, s.x0, ya, s.w, sh2 / ph);
+    }
+    // (the hanger above the lid line, if any, goes on unbent)
+    if (s.y0 < 0) {
+      g.setTransform(k, 0, 0, k, k * x + this.ox, this.oy);
+      const hp = Math.min(s.canvas.height, -s.y0 * ph);
+      g.drawImage(s.canvas, 0, 0, s.canvas.width, hp, s.x0, s.y0, s.w, hp / ph);
+    }
   }
 
   drawDecorE(g, d) {
@@ -664,6 +735,31 @@ export class Renderer {
     const chomp = f.biteT > 0 ? Math.sin(f.biteT * 40) * f.biteT * 0.3 : 0;
     this.put(g, x, y + 0.5, f.state === 'fall' ? f.angle : chomp * 0.6, sc * (f.biteSide < 0 ? -1 : 1) * (1 + chomp), sc * (1 - chomp));
     g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
+  }
+
+  // How far back in the water a swimmer is (0 by the front glass .. 1 far
+  // off): fish drift nearer and further as they go about, coming up front to
+  // eat, beg, gulp air or be looked at. Only for drawing: the tank itself is
+  // a slice, and the sim never needs to know.
+  depthOf(c) {
+    const ok = c.mode === 'swim' && !c.inside && !c.dead && c !== this.selected && (c.def.fish || c.sp === 'turtle' || c.sp === 'axolotl' || (c.sp === 'frog' && c.stage === 'tadpole'));
+    if (c.dz == null) {
+      c.dz = ok ? Math.random() * 0.55 : 0;
+      c.dzT = c.dz;
+      c.dzN = this.time + Math.random() * 8;
+    }
+    if (this.paused) return c.dz;
+    let tgt = 0;
+    if (ok) {
+      if (this.time > c.dzN) {
+        c.dzN = this.time + 6 + Math.random() * 12;
+        c.dzT = Math.pow(Math.random(), 1.6) * 0.85;
+      }
+      const b = c.brain.b;
+      tgt = c.pose === 'eat' || c.pose === 'gasp' || (b && (b.id === 'beg' || b.id === 'snack')) ? 0 : c.dzT;
+    }
+    c.dz += (tgt - c.dz) * Math.min(1, (this.dt || 0.016) / 2.4);
+    return c.dz;
   }
 
   drawCreatureE(g, c, alpha) {
@@ -749,6 +845,8 @@ export class Renderer {
       y += k * c.foot * 0.6;
     }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
+    // a fish nibbling at something below it tips its nose down to it
+    if (c.def.fish && c.pose === 'eat' && c.target && c.target.kind === 'food' && c.target.food && c.target.food.y > c.y + 4) ang += Math.min(0.5, (c.target.food.y - c.y) * 0.04) * c.facing;
     if (c.pupa) ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
     if (c.vis < 1) g.globalAlpha = c.vis;
     if (c.dead) {
@@ -765,6 +863,13 @@ export class Renderer {
       } else c.flapPh += dtR * wspec.hz * TAU;
       ph = c.flapPh;
       y -= Math.sin(ph) * wspec.bob * ds; // each downstroke lifts the body a touch
+    }
+    if (c.dz > 0.01) {
+      // further back: smaller, and fading into the water
+      const k = 1 - c.dz * 0.32;
+      sx *= k;
+      sy *= k;
+      g.globalAlpha *= 1 - c.dz * 0.5;
     }
     this.put(g, x, y, ang, vf * sx, sy);
     if (wspec) this.drawWings(g, c, wspec, ph, true, bucket);
@@ -1041,6 +1146,36 @@ export class Renderer {
       g.strokeStyle = 'rgba(36,70,110,0.6)';
       g.stroke();
       if (n < 4) continue;
+      // seen from the side through the glass, the underside of the surface
+      // is a silvery mirror: a bright band just under the waterline, with a
+      // faint copy of the ripples in it
+      const ym = yAt((x0 + x1) / 2);
+      if (!this.mirrorGrad || this.mirrorFor !== g || Math.abs(this.mirrorY - ym) > 0.5) {
+        const mg = g.createLinearGradient(0, ym, 0, ym + 14);
+        mg.addColorStop(0, 'rgba(236,250,255,0.42)');
+        mg.addColorStop(0.35, 'rgba(220,244,252,0.16)');
+        mg.addColorStop(1, 'rgba(220,244,252,0)');
+        this.mirrorGrad = mg;
+        this.mirrorFor = g;
+        this.mirrorY = ym;
+      }
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+      g.lineTo(x1, yAt(x1) + 14);
+      g.lineTo(x0, yAt(x0) + 14);
+      g.closePath();
+      g.fillStyle = this.mirrorGrad;
+      g.fill();
+      g.beginPath();
+      for (let k = 0; k < pts.length; k += 2) {
+        const yy = yAt(pts[k]) * 2 - pts[k + 1] + 5.5;
+        if (k) g.lineTo(pts[k], yy);
+        else g.moveTo(pts[k], yy);
+      }
+      g.lineWidth = 0.7;
+      g.strokeStyle = 'rgba(255,255,255,0.35)';
+      g.stroke();
       // cat's paws: little dark ruffles skating across the water in a gust
       const dir = breeze.wind((x0 + x1) / 2) < 0 ? -1 : 1;
       const off = tm * 24 * dir;
@@ -1067,7 +1202,7 @@ export class Renderer {
   drawPondGear(g) {
     const env = this.world.env;
     const wl = this.world.terrain.waterLevel;
-    if (!this.visible(1000, wl, 160)) return;
+    if (!this.visible((HEATER_X + FILTER_X) / 2, wl, 160)) return;
     const p = env.pond;
     const b = Math.min(this.bucket, 3);
     // the heater's coil glows while it's actually warming the water
@@ -1145,16 +1280,16 @@ export class Renderer {
     }
     // pond heater & filter labels (the gear itself is drawn under the water)
     const wl = t.waterLevel;
-    if (this.visible(1000, wl, 160)) {
+    if (this.visible((HEATER_X + FILTER_X) / 2, wl, 160)) {
       const p = env.pond;
       tag(g, 'heater', HEATER_X - 2, wl - 22, -20, -10, tagA);
       tag(g, 'filter', FILTER_X + 10, wl - 14, 14, -12, tagA);
       // the fill line on the glass, once the pond has evaporated below it
-      if (wl - p.full > 6 && this.visible(800, p.full, 300)) {
+      if (wl - p.full > 6 && this.visible(ZONE_MID.pond - 10, p.full, 300)) {
         g.setLineDash([5, 4]);
         g.beginPath();
-        g.moveTo(700, p.full);
-        g.lineTo(950, p.full);
+        g.moveTo(X(700), p.full);
+        g.lineTo(X(950), p.full);
         g.lineWidth = 0.9;
         g.strokeStyle = 'rgba(40,80,120,0.6)';
         g.stroke();
@@ -1162,7 +1297,7 @@ export class Renderer {
         g.font = "7px 'Patrick Hand', sans-serif";
         g.textAlign = 'left';
         g.fillStyle = 'rgba(40,80,120,0.8)';
-        g.fillText('fill line', 704, p.full - 2.5);
+        g.fillText('fill line', X(704), p.full - 2.5);
       }
     }
   }
@@ -1340,18 +1475,20 @@ export class Renderer {
       g.lineTo(x + 2, y);
       g.stroke();
     }
-    // name plate
+    // name plate, engraved with whoever the farm belongs to
+    const plate = plateText(this.world.keeper);
+    g.font = "bold 11px 'Chewy', 'Patrick Hand', sans-serif";
+    const pw = Math.max(120, g.measureText(plate).width + 26);
     g.beginPath();
-    g.rect(W / 2 - 60, H + 3, 120, 14);
+    g.rect(W / 2 - pw / 2, H + 3, pw, 14);
     g.fillStyle = '#f6efe0';
     g.fill();
     g.lineWidth = 1.2;
     g.stroke();
-    g.font = "bold 11px 'Chewy', 'Patrick Hand', sans-serif";
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = '#9a3c2e';
-    g.fillText('BUG FARM', W / 2, H + 10.5);
+    g.fillText(plate, W / 2, H + 10.5);
   }
 
   drawNight(g, view) {

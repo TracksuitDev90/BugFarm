@@ -4,7 +4,7 @@ import { SPECIES } from '../data/species.js';
 import { PALETTES, footOf } from '../art/creatures.js';
 import { ACCESSORIES, accessoryColor } from '../art/ink.js';
 import { randomName } from '../data/names.js';
-import { DAY_LEN, W, H, CELL, GW } from '../config.js';
+import { DAY_LEN, W, H, CELL, GW, ZONE_MID } from '../config.js';
 import { clamp, clamp01, band, lerp, angleDiff, smoothstep } from '../util/math.js';
 import { rrange, rint, chance } from '../util/rng.js';
 import { nearestWalkable, lineOfWater, findWaterPath } from '../world/pathfind.js';
@@ -60,6 +60,81 @@ export function nextId() {
 
 function gaussTrait() {
   return clamp01(0.5 + (Math.random() + Math.random() + Math.random() - 1.5) * 0.45);
+}
+
+// A swimmer's body is an oval (half-length rx, half-height ry) and all of it
+// belongs in the water. Wherever the floor would poke into it, ease the
+// swimmer up off the gravel; where a bank or wall is beside it, ease it
+// away; where the water is too shallow for it at all, ease it toward deeper
+// water. Uses the smooth ground line, so a fish settles just over a sloping
+// bottom rather than stepping cell by cell. top: the highest its middle may
+// go. Returns the adjusted position.
+const CLEAR = [0, 0];
+const FIT = [0, 0];
+function clearOfGround(t, x, y, rx, ry, top, dt) {
+  const k = Math.min(1, dt * 8);
+  let maxY = Infinity;
+  let left = false;
+  let right = false;
+  for (const u of [-1, -0.55, 0, 0.55, 1]) {
+    const hx = x + u * rx;
+    const half = ry * Math.sqrt(1 - u * u * 0.85);
+    let fy = t.surfaceY(hx);
+    if (fy < y - half * 0.4) {
+      // ground above this part of the body: a bank right beside it, or an
+      // overhang with the floor somewhere underneath
+      if (t.solidAt(hx, y)) {
+        if (u < 0) left = true;
+        else if (u > 0) right = true;
+        continue;
+      }
+      fy = Infinity;
+      for (let yy = y; yy <= y + half + CELL; yy += CELL) {
+        if (t.solidAt(hx, yy)) {
+          fy = Math.floor(yy / CELL) * CELL;
+          break;
+        }
+      }
+      if (fy === Infinity) continue;
+    }
+    maxY = Math.min(maxY, fy - half - 1);
+  }
+  // too shallow here for a body this size: make for deeper water
+  if (maxY < top) x += (t.surfaceY(x + rx * 1.5) > t.surfaceY(x - rx * 1.5) ? 1 : -1) * rx * 0.4 * k;
+  if (y > maxY) y += (maxY - y) * k;
+  // (squeezed between two banks, as in a channel, it just carries on)
+  if (left !== right) x += (left ? 1 : -1) * rx * 0.35 * k;
+  CLEAR[0] = x;
+  CLEAR[1] = y;
+  return CLEAR;
+}
+
+// The nearest spot to (x, y) where a body this size fits in open water:
+// below the surface limit `top`, above the floor and (if it may move
+// sideways: a place to swim to, not a snack) somewhere deep enough.
+function fitSpot(t, x, y, rx, ry, top, sideways) {
+  const room = (cx) => t.surfaceY(cx) - top - ry - 1;
+  let fx = x;
+  if (sideways && room(x) < ry && t.surfaceY(x) > y) {
+    for (let j = 1; j <= 4; j++) {
+      const a = x - j * rx;
+      const b = x + j * rx;
+      if (room(b) >= ry && t.waterAt(b, top + ry)) {
+        fx = b;
+        break;
+      }
+      if (room(a) >= ry && t.waterAt(a, top + ry)) {
+        fx = a;
+        break;
+      }
+    }
+  }
+  const floor = t.surfaceY(fx);
+  let fy = y;
+  if (floor > fy) fy = Math.min(fy, floor - ry - 1);
+  FIT[0] = fx;
+  FIT[1] = Math.max(fy, top);
+  return FIT;
 }
 
 export class Creature {
@@ -280,6 +355,24 @@ export class Creature {
     if (this.stage === 'baby' || this.stage === 'nymph' || this.stage === 'young') return s * 0.6;
     return s;
   }
+  // Half the length and height of a swimmer's body: what has to stay inside
+  // the water (null for critters without one, which only keep their middle
+  // in the water).
+  swimBody() {
+    const b = this.def.body;
+    if (!b) return this.sp === 'frog' && this.stage !== 'adult' ? [this.size * 0.55, this.size * 0.3] : null;
+    const k = this.size / this.def.size;
+    return [b[0] * k, b[1] * k];
+  }
+
+  // Is the water here deep enough for this body to swim in?
+  roomToSwim(t, x) {
+    const b = this.swimBody();
+    if (!b) return true;
+    const top = t.waterSurfY(x);
+    return t.surfaceY(x) - top >= b[1] * 2 + 2;
+  }
+
   // Visual scale for stages that reuse adult art.
   get drawScale() {
     const st = this.stage;
@@ -431,7 +524,7 @@ export class Creature {
       this.mode = 'swim';
       this.paddling = true;
       return;
-    } else if (surfWet && this.amphibious) {
+    } else if (surfWet && this.amphibious && this.roomToSwim(t, this.x)) {
       this.mode = 'swim';
       return;
     }
@@ -758,7 +851,7 @@ export class Creature {
         // (never settle anywhere dry, like a pocket against the rocks: drift
         // on out toward the open water instead)
         if (!t.waterAt(this.x, t.surfaceY(this.x) - 2)) {
-          const dir = this.x < 810 ? 1 : -1;
+          const dir = this.x < ZONE_MID.pond ? 1 : -1;
           if (t.waterAt(this.x + dir * 3, this.y)) this.x += dir * 20 * dt;
           else if (t.waterAt(this.x, this.y - 3)) this.y -= 10 * dt;
           this.vy = 0;
@@ -779,15 +872,35 @@ export class Creature {
       this.moving = false;
       return;
     }
+    // an amphibian in water too small to swim in (a puddle, the reeds'
+    // pocket) wades along the bottom instead
+    if (this.amphibious && !this.roomToSwim(t, this.x)) {
+      this.mode = 'walk';
+      this.y = this.groundAt(w, this.x);
+      this.vx = this.vy = 0;
+      return;
+    }
     // non-swimmers and amphibians heading to land: make for the shore
     let wantLand = false;
     if (this.paddling) wantLand = true;
+    // an amphibian that's got itself stuck (in a pool with no way through to
+    // where it's going, say) climbs out and walks round instead
+    else if (!this.aquatic && this.memory.ashore > w.time) wantLand = true;
     else if (tp && (this.amphibious || !this.aquatic) && !t.waterAt(tp[0], tp[1]) && tp[1] < wl + 30) wantLand = true;
     if (wantLand) {
       const shore = w.nearestShore(this.x, tp ? tp[0] : this.x);
       if (shore) tp = [shore, wl + 3];
       else if (!tp) tp = [this.x, wl + 3];
     }
+    // The whole body belongs under the water, not just its middle: a spot
+    // too near the floor or the surface is taken as the nearest spot the
+    // body fits (a fish gulping air, begging or coming up to breathe pokes
+    // its nose up to the top, of course).
+    const body = wantLand || this.paddling ? null : this.swimBody();
+    const b = this.brain.b;
+    const atTop = this.pose === 'gasp' || (b && (b.id === 'beg' || b.id === 'breathe'));
+    const topY = wl + (atTop || !body ? 3 : body[1] + 1);
+    if (tp && body) tp = fitSpot(t, tp[0], tp[1], body[0], body[1], topY, !this.target || this.target.kind === 'point');
     let tx;
     let ty;
     if (tp) {
@@ -804,6 +917,21 @@ export class Creature {
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy) || 1;
     const dGoal = tp ? Math.hypot(tp[0] - this.x, tp[1] - this.y) : d;
+    if (!this.aquatic && !wantLand && tp && dGoal > 30) {
+      // getting nowhere for a few seconds? (checked every 1.5s)
+      this.stuckT = (this.stuckT || 0) + dt;
+      if (this.stuckT > 1.5) {
+        this.stuckT = 0;
+        const moved = this.stuckX == null ? Infinity : Math.hypot(this.x - this.stuckX, this.y - this.stuckY);
+        this.stuckN = moved < 5 ? (this.stuckN || 0) + 1 : 0;
+        this.stuckX = this.x;
+        this.stuckY = this.y;
+        if (this.stuckN >= 2) {
+          this.stuckN = 0;
+          this.memory.ashore = w.time + 25;
+        }
+      }
+    }
     // Tail beats: fish and tadpoles swim in little bursts and coast in
     // between (now and then darting off), a turtle in slow strong strokes.
     let thrust = 1;
@@ -851,7 +979,12 @@ export class Creature {
     let nx = this.x + (this.vx + XY[0] * drift) * dt;
     let ny = this.y + (this.vy + XY[1] * drift) * dt;
     this.beat += dt * (1.2 + 9 * clamp(Math.hypot(this.vx, this.vy) / Math.max(1, sp), 0, 1.4) * (thrust > 1 ? 1.4 : 0.8));
-    if (ny < wl + 3) ny = wl + 3;
+    if (ny < topY) ny = topY;
+    if (body) {
+      const c = clearOfGround(t, nx, ny, body[0], body[1], topY, dt);
+      nx = c[0];
+      ny = c[1];
+    }
     if (!t.waterAt(nx, ny)) {
       // shore exit for land-goers
       if (wantLand && Math.abs(this.y - (wl + 3)) < 8) {

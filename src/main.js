@@ -1,11 +1,12 @@
 // Bug Farm entry point.
-import { W, H, DAY_LEN } from './config.js';
+import { W, H, DAY_LEN, TANK, parseTank } from './config.js';
 import { Game } from './game.js';
 import { Input } from './ui/input.js';
 import { UI } from './ui/ui.js';
 import { Journal } from './sim/journal.js';
 import { Sound } from './audio/audio.js';
-import { loadGame, saveGame, loadSettings, saveSettings, exportSave, importSave, clearSave } from './save/save.js';
+import { loadGame, saveGame, loadSettings, saveSettings, exportSave, importSave, clearSave, snapshot, writeSave, writeTankSize } from './save/save.js';
+import { expandSave, sameTank } from './sim/tank.js';
 import { catchUp, awaySeconds } from './sim/away.js';
 import { clamp } from './util/math.js';
 
@@ -20,6 +21,7 @@ journal.sandbox = settings.sandbox;
 let ui = null;
 let input = null;
 let ready = false;
+let frozen = false; // (a save this tank can't hold: leave it be, never overwrite it)
 let autoQuality = guessQuality();
 let slowT = 0;
 
@@ -44,7 +46,7 @@ function resize() {
 }
 
 function save(manual) {
-  if (!ready) return;
+  if (!ready || frozen) return;
   const r = saveGame(game, journal);
   if (manual && ui) ui.toast(r.ok ? 'Saved! Your tank is safe on this device.' : 'Could not save — storage is full. Try exporting to a file.', r.ok ? 'heart' : '!');
 }
@@ -69,14 +71,9 @@ function wireWorld() {
     else if (name === 'plop') sound.play('plop', vol * 0.8, 0.9 + Math.random() * 0.25, 0.05);
     else if (name === 'tap') sound.play('tap', vol * 0.6, 1, 0.05);
   });
-  let lastToast = 0;
   w.events.on('log', (l) => {
     if (!ui || !ready || w.awayMode) return;
-    const now = performance.now();
-    if (l.icon === 'crown' || (l.icon === 'star' && !/^Discovery/.test(l.text)) || ((l.icon === 'heart' || l.icon === 'flower') && now - lastToast > 9000)) {
-      lastToast = now;
-      ui.toast(l.text, l.icon === 'flower' ? 'flower' : l.icon);
-    }
+    ui.news(l);
   });
   w.events.on('hop', () => {});
 }
@@ -166,6 +163,7 @@ async function boot() {
       try {
         const d = await importSave(file);
         saveGame({ world: { serialize: () => d.world }, cam: { serialize: () => d.cam }, speed: d.speed }, { serialize: () => d.journal });
+        writeTankSize(parseTank(d.world.tank));
         location.reload();
       } catch (e) {
         ui.toast('That file is not a Bug Farm save.', '!');
@@ -174,9 +172,43 @@ async function boot() {
     newTank: () => {
       clearSave();
       ready = false;
-      ui.showWelcome((starter) => newTank(starter));
+      // (a new farm starts in the original, unbuilt tank)
+      if (!sameTank(TANK, parseTank(null))) {
+        writeTankSize(null);
+        location.reload();
+        return;
+      }
+      ui.showWelcome((starter) => {
+        newTank(starter);
+        ui.askName(() => {
+          save();
+          ui.herald.hold(60);
+        }, true);
+      });
     },
     terrainChanged: () => game.world.computeRegions(),
+    // The builders are here: widen the saved tank and come back to it.
+    expandTank: (zone) => {
+      let data;
+      try {
+        data = expandSave(snapshot(game, journal), zone);
+        if (!writeSave(data).ok) throw new Error('storage full');
+        if (!writeTankSize(data.world.tank)) throw new Error('storage full');
+      } catch (e) {
+        console.warn('Could not build', e);
+        return false;
+      }
+      // no more saving the old tank over the new one
+      frozen = true;
+      const card = document.createElement('div');
+      card.id = 'loading';
+      card.innerHTML = `<div><div class="logo">BUG FARM</div><div class="sub">${{ desert: 'The builders are laying fresh sand in the desert...', pond: 'The builders are digging the pond wider...', jungle: 'The builders are opening up more jungle...' }[zone]}</div><div class="bar"><i style="width:100%"></i></div></div>`;
+      card.style.opacity = '0';
+      document.body.append(card);
+      requestAnimationFrame(() => (card.style.opacity = '1'));
+      setTimeout(() => location.reload(), 1200);
+      return true;
+    },
   });
   ui.init();
   resize();
@@ -202,9 +234,26 @@ async function boot() {
   game.onFrame = onFrame;
 
   const data = loadGame();
+  // The tank is built to the size its save needs (a brand-new farm starts at
+  // the original size). If it isn't, set it and start again (just once).
+  const want = parseTank(data ? data.world.tank : null);
+  if (!sameTank(want, TANK)) {
+    let last = 0;
+    try {
+      last = +sessionStorage.getItem('bugfarm.resized') || 0;
+      sessionStorage.setItem('bugfarm.resized', String(Date.now()));
+    } catch (e) {
+      /* no session storage */
+    }
+    if (Date.now() - last > 15000 && writeTankSize(want)) {
+      location.reload();
+      return;
+    }
+    if (data) frozen = true;
+  }
   let summary = null;
   let elapsed = 0;
-  if (data) {
+  if (data && !frozen) {
     elapsed = Math.max(0, (Date.now() - data.savedAt) / 1000);
     try {
       summary = await loadFromData(data, elapsed);
@@ -214,6 +263,7 @@ async function boot() {
     }
   }
   const loading = document.getElementById('loading');
+  if (frozen) setTimeout(() => ui.toast('Your saved farm needs a bigger tank, but this browser wouldn\'t let us build it. It\'s safe: nothing will be saved over it.', '!', true, 9000), 1200);
   if (!ready) {
     // first visit: an empty tank behind the welcome card
     game.world.newGame((Math.random() * 1e9) | 0, false);
@@ -224,12 +274,31 @@ async function boot() {
       newTank(starter);
       settings.welcomed = true;
       saveSettings(settings);
-      setTimeout(() => ui.tip(), 1500);
-      setTimeout(() => ui.tip(), 7000);
+      ui.askName(() => {
+        save();
+        // a new farm settles in quietly: two tips, then a minute to look round
+        ui.herald.hold(60);
+        setTimeout(() => ui.tip(true), 1500);
+        setTimeout(() => ui.tip(true), 9000);
+      }, true);
     });
-  } else if (summary) {
-    ui.showAway(summary, elapsed);
-  } else if (settings.tips) setTimeout(() => ui.tip(), 2500);
+  } else {
+    // just built bigger: show off the new ground (once)
+    if (data.built) {
+      game.world.newGround(data.built);
+      ui.builtTank(data.built);
+      save();
+    }
+    // a farm from before Busytown asked for names gets asked once
+    const ask = () => !game.world.keeper && ui.askName(() => save(), true);
+    if (summary) {
+      ui.showAway(summary, elapsed);
+      ui.onModalClose = ask;
+    } else {
+      setTimeout(ask, 600);
+      if (settings.tips) setTimeout(() => ui.tip(), 2500);
+    }
+  }
   game.start();
   if (loading) {
     loading.style.opacity = '0';

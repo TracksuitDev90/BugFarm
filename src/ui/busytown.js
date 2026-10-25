@@ -19,6 +19,8 @@ import { WARE_ART } from '../art/wares.js';
 import { Plant } from '../entities/plant.js';
 import { neighbour, needsWords } from '../sim/orders.js';
 import { wareState, buy } from '../sim/market.js';
+import { ZONE_NAMES } from '../sim/care.js';
+import { dear, thanksTo } from '../sim/keeper.js';
 
 // A neighbour's portrait. mood: 'ask' | 'happy'
 export function folkCanvas(nb, mood = 'ask', css = 72) {
@@ -39,6 +41,78 @@ export function coinsEl(n, cls = '') {
   return el('span', { class: 'coins ' + cls }, iconCanvas('coin', 18), el('b', {}, String(n)));
 }
 
+// A builder's sketch of the new ground: a slab of sand, water or soil with
+// a spade stuck in it and a little flag.
+function drawBuild(g, zone) {
+  const col = { desert: ['#e8c483', '#c99c5f'], pond: ['#8cc8e6', '#4f86b0'], jungle: ['#7d5538', '#5f3e28'] }[zone];
+  g.lineWidth = 1.4;
+  g.strokeStyle = '#3a2a1f';
+  g.beginPath();
+  g.moveTo(-26, 4);
+  g.quadraticCurveTo(-8, -2, 26, 3);
+  g.lineTo(26, 18);
+  g.lineTo(-26, 18);
+  g.closePath();
+  g.fillStyle = col[0];
+  g.fill();
+  g.stroke();
+  if (zone === 'pond') {
+    g.beginPath();
+    g.moveTo(-26, 12);
+    g.quadraticCurveTo(0, 9, 26, 12);
+    g.lineTo(26, 18);
+    g.lineTo(-26, 18);
+    g.closePath();
+    g.fillStyle = '#a69a87';
+    g.fill();
+    g.stroke();
+  }
+  if (zone === 'jungle') {
+    for (const x of [-18, -6, 8, 20]) {
+      g.beginPath();
+      g.moveTo(x, 2);
+      g.quadraticCurveTo(x - 3, -6, x - 6, -8);
+      g.moveTo(x, 2);
+      g.quadraticCurveTo(x + 2, -7, x + 5, -9);
+      g.strokeStyle = '#4f8a3c';
+      g.stroke();
+    }
+    g.strokeStyle = '#3a2a1f';
+  }
+  // the spade
+  g.beginPath();
+  g.moveTo(10, 2);
+  g.lineTo(16, -22);
+  g.lineWidth = 2.6;
+  g.strokeStyle = '#8a5a2c';
+  g.stroke();
+  g.lineWidth = 1.2;
+  g.strokeStyle = '#3a2a1f';
+  g.beginPath();
+  g.moveTo(5, 1);
+  g.lineTo(13, 3);
+  g.lineTo(11, 11);
+  g.lineTo(3, 9);
+  g.closePath();
+  g.fillStyle = '#b7bcc2';
+  g.fill();
+  g.stroke();
+  // the flag
+  g.beginPath();
+  g.moveTo(-14, 3);
+  g.lineTo(-14, -24);
+  g.lineWidth = 1.4;
+  g.stroke();
+  g.beginPath();
+  g.moveTo(-14, -24);
+  g.lineTo(-2, -20);
+  g.lineTo(-14, -16);
+  g.closePath();
+  g.fillStyle = '#e2553f';
+  g.fill();
+  g.stroke();
+}
+
 // A picture of a ware, whatever kind of thing it is.
 export function wareCanvas(ware, css = 56) {
   const size = [css, Math.round(css * 0.86)];
@@ -50,6 +124,7 @@ export function wareCanvas(ware, css = 56) {
   }
   if (ware.kind === 'stock') return artCanvas(size, [-11, -12, 11, 3], (g) => drawFood(g, FOODS.bun, 0));
   if (ware.id === 'courier') return creatureArt('dragonfly', 'adult', 'idle', 4, 'post', '#3f6aa8', size);
+  if (ware.kind === 'build') return artCanvas(size, [-30, -28, 30, 22], (g) => drawBuild(g, ware.zone));
   const a = WARE_ART[ware.id];
   return a ? artCanvas(size, a.box, a.draw) : iconCanvas('shop', css * 0.7);
 }
@@ -93,6 +168,7 @@ export class Postbag {
     }
     this.box.append(this.cur.el);
     this.box.classList.remove('hidden');
+    ui.herald.note();
     this.timer = setTimeout(() => this.next(), this.cur.ms || 12000);
   }
 
@@ -108,7 +184,7 @@ export class Postbag {
       el('div', { class: 'pc-art' }, folkCanvas(nb, 'ask', 84)),
       el('div', { class: 'pc-body' },
         el('div', { class: 'pc-name' }, el('b', {}, nb.name), ` · ${nb.job}`),
-        el('div', { class: 'bubble' }, `“Dear Bug Farm, could you send ${needsWords(o.needs)}? ${o.why}”`),
+        el('div', { class: 'bubble' }, `“${dear(w.keeper)}, could you send ${needsWords(o.needs)}? ${o.why}”`),
         el('div', { class: 'pc-pay' }, coinsEl(pay.total), el('span', {}, `+ ★${o.stars} and treats`), heartsEl(ord.heartsOf(nb.id))),
         offer ? el('div', { class: 'pc-offer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} and they'll sell you the `, el('b', {}, offer.ware.name.toLowerCase()), '!') : null,
         el('div', { class: 'pc-btns' },
@@ -132,7 +208,7 @@ export class Postbag {
       el('div', { class: 'pc-art' }, folkCanvas(nb, 'happy', 84)),
       el('div', { class: 'pc-body' },
         el('div', { class: 'pc-name' }, el('b', {}, nb.name), ' says thank you!'),
-        el('div', { class: 'bubble' }, `“${r.thanks}”`),
+        el('div', { class: 'bubble' }, `“${thanksTo(ui.world.keeper)} ${r.thanks}”`),
         el('div', { class: 'pc-pay' }, coinsEl('+' + r.pay.total, 'big'), el('span', {}, `★${r.o.stars}${r.treats.length ? ' · treats for the critters' : ''}`), heartsEl(r.hearts, true)),
         parts.length ? el('div', { class: 'pc-small' }, `(${r.pay.base} for the order, ${parts.join(', ')})`) : null,
         ...r.offers.map((wr) => el('div', { class: 'pc-offer new' }, `${nb.name} will now sell you the `, el('b', {}, wr.name.toLowerCase()), ' at the Market!')),
@@ -174,10 +250,22 @@ export function buildMarket(ui, b, head) {
       const st = wareState(j, w, wr);
       let act;
       if (st.state === 'owned') act = el('span', { class: 'owned' }, '✓ Yours');
-      else if (st.state === 'locked') act = el('span', { class: 'locked' }, iconCanvas('lock', 16), `${st.need} more ${st.need === 1 ? 'order' : 'orders'} for ${nb.name.split(' ')[0]}`);
+      else if (st.state === 'locked') act = el('span', { class: 'locked' }, iconCanvas('lock', 16), st.lock ? `Ready ${st.lock}` : `${st.need} more ${st.need === 1 ? 'order' : 'orders'} for ${nb.name.split(' ')[0]}`);
       else {
         act = el('button', { class: 'btn small' + (st.afford ? ' yellow' : ''), disabled: !st.afford, onclick: () => {
           const r = buy(j, w, wr);
+          if (r.ok && r.build) {
+            // off go the builders: the game saves, builds and comes back
+            ui.sound.play('sparkle', 0.9);
+            if (ui.hooks.expandTank(r.build)) {
+              ui.closeModal();
+              return;
+            }
+            w.coins += r.cost;
+            ui.toast('The builders couldn\'t get started (this browser wouldn\'t let the farm save). Your coins are back in your purse.', '!', true, 6000);
+            ui.openMarket();
+            return;
+          }
           ui.sound.play(r.ok ? 'sparkle' : 'pop', r.ok ? 0.9 : 0.4);
           ui.toast(r.ok ? `<b>${esc(wr.name)}!</b> ${esc(r.msg)}` : esc(r.msg), r.ok ? 'coin' : '!', r.ok, r.ok ? 6000 : 3200);
           if (r.ok) {
@@ -189,7 +277,9 @@ export function buildMarket(ui, b, head) {
         } }, iconCanvas('coin', 18), st.cost ? String(st.cost) : 'Free');
       }
       const stock = wr.kind === 'stock' && w.stock[wr.id] ? el('div', { class: 'small' }, `You have ${w.stock[wr.id]}.`) : null;
-      stall.append(el('div', { class: 'ware ' + st.state }, wareCanvas(wr, 56), el('div', { class: 'ware-text' }, el('b', {}, wr.name), el('div', { class: 'small' }, st.state === 'locked' ? `“${wr.pitch}”` : wr.what), stock), el('div', { class: 'ware-buy' }, act)));
+      const title = wr.kind === 'build' ? `${wr.name}${st.owned ? '' : ` (${st.tier + 1} of ${st.max})`}` : wr.name;
+      const text = wr.kind === 'build' && st.owned ? `The ${ZONE_NAMES[wr.zone].toLowerCase()} is as big as Bertie can make it.` : st.state === 'locked' ? `“${wr.pitch}”` : wr.what;
+      stall.append(el('div', { class: 'ware ' + st.state }, wareCanvas(wr, 56), el('div', { class: 'ware-text' }, el('b', {}, title), el('div', { class: 'small' }, text), stock), el('div', { class: 'ware-buy' }, act)));
     }
     grid.append(stall);
   }

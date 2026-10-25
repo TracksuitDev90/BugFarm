@@ -1,6 +1,6 @@
 // Behaviour library. Each behaviour scores how much a critter wants to do it
 // right now, then drives the body while it runs.
-import { DAY_LEN, W } from '../config.js';
+import { DAY_LEN, W, ZONE_X, ZONE_MID } from '../config.js';
 import { JOBS } from '../data/goods.js';
 import { clamp, clamp01, smoothstep } from '../util/math.js';
 import { rrange, rint, chance, rpick } from '../util/rng.js';
@@ -833,7 +833,7 @@ def('mate', {
     const b = c.def.breed;
     if (!b || !c.isAdult || c.mateCD > 0 || c.hidden) return false;
     if (b.mode !== 'pair' && b.mode !== 'solo' && b.mode !== 'hive') return false;
-    return w.count(c.sp) < c.def.maxPop;
+    return w.count(c.sp) < w.maxPop(c.sp);
   },
   score(c, w) {
     if (c.hunger > 0.5 || c.health < 0.6 || c.comfort < 0.55 || c.act < 0.4) return 0;
@@ -2006,7 +2006,7 @@ def('breathe', {
     const d = c.brain.data;
     const t = w.terrain;
     if (c.mode === 'swim') {
-      const x = clamp(c.x + rrange(-40, 40), 520, 1100);
+      const x = clamp(c.x + rrange(-40, 40), ZONE_X.pond[0] - 40, ZONE_X.pond[1] + 40);
       if (t.waterAt(x, t.waterLevel + 4)) c.seekPoint(x, t.waterLevel + 3);
       else c.seekPoint(c.x, t.waterLevel + 3);
       return;
@@ -2124,7 +2124,7 @@ function warmLamp(c, w) {
   let best = null;
   let bd = 700;
   for (const z of ['desert', 'pond', 'jungle']) {
-    const lamp = w.env.lampAt(z === 'desert' ? 100 : z === 'pond' ? 800 : 1400);
+    const lamp = w.env.lampAt(ZONE_MID[z]);
     if (lamp.power < 0.2) continue;
     const d = Math.abs(lamp.x - c.x);
     if (d < bd) {
@@ -2252,7 +2252,7 @@ function nightLight(c, w) {
     }
   }
   for (const z of ['desert', 'pond', 'jungle']) {
-    const lamp = w.env.lampAt(z === 'desert' ? 100 : z === 'pond' ? 800 : 1400);
+    const lamp = w.env.lampAt(ZONE_MID[z]);
     const dd = Math.abs(lamp.x - c.x);
     if (lamp.power > 0.2 && dd < bd) {
       bd = dd;

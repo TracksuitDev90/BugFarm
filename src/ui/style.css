@@ -1648,6 +1648,75 @@ p.small {
   opacity: 0.9;
 }
 
+/* ---------- naming the farm ---------- */
+.naming .name-kinds {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.naming .name-kinds .btn {
+  flex: 1;
+}
+.naming .name-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.name-in {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 22px;
+  color: var(--ink);
+  background: #fffdf6;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  padding: 6px 12px;
+  box-shadow: inset 1px 2px 0 rgba(58, 42, 31, 0.12);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.name-in:focus {
+  outline: 3px solid var(--blue);
+  outline-offset: 1px;
+}
+.name-preview {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 2px dashed rgba(58, 42, 31, 0.3);
+  border-radius: 12px;
+  background: var(--paper2);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  transition: opacity 0.2s;
+}
+.name-preview.ghost {
+  opacity: 0.55;
+}
+.name-preview .letter {
+  font-size: 17px;
+  font-style: italic;
+  text-align: center;
+}
+.name-preview .plate {
+  font-family: 'Chewy', 'Patrick Hand', sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  color: #9a3c2e;
+  background: #f6efe0;
+  border: 1.5px solid var(--ink);
+  padding: 1px 14px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.naming .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ---------- shaping dock: a slim strip instead of the big sheet ---------- */
 #sheet.compact {
   width: auto;

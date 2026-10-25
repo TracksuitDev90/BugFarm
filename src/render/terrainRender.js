@@ -488,6 +488,7 @@ export class TerrainRenderer {
     const i0 = kx * CHUNK;
     const j0 = ky * CHUNK;
     const kind = buildMaskXY(i0, j0, (i, j) => t.water[j * GW + i] === 1);
+    this.waterPathVer = (this.waterPathVer || 0) + 1;
     if (!kind) {
       this.wchunks[k] = undefined;
       return;
@@ -510,10 +511,12 @@ export class TerrainRenderer {
     g.clearRect(0, 0, px, px);
     g.setTransform(S, 0, 0, S, -wx * S, -wy * S);
     const { fill: fp, edge } = maskPaths(i0, j0, true, true);
-    // a wash that deepens with depth
-    const grad = g.createLinearGradient(0, look.top, 0, H);
+    // (kept, so what's behind the water can be clipped to its shape)
+    ch.path = fp;
+    // a wash that deepens with depth, down to the bottom of the pond
+    const grad = g.createLinearGradient(0, look.top, 0, look.top + (look.depth || 240));
     grad.addColorStop(0, look.c0);
-    grad.addColorStop(0.45, look.c1);
+    grad.addColorStop(0.5, look.c1);
     grad.addColorStop(1, look.c2);
     g.fillStyle = grad;
     g.fill(fp);
@@ -538,6 +541,34 @@ export class TerrainRenderer {
       g.stroke();
     }
     g.restore();
+  }
+
+  // All the water as one shape (world units), and the box round it, for
+  // clipping the deep water drawn behind everything in it. Rebuilt only when
+  // a water chunk is repainted.
+  waterShape() {
+    if (this.shapeVer === this.waterPathVer && this.shape !== undefined) return this.shape;
+    this.shapeVer = this.waterPathVer;
+    const span = CHUNK * CELL;
+    let path = null;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let k = 0; k < CHW * CHH; k++) {
+      const ch = this.wchunks[k];
+      if (!ch || !ch.path) continue;
+      if (!path) path = new Path2D();
+      path.addPath(ch.path);
+      const x = (k % CHW) * span;
+      const y = ((k / CHW) | 0) * span;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x + span);
+      y1 = Math.max(y1, y + span);
+    }
+    this.shape = path ? { path, x0, y0, x1, y1 } : null;
+    return this.shape;
   }
 
   // k, ox, oy: the world-to-device transform. Chunks are placed on whole

@@ -15,7 +15,7 @@ and run gentle experiments to see what happens.
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
-- **Small and quick to load.** About 215 KB of gzipped JavaScript and two
+- **Small and quick to load.** About 230 KB of gzipped JavaScript and two
   small fonts. All the art is drawn in code, so there are no image downloads.
 - **Smooth on old hardware.** The static scenery is cached, critters are
   pre-rendered sprites, and the simulation runs at a fixed 30 steps a second.
@@ -32,6 +32,13 @@ washes that bloom and pool at their edges, ink stippling in the sand, pencil
 hatching in the tunnels, a bold ink line, all on cold-press paper. Sunlight
 falls through the glass in soft shafts with dust drifting in them, dappled
 light comes down through the jungle canopy, and rays sway under the pond.
+The pond has depth: looking in through the front glass, the water darkens
+toward the bottom and goes back and back, with fronds and stones fading into
+a blue-green haze behind the fish (they drift past more slowly than the near
+things as you look around), the gravel floor receding into it, and the
+silvery underside of the surface just below the waterline. Fish swim nearer
+and further too, smaller and hazier when they're far back, and come up to
+the front to eat.
 Every so often a soft breeze rolls through the tank: the grass bows, the
 flowers and palms lean, the vines swing, leaves and dandelion fluff blow
 about, sand lifts off the dunes and the pond ruffles up. Under the water the
@@ -51,8 +58,8 @@ remember.
 | Zone | Who lives there | What to watch for |
 | --- | --- | --- |
 | Desert | Ants (garden, harvester and honeypot colonies), crickets, a gecko, beetles | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. The queen walks slowly among her eggs, and moves to whichever room is the right warmth for them, with workers escorting her and carrying the brood after her. Scouts patrol the tunnels and rush to anything new (dig a hollow by the nest and they'll make it a room), a couple of guards stand at the door and shoo away big visitors, and well-fed ants feed hungry sisters mouth to mouth. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Colonies come in three kinds: garden ants herd aphids, big-headed harvester ants stock a granary and pile spare seeds by the door, and honeypot ants swell up golden with nectar and fill jars of desert honey. Each kind you adopt digs its own nest. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
-| Pond | Goldfish (common, comet, fantail, black moor, oranda, shubunkin...), guppies, neon tetras, koi, pea puffers, an axolotl, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp, dragonflies (nymphs underwater, then up and away) | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks on the rocks, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. Guppies skim the surface for flies, neon tetras school shoulder to shoulder and glow after dark, koi rummage in the gravel (and sometimes find a lost coin), pea puffers puff up into prickly balls when startled and keep the snails in check, and the axolotl strolls along the bottom smiling. Dragonfly nymphs hunt along the bottom, then climb out and zoom off on four wings. |
-| Jungle | Ladybugs, aphids, butterflies (monarch, blue morpho, tiger swallowtail, pink rose, cabbage white, and rare peacocks, glasswings and emerald swallowtails), moths (luna, rosy maple, polyphemus), snails, bumblebees, earthworms, fireflies, grasshoppers, pill bugs | A misty rainforest of palms, monsteras and bromeliads. Every vine hanging from the lid is a different plant: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync, and moths loop round every lamp. |
+| Pond | Goldfish (common, comet, fantail, black moor, oranda, shubunkin...), guppies, neon tetras, koi, pea puffers, an axolotl, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp, dragonflies (nymphs underwater, then up and away) | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. Their whole bodies stay in the water: they glide just clear of the gravel and the banks, and tip their noses down to nibble what's on the bottom. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks on the rocks, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. Guppies skim the surface for flies, neon tetras school shoulder to shoulder and glow after dark, koi rummage in the gravel (and sometimes find a lost coin), pea puffers puff up into prickly balls when startled and keep the snails in check, and the axolotl strolls along the bottom smiling. Dragonfly nymphs hunt along the bottom, then climb out and zoom off on four wings. |
+| Jungle | Ladybugs, aphids, butterflies (monarch, blue morpho, tiger swallowtail, pink rose, cabbage white, and rare peacocks, glasswings and emerald swallowtails), moths (luna, rosy maple, polyphemus), snails, bumblebees, earthworms, fireflies, grasshoppers, pill bugs | A misty rainforest of palms, monsteras and bromeliads. The vines hanging from the lid are living plants: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Each one roots as a little cutting, grows down over a day or two, lives a week or two, then yellows, drops its leaves and withers away. Most new vines are cuttings of a neighbour, so the canopy has runs of the same plant with the odd newcomer. A dry jungle browns them; they swing from their hooks like rope in the breeze. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync, and moths loop round every lamp. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
 
@@ -107,14 +114,20 @@ on) and Busytown sends a couple of coins to celebrate.
 
 ## Busytown and the Market
 
-Twelve neighbours in Busytown write to the farm for its goods: Baker Bramble
+Thirteen neighbours in Busytown write to the farm for its goods: Baker Bramble
 wants honey, Tilly Thimble the tailor wants silk, Gus Greenthumb the gardener
 wants compost, Flora Petal wants lilies, Miss Penny's class wants seeds, and
-Pip the postman, Sprocket the inventor, Odette at the pet shop and the rest
-all have their reasons. Each of them is drawn in the book's style: a bear in
-a baker's cap, a toad mayor in a top hat, an owl teacher in spectacles.
+Pip the postman, Sprocket the inventor, Odette at the pet shop, Bertie Bricks
+the builder and the rest all have their reasons. Each of them is drawn in the
+book's style: a bear in a baker's cap, a toad mayor in a top hat, an owl
+teacher in spectacles, a bear builder in a hard hat.
 
 ![A letter from Tilly Thimble the tailor, a grey tabby cat in spectacles and a purple dress, asking for a silk chrysalis for the mayor's parade scarf. It pays 12 coins, 3 stars and treats, and says that after two more orders she'll sell the farm a butterfly house](docs/letter.png)
+
+A new farm is asked who lives there: your own name or your town's. The
+letters are addressed to it ("Dear Juniper" or "Dear friends at Maple
+Hollow"), the thank-yous use it, and it's on the brass plate on the front of
+the tank. It can be changed in Settings.
 
 When a letter comes it pops up with a portrait of whoever wrote it. Their
 letters wait on the clipboard's **Orders** tab, and the mailbox flag goes up.
@@ -129,6 +142,7 @@ None of them are just for show:
 
 | Ware | From | What it does |
 | --- | --- | --- |
+| Bigger desert, pond and jungle | Bertie Bricks the builder | Widens a zone of the tank, twice each: fresh sand on the desert's far side, the pond dug wider down the middle (gravel, water and all), more jungle floor and lid for vines. Each step opens once the zone reaches a level. Everyone and everything moves over with the ground, and the builders plant a few things on the new ground. A bigger zone also has room for more critters, plants and decorations. |
 | Mail dragonfly | Pip the postman | Dash, a dragonfly in a postman's cap, collects every good into the basket for you. |
 | Rain barrel | Farmer Furrow | The misters' jugs refill themselves and the pond tops itself up. |
 | Town notice board | Mayor Mossbottom | Up to 5 letters at once, twice as often, and every order pays extra. |
@@ -171,18 +185,28 @@ puffers and the axolotl come from the pet shop at the Market. The
 **Sandbox** choices on the welcome screen (or in Settings) unlock everything
 at once.
 
-The tank doesn't stay put, either. The weather outside changes every day or
-so (warm and cool spells, heat waves, cold snaps, dry and muggy days), which
-shifts the room temperature. Misters drink from a water bottle that runs dry,
-the pond slowly evaporates below its fill line, the filter sponge clogs with
-gunk, and leafy jungle plants make the air more humid as they grow.
+The tank doesn't stay put, either. The weather outside changes every couple
+of days (warm and cool spells, heat waves, cold snaps, dry and muggy days),
+which shifts the room temperature. Misters drink from a water bottle that
+runs dry, the pond slowly evaporates below its fill line, the filter sponge
+clogs with gunk, and leafy jungle plants make the air more humid as they
+grow. And when a zone fills up, Bertie the builder can make it bigger.
+
+A new farm starts calm and the pace picks up gently. Letters come a while
+apart (the first few ask for things the farm can make soon, and a letter
+nobody can fill is withdrawn after a couple of days), the weather saves its
+heat waves and cold snaps until the farm is a few days old, and discoveries,
+news and tips take turns, one at a time with a breather between them.
+Whatever there wasn't room for is waiting in the journal, and its button
+gets a dot.
 
 None of that comes as a pop-up. Instead:
 
 - **The keeper's clipboard** (top right) lists what needs doing, most urgent
   first, each with a one-tap fix: refill, rinse, top up, clean, collect, or a
   jump to the right climate control or snack. Its badge shows how many things
-  want attention. The Orders tab holds Busytown's letters and your basket of
+  want attention (and doesn't blink at something that comes and goes in a
+  moment). It also says when a zone is getting crowded. The Orders tab holds Busytown's letters and your basket of
   goods. Each zone's tab shows its goals, progress and what's next.
 - **The equipment explains itself.** Tap a heat lamp, mister, the pond heater
   or filter, or a thermometer to see what it is, what it does, how it's doing
@@ -282,6 +306,8 @@ Other tools in `tools/`:
 | `node tools/experiments.mjs` | Runs each experiment and checks that the expected outcome happens. |
 | `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods, sends orders and shops at the Market) and checks that every zone levels up. Reports coins, friendships, dreams and what was bought when. |
 | `node tools/markettest.mjs` | Buys every ware at the Market in turn and checks that each one does its job. |
+| `node tools/tanktest.mjs` | Widens each zone of a farm (and all of them, twice) and loads the result into a tank of the new size, checking the ground, water, ant nest, critters and plants all came through in the right places. |
+| `node tools/pacingtest.mjs [minutes] [seed] [-v]` | Plays the first hour of a new farm at 1× and logs everything the keeper would see pop up (discoveries, news, letters, new to-dos), and fails if a new farm gets noisy. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
 
 `tools/dev.html` and `tools/gallery.html` show every critter, food, plant and
@@ -301,11 +327,11 @@ repository, go to **Settings → Pages → Source** once and choose
 
 ```
 src/
-  config.js            world size, grid, caps
+  config.js            world size (and how much bigger it's been built), grid, caps
   world/               terrain grid (sand/soil/rock/gravel/clay), flowing water,
                        environment (zone climate, pond chemistry, day/night),
-                       the breeze and the pond's current, spatial hash,
-                       A* pathfinding, the World itself
+                       the breeze and the pond's current, the jungle's living
+                       vines, spatial hash, A* pathfinding, the World itself
   entities/            Creature (needs, life stages, movement), Plant, Food, Decor
   ai/                  utility brain, shared behaviours, food/prey/mate search,
                        ant colony (castes, brood, digging, scent trails, aphid herding)
@@ -317,14 +343,17 @@ src/
                        (critters, plants, vines, equipment, goods, the
                        townsfolk's portraits, the Market's gadgets...),
                        paper grain and watercolour washes
-  render/              sprite cache, chunked terrain and water, light shafts,
-                       particles, drifting specks and wind-blown leaves, frame
+  render/              sprite cache, chunked terrain and water, the pond's
+                       depth, light shafts, particles, drifting specks and
+                       wind-blown leaves, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal,
-                       Busytown's letters and the Market
+                       Busytown's letters and the Market, the herald (paces
+                       what pops up)
   sim/                 away catch-up, journal, care (comfy ranges and the
                        to-do list), progress (zone levels and goals), orders
                        (Busytown's letters, coins and friendship), market
-                       (buying wares), dreams, equipment (what each gadget is)
+                       (buying wares), dreams, equipment (what each gadget is),
+                       the keeper's name, tank (building it bigger)
   save/                localStorage save, backup, export/import
   audio/               tiny procedural sound effects (WebAudio, no files)
 ```
@@ -355,7 +384,10 @@ src/
   hops stretch and land with a squash. Swimmers and flyers have a heading of
   their own that wanders, so they swim and fly in curves rather than
   straight lines. Fish swim in bursts and coast in between, and each one has
-  a favourite depth that drifts over the day.
+  a favourite depth that drifts over the day. A swimmer's whole body is an
+  oval that has to stay in the water: it eases up off a sloping floor and
+  away from the banks, and picks spots where it fits. An amphibian in water
+  too small to swim in wades along the bottom instead.
 - **Noticing changes.** The water is mapped from the cells that really hold
   water (redrawn whenever it moves), so swimmers can go anywhere there's
   water, including channels and flooded tunnels, and they find a route through
@@ -364,7 +396,10 @@ src/
 - **Breeze and current.** Gusts are fronts that travel across the tank and
   die away behind them. Plants bend with a shear (the base stays put, the
   tip leans), and the critters clinging to them use the same bend, so they
-  stay on their leaves. The pond's current is one slow loop driven by the
+  stay on their leaves. The vines are pendulums pushed by the smoothed
+  breeze in real time (so they're just as smooth at 8×), and bend along their
+  length (each is drawn in sheared slices that meet exactly). The pond's
+  current is one slow loop driven by the
   filter. It carries swimmers, bubbles, floating flakes and frogspawn a
   little, and stops short of the shallows so food never strands out of reach.
 - **Simulation and rendering are separate.** `src/world` and `src/entities`
@@ -375,10 +410,24 @@ src/
   change. The room, backdrop, light shafts, terrain and frame are cached
   into a single background image. Critters are drawn once per pose and size
   bucket into a sprite cache, painted finish included.
-- **Saving.** The save is compact JSON (about 36 KB, with run-length-encoded
+- **The pond's depth.** Behind everything in the water, clipped to the
+  water's own shape, is a far wall of water darkening with depth, a lit band
+  of gravel floor receding into it, and two bands of faint fronds and stones
+  on seamless tiles that move with parallax. A swimmer's distance back from
+  the glass is only for drawing: further back is smaller and fainter, and
+  far ones are drawn first.
+- **A bigger tank.** The tank's size is read from storage before anything
+  else starts (`TANK` in `src/config.js`), since every grid and cache is
+  sized to it. Building works on the save: `expandSave` in `src/sim/tank.js`
+  lets new columns into the ground and water (new land at the desert's or
+  jungle's far side, the pond's middle copied across), moves everything to
+  the right of them along, and the game reloads into the bigger tank. Things
+  the game places itself are given in the original tank's coordinates and
+  put in place with `X()`.
+- **Saving.** The save is compact JSON (about 50 KB, with run-length-encoded
   terrain, plus goods, the basket and Busytown's orders) in `localStorage`,
-  with a backup copy. Settings can export and
-  import saves as files.
+  with a backup copy, and the tank's size alongside it. Settings can export
+  and import saves as files.
 
 ### Adding things
 

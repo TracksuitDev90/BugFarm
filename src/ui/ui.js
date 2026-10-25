@@ -1,5 +1,5 @@
 // DOM user interface layered over the tank canvas.
-import { W, H, CELL, DAY_LEN, ZONE_X } from '../config.js';
+import { W, H, CELL, DAY_LEN, ZONE_X, ZONE_MID } from '../config.js';
 import { SPECIES, SPECIES_ORDER, stageName, adoptLabel, ADOPT_ORDER, ANT_KINDS, adoptSpecies } from '../data/species.js';
 import { FOODS, FOOD_ORDER, lovedBy } from '../data/foods.js';
 import { PLANTS, PLANT_ORDER } from '../data/plants.js';
@@ -16,16 +16,19 @@ import { Plant } from '../entities/plant.js';
 import { force } from '../ai/brain.js';
 import { fmtTemp, clamp, clamp01 } from '../util/math.js';
 import { rrange } from '../util/rng.js';
-import { zoneBand, zoneStatus, tankNeeds, ZONE_NAMES, listWords, plural } from '../sim/care.js';
+import { zoneBand, zoneStatus, tankNeeds, ZONE_NAMES, listWords, plural, NeedWatch, needKey } from '../sim/care.js';
 import { maxLevel } from '../data/progression.js';
 import { equipmentAt, equipmentInfo } from '../sim/equipment.js';
+import { LAMP_X } from '../world/environment.js';
 import { heatLamp, mister, pondHeater, pondFilter } from '../art/equipment.js';
 import { GOODS, GOOD_ORDER, JOBS, goodWord, jobOf } from '../data/goods.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { neighbour, needsWords } from '../sim/orders.js';
 import { $, el, esc, artCanvas, creatureArt, wormIcon } from './dom.js';
 import { Postbag, buildMarket, folkCanvas, heartsEl, coinsEl, nextOffer, goodIcon } from './busytown.js';
-import { onSale } from '../sim/market.js';
+import { onSale, wareKey } from '../sim/market.js';
+import { NAME_MAX, NAME_IDEAS, cleanName, dear, plateText, hasName } from '../sim/keeper.js';
+import { Herald, newsPriority } from './herald.js';
 
 const TOOLS = [
   { id: 'look', icon: 'hand', label: 'Look' },
@@ -47,9 +50,9 @@ const LENSES = [
   { id: 'minds', label: "What they're thinking" },
 ];
 const ZONES = [
-  { id: 'desert', label: 'Desert', x: 280 },
-  { id: 'pond', label: 'Pond', x: 810 },
-  { id: 'jungle', label: 'Jungle', x: 1330 },
+  { id: 'desert', label: 'Desert', x: ZONE_MID.desert },
+  { id: 'pond', label: 'Pond', x: ZONE_MID.pond },
+  { id: 'jungle', label: 'Jungle', x: ZONE_MID.jungle },
   { id: 'all', label: 'All' },
 ];
 const TIPS = [
@@ -59,7 +62,7 @@ const TIPS = [
   'Zone temperatures up top turn red when too hot and blue when too chilly.',
   'Each zone levels up as you finish its goals. New critters and snacks unlock!',
   'Misters run on a water jug. Refill it before the air dries out.',
-  'The weather changes every day or so. Check the forecast on the clipboard.',
+  'The weather changes every couple of days. Check the forecast on the clipboard.',
   'Tap the glass to give everyone a little startle.',
   'Tap a heat lamp, mister, heater or filter to see what it does.',
   'Every critter has a job. Tap one to see what it does for the farm.',
@@ -102,6 +105,11 @@ export class UI {
     this.tipI = 0;
     this.lastBirthToast = 0;
     this.portraitKey = '';
+    // paces discoveries, news and tips so they come one at a time
+    this.herald = new Herald();
+    this.unseenDisc = 0; // discoveries since the journal was last opened
+    this.needWatch = new NeedWatch(); // steadies the clipboard's to-do list
+    this.needAt = 0;
   }
 
   // ------------------------------------------------------------------ setup
@@ -144,13 +152,14 @@ export class UI {
     for (const t of TOOLS) {
       const b = el('button', { class: 'tool', 'aria-label': t.label, title: t.label, onclick: () => this.setTool(t.id) }, iconCanvas(t.icon, 28), el('span', {}, t.label));
       if (TOOL_KIND[t.id]) b.append((this.newDots[t.id] = el('i', { class: 'newdot hidden', title: 'Something new to try!' })));
+      if (t.id === 'journal') b.append((this.journalDot = el('i', { class: 'newdot hidden', title: 'New discoveries to read!' })));
       this.toolBtns[t.id] = b;
       this.toolbar.append(b);
     }
     this.sheet = el('section', { id: 'sheet', class: 'panel hidden', 'aria-live': 'polite' });
     this.card = el('section', { id: 'card', class: 'panel hidden' });
     this.toasts = el('div', { id: 'toasts' });
-    this.modal = el('div', { id: 'modal', class: 'hidden', onclick: (e) => e.target === this.modal && this.closeModal() });
+    this.modal = el('div', { id: 'modal', class: 'hidden', onclick: (e) => e.target === this.modal && !this.modalLocked && this.closeModal() });
     this.post = new Postbag(this);
     app.append(hud, this.lensLabel, this.zoneBox, this.toasts, this.post.box, this.sheet, this.card, this.toolbar, this.modal);
     this.setTool('look');
@@ -163,7 +172,9 @@ export class UI {
         this.setSpeed(this.game.paused ? 1 : 0);
         e.preventDefault();
       } else if (e.key === 'Escape') {
-        if (!this.modal.classList.contains('hidden')) this.closeModal();
+        if (!this.modal.classList.contains('hidden')) {
+          if (!this.modalLocked) this.closeModal();
+        }
         else if (this.selected) this.select(null);
         else this.setTool('look');
       } else if (/^[1-8]$/.test(e.key)) this.setTool(TOOLS[+e.key - 1].id);
@@ -183,6 +194,8 @@ export class UI {
   // ------------------------------------------------------------------ tools
   setTool(id) {
     if (id === 'journal') {
+      this.unseenDisc = 0;
+      this.journalDot.classList.add('hidden');
       this.openJournal();
       return;
     }
@@ -357,7 +370,7 @@ export class UI {
       return Object.assign({
         id,
         name: adoptLabel(id),
-        count: kind ? `${n}` : `${n}/${SPECIES[sp].maxPop}`,
+        count: kind ? `${n}` : `${n}/${this.world.maxPop(sp)}`,
         canvas: () => (sp === 'worm' ? wormIcon() : creatureArt(sp, st, pose, kind ? kind.pal[0] : 0)),
       }, this.lockInfo('adopt', id));
     });
@@ -546,8 +559,8 @@ export class UI {
     w.env.pond.full = target;
     w.env.pond.evap = 0;
     this.sound.play('splash', 0.5);
-    if (dy < 0) w.pour(810, t.waterLevel);
-    else w.splash(810, t.waterLevel, 1);
+    if (dy < 0) w.pour(ZONE_MID.pond, t.waterLevel);
+    else w.splash(ZONE_MID.pond, t.waterLevel, 1);
   }
 
   buildClimate(body) {
@@ -738,7 +751,7 @@ export class UI {
         e.bottle.firstChild.style.background = w < 0.2 ? '#e2553f' : '#7cc0e6';
       }
     }
-    d.desert.read.textContent = `Air is ${wet(env.desert.moist)} · sand under the lamp ${fmtTemp(env.tempAt(416, this.world.terrain.surfaceY(416) - 3, this.world.terrain), u)}`;
+    d.desert.read.textContent = `Air is ${wet(env.desert.moist)} · sand under the lamp ${fmtTemp(env.tempAt(LAMP_X.desert, this.world.terrain.surfaceY(LAMP_X.desert) - 3, this.world.terrain), u)}`;
     d.jungle.read.textContent = `Air is ${wet(env.jungle.moist)} · leafy plants keep it humid`;
     const p = env.pond;
     const meter = (v, col) => `<div class="meter"><i style="width:${Math.round(clamp01(v) * 100)}%;background:${col}"></i></div>`;
@@ -845,7 +858,7 @@ export class UI {
       E.list.append(
         el('div', { class: 'order' + (ok ? ' ready' : '') },
           el('div', { class: 'ohead' }, folkCanvas(nb, ok ? 'happy' : 'ask', 46), el('span', {}, el('b', {}, nb.name), ', ' + nb.job, el('br'), heartsEl(ord.heartsOf(nb.id)))),
-          el('p', { class: 'letter' }, `“Dear Bug Farm, could you send ${needsWords(o.needs)}? ${o.why}”`),
+          el('p', { class: 'letter' }, `“${dear(w.keeper)}, could you send ${needsWords(o.needs)}? ${o.why}”`),
           needs,
           offer ? el('div', { class: 'small ooffer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} to unlock the ${offer.ware.name.toLowerCase()}.`) : null,
           el('div', { class: 'ofoot' },
@@ -931,7 +944,7 @@ export class UI {
   }
 
   needLabel(act) {
-    return { climate: 'Climate', feed: 'Feed', refill: 'Refill', clean: 'Clean', rinse: 'Rinse', topup: 'Top up', tidy: 'Tidy', orders: 'Orders', collect: 'Collect' }[act.kind] || 'Show me';
+    return { climate: 'Climate', feed: 'Feed', refill: 'Refill', clean: 'Clean', rinse: 'Rinse', topup: 'Top up', tidy: 'Tidy', orders: 'Orders', collect: 'Collect', market: 'Market' }[act.kind] || 'Show me';
   }
 
   // Do (or open the controls for) whatever a need asks.
@@ -968,6 +981,9 @@ export class UI {
         this.tab.clip = 'orders';
         this.renderSheet();
         return;
+      case 'market':
+        this.openMarket();
+        return;
       case 'collect': {
         const k = w.collectAll();
         this.sound.play('sparkle', 0.6);
@@ -985,12 +1001,16 @@ export class UI {
         if (a.zone) this.goZone(ZONES.find((zz) => zz.id === a.zone));
         return;
     }
+    this.needWatch.clear(needKey(n));
     this.refreshNeeds();
     this.updateClipboard(true);
   }
 
   refreshNeeds() {
-    this.needs = tankNeeds(this.world, (k, id) => this.journal.canUse(k, id), (t) => fmtTemp(t, this.settings.units));
+    const now = performance.now() / 1000;
+    const dt = Math.min(5, Math.max(0, now - (this.needAt || now)));
+    this.needAt = now;
+    this.needs = this.needWatch.filter(tankNeeds(this.world, (k, id) => this.journal.canUse(k, id), (t) => fmtTemp(t, this.settings.units)), dt);
     const ready = this.journal.orders.ready();
     if (ready.length) this.needs.push({ zone: null, sev: 1.05, icon: 'star', text: ready.length === 1 ? `${neighbour(ready[0].who).name}'s order is ready to send to Busytown!` : `${ready.length} orders are ready to send to Busytown!`, act: { kind: 'orders' } });
     const waiting = this.world.goods.length;
@@ -1005,6 +1025,9 @@ export class UI {
 
   // A zone grew: show off what's new.
   levelUp(z, lv, unlocks) {
+    this.herald.push({ prio: 3, kind: 'level', show: () => this.showLevelUp(z, lv, unlocks) });
+  }
+  showLevelUp(z, lv, unlocks) {
     const names = [];
     for (const sp of unlocks.adopt) names.push(ANT_KINDS[sp] ? ANT_KINDS[sp].label : SPECIES[sp].plural);
     for (const f of unlocks.feed) names.push(FOODS[f].name);
@@ -1275,7 +1298,7 @@ export class UI {
   openMarket() {
     this.openModal('Busytown Market', (b, head) => buildMarket(this, b, head), true);
     const seen = (this.settings.seenWares = this.settings.seenWares || []);
-    for (const wr of onSale(this.journal, this.world)) if (!seen.includes(wr.id)) seen.push(wr.id);
+    for (const wr of onSale(this.journal, this.world)) if (!seen.includes(wareKey(wr))) seen.push(wareKey(wr));
     this.hooks.saveSettings();
   }
 
@@ -1799,6 +1822,10 @@ export class UI {
 
   // ------------------------------------------------------------------ HUD
   update(dt) {
+    const w = this.world;
+    const busy = !this.modal.classList.contains('hidden') || !!this.post.cur || !!this.moving;
+    const it = this.herald.tick(Math.min(dt, 0.25), (w.time - DAY_LEN / 3) / DAY_LEN, busy);
+    if (it) this.present(it);
     const gh = this.r.ghost;
     if (gh && gh.fade) {
       gh.fade -= dt * 2.5;
@@ -1855,7 +1882,7 @@ export class UI {
     }
     this._coins = +coins;
     const seen = this.settings.seenWares || [];
-    this.purseDot.classList.toggle('hidden', !onSale(this.journal, this.world).some((wr) => !seen.includes(wr.id)));
+    this.purseDot.classList.toggle('hidden', !onSale(this.journal, this.world).some((wr) => !seen.includes(wareKey(wr))));
     const h = env.hour;
     const hh = Math.floor(h);
     const mm = Math.floor((h - hh) * 60 / 15) * 15;
@@ -1902,7 +1929,14 @@ export class UI {
     }, ms);
   }
 
+  // A discovery: it's in the journal straight away (with a dot on the
+  // Journal button), and the herald brings the card round when there's room.
   discovery(d) {
+    this.unseenDisc++;
+    this.journalDot.classList.remove('hidden');
+    this.herald.push({ prio: d.reward ? 2 : 1, kind: 'discovery', show: () => this.showDiscovery(d) });
+  }
+  showDiscovery(d) {
     this.sound.play('sparkle', 0.8);
     const reward = d.reward ? (d.reward.decor ? ` <i>Unlocked: ${esc(DECOR[d.reward.decor].name)}!</i>` : ` <i>Unlocked a new style!</i>`) : '';
     this.toast(`<b>Discovery: ${esc(d.title)}</b><br>${esc(d.text)}${reward}`, 'star', true, 6500);
@@ -1911,6 +1945,7 @@ export class UI {
 
   // ------------------------------------------------------------------ modals
   openModal(title, body, wide) {
+    this.modalLocked = false;
     this.modal.innerHTML = '';
     const box = el('div', { class: 'panel modal-box', role: 'dialog', 'aria-label': title });
     const head = el('div', { class: 'modal-head' }, el('div', { class: 'title' }, title), el('button', { class: 'card-close', 'aria-label': 'Close', onclick: () => this.closeModal() }, '×'));
@@ -1923,6 +1958,7 @@ export class UI {
     return b;
   }
   closeModal() {
+    this.modalLocked = false;
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
     if (this.onModalClose) {
@@ -2079,6 +2115,8 @@ export class UI {
       }));
       b.append(toggle('tips', 'Show tips'));
       b.append(el('h4', {}, 'Your tank'));
+      const k = this.world.keeper;
+      b.append(el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { style: 'flex:1' }, hasName(k) ? `Busytown writes to: ${k.kind === 'town' ? 'the town of ' : ''}${k.name}` : 'Busytown doesn\'t know your name yet.'), el('button', { class: 'btn small', onclick: () => this.askName(() => this.openSettings()) }, hasName(k) ? 'Change name' : 'Tell them')));
       const fileIn = el('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: (e) => e.target.files[0] && this.hooks.importFile(e.target.files[0]) });
       b.append(
         el('div', { class: 'row' },
@@ -2101,10 +2139,68 @@ export class UI {
     });
   }
 
+  // Who Busytown should write to: the keeper's own name or their town's.
+  // first: a brand-new farm (or an old one that was never asked), which
+  // needs an answer before it carries on.
+  askName(onDone, first) {
+    const w = this.world;
+    const k = w.keeper || { name: '', kind: 'me' };
+    let kind = k.kind === 'town' ? 'town' : 'me';
+    let idea = 0;
+    this.openModal(first ? 'Who lives here?' : 'Your name', (b, head) => {
+      if (first) {
+        head.querySelector('.card-close').remove();
+        this.modalLocked = true;
+      }
+      b.classList.add('naming');
+      b.append(el('p', {}, 'Your neighbours in Busytown will be writing to you soon. What should they call you? It can be your own name or the name of your town.'));
+      const input = el('input', { type: 'text', class: 'name-in', maxlength: String(NAME_MAX), autocomplete: 'off', autocapitalize: 'words', spellcheck: 'false', enterkeyhint: 'done', 'aria-label': 'Name', value: k.name || '' });
+      const kinds = el('div', { class: 'name-kinds', role: 'radiogroup', 'aria-label': 'Whose name is it?' });
+      const preview = el('div', { class: 'name-preview' });
+      const ok = el('button', { class: 'btn green', onclick: () => done() }, 'That\'s us!');
+      const refresh = () => {
+        input.placeholder = kind === 'town' ? 'e.g. Maple Hollow' : 'e.g. Juniper';
+        for (const c of kinds.children) c.classList.toggle('on', c.dataset.k === kind);
+        const n = cleanName(input.value);
+        const kk = { name: n || (kind === 'town' ? 'Maple Hollow' : 'Juniper'), kind };
+        preview.innerHTML = '';
+        preview.append(el('div', { class: 'letter' }, `“${dear(kk)}, could you send a jar of honey?”`), el('div', { class: 'plate' }, plateText(kk)));
+        preview.classList.toggle('ghost', !n);
+        ok.disabled = !n;
+      };
+      for (const [id, label] of [['me', 'It\'s my name'], ['town', 'It\'s my town']]) {
+        const c = el('button', { class: 'btn small', role: 'radio', onclick: () => {
+          kind = id;
+          refresh();
+        } }, label);
+        c.dataset.k = id;
+        kinds.append(c);
+      }
+      const surprise = el('button', { class: 'btn small', onclick: () => {
+        const list = NAME_IDEAS[kind];
+        input.value = list[(Math.floor(Math.random() * list.length) + idea++) % list.length];
+        refresh();
+      } }, 'Surprise me');
+      const done = () => {
+        const n = cleanName(input.value);
+        if (!n) return input.focus();
+        w.keeper = { name: n, kind };
+        this.closeModal();
+        if (onDone) onDone(w.keeper);
+      };
+      input.addEventListener('input', refresh);
+      input.addEventListener('keydown', (e) => e.key === 'Enter' && done());
+      b.append(kinds, el('div', { class: 'row name-row' }, input, surprise), preview, el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:10px' }, first ? null : el('button', { class: 'btn small', onclick: () => this.closeModal() }, 'Cancel'), ok));
+      refresh();
+      setTimeout(() => input.focus(), 60);
+    });
+  }
+
   // onChoose('farm' | 'full' | 'empty')
   showWelcome(onChoose) {
     this.openModal('Welcome!', (b, head) => {
       head.querySelector('.card-close').remove();
+      this.modalLocked = true;
       b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
       b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
@@ -2147,9 +2243,39 @@ export class UI {
     });
   }
 
-  tip() {
+  // now: straight away (the welcome tips); otherwise when it's quiet
+  tip(now) {
     if (!this.settings.tips) return;
-    this.toast(TIPS[this.tipI++ % TIPS.length], 'leaf', false, 4500);
+    if (now) this.toast(TIPS[this.tipI++ % TIPS.length], 'leaf', false, 4500);
+    else this.herald.push({ prio: 0, kind: 'tip', key: 'tip', show: () => this.toast(TIPS[this.tipI++ % TIPS.length], 'leaf', false, 4500) });
+  }
+
+  // News from the tank's log: the herald brings round what's worth knowing.
+  news(l) {
+    const nw = newsPriority(l);
+    if (!nw) return;
+    const icon = l.icon === 'flower' ? 'flower' : l.icon;
+    this.herald.push({ prio: nw.prio, kind: 'news', key: nw.key, show: () => this.toast(esc(l.text), icon) });
+  }
+
+  // Back from the builders: fly over to the new ground and say what's new.
+  builtTank(b) {
+    const x = (b.x0 + b.x1) / 2;
+    const y = b.zone === 'pond' ? this.world.terrain.waterLevel + 80 : this.world.terrain.surfaceY(x) - 60;
+    this.cam.flyTo(x, y, Math.max(this.cam.fitHeight * 1.4, this.cam.minZoom));
+    this.sound.play('sparkle', 0.9);
+    this.herald.hold(20);
+    const what = { desert: 'fresh sand for more nests, plants and houses', pond: 'more water for more fish, and room for lilies and weeds', jungle: 'more jungle floor for plants and homes, and more lid for vines' }[b.zone];
+    this.toast(`<b>The ${ZONE_NAMES[b.zone].toLowerCase()} is bigger!</b><br>Bertie's builders made ${esc(what)}.`, 'house', true, 8000);
+  }
+
+  // Show what the herald brings round.
+  present(it) {
+    if (it.kind === 'summary') {
+      this.toast(`${it.n} more discoveries are waiting in your journal.`, 'book', false, 4500);
+      return;
+    }
+    if (it.show) it.show();
   }
 }
 

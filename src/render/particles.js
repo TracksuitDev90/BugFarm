@@ -1,6 +1,6 @@
 // Lightweight pooled particles: bubbles, dust, splashes, rain, poofs and
 // sparkles. Updated with real time so they stay calm at high sim speeds.
-import { INK } from '../config.js';
+import { INK, ZONE_MID } from '../config.js';
 import { rrange, chance } from '../util/rng.js';
 import { breeze } from '../world/breeze.js';
 
@@ -69,7 +69,7 @@ export class Particles {
   }
   rain(x, power, dt, terrain) {
     const rate = power * 60;
-    const zone = x < 800 ? 'desert' : 'jungle';
+    const zone = x < ZONE_MID.pond ? 'desert' : 'jungle';
     this.rainAcc[zone] += rate * dt;
     while (this.rainAcc[zone] >= 1) {
       this.rainAcc[zone] -= 1;

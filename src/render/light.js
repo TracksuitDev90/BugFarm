@@ -4,7 +4,7 @@
 // flat panes: sunlight through the glass over the desert and pond, dappled
 // shafts through the jungle canopy, a soft cone under each heat lamp, rays
 // swaying under the water, and dust motes twinkling in the sunbeams.
-import { W, H } from '../config.js';
+import { W, H, X, TANK, BASE_W, POND_SPLIT, ZONE_X, ZONE_MID } from '../config.js';
 import { hash1 } from '../util/rng.js';
 import { clamp01 } from '../util/math.js';
 
@@ -12,10 +12,14 @@ const TW = 32;
 const TH = 128;
 const SUN_TILT = -0.3; // the window is up to the left: rays slant down to the right
 
-// [x at the top of the tank, width, strength]
-const SUN = [[40, 70, 0.9], [170, 34, 0.7], [300, 96, 1], [470, 44, 0.75], [620, 80, 0.85], [800, 40, 0.6], [930, 64, 0.8]];
+// [x at the top of the tank, width, strength] (in the original tank; a
+// wider one gets a few more over its new ground and water)
+const SUN = [[40, 70, 0.9], [170, 34, 0.7], [300, 96, 1], [470, 44, 0.75], [620, 80, 0.85], [800, 40, 0.6], [930, 64, 0.8]].map(([x, w, s]) => [X(x), w, s]);
+for (let x = 70; x < TANK.desert; x += 135) SUN.push([x, 34 + hash1(x, 1) * 60, 0.65 + hash1(x, 2) * 0.35]);
+for (let x = 50; x < TANK.pond; x += 110) SUN.push([X(POND_SPLIT) - TANK.pond + x, 30 + hash1(x, 3) * 40, 0.6 + hash1(x, 4) * 0.3]);
 // [x, width, strength] dropping from under the canopy
-const CANOPY = [[1110, 30, 0.9], [1205, 18, 0.7], [1300, 44, 1], [1420, 22, 0.8], [1500, 36, 0.9], [1575, 16, 0.6]];
+const CANOPY = [[1110, 30, 0.9], [1205, 18, 0.7], [1300, 44, 1], [1420, 22, 0.8], [1500, 36, 0.9], [1575, 16, 0.6]].map(([x, w, s]) => [X(x), w, s]);
+for (let x = X(BASE_W) + 45; x < W - 15; x += 92) CANOPY.push([x, 16 + hash1(x, 5) * 28, 0.6 + hash1(x, 6) * 0.4]);
 
 export class LightRays {
   constructor() {
@@ -105,7 +109,7 @@ export class LightRays {
     if (clear <= 0.15) return;
     const wTex = this.texture('214,246,255');
     for (let i = 0; i < 6; i++) {
-      const x = 640 + i * 70 + Math.sin(time * 0.31 + i * 1.7) * 20;
+      const x = ZONE_X.pond[0] + 80 + i * ((ZONE_X.pond[1] - ZONE_X.pond[0] - 150) / 5) + Math.sin(time * 0.31 + i * 1.7) * 20;
       if (!t.waterAt(x, wl + 6)) continue;
       const ang = SUN_TILT * 0.6 + Math.sin(time * 0.43 + i) * 0.06;
       const reach = 0.92 * (t.surfaceY(x - Math.sin(ang) * 160) - wl);
@@ -120,7 +124,7 @@ export class LightRays {
   draw(r, g, w, time, opts) {
     const day = clamp01((w.env.sun - 0.04) / 0.6);
     if (!opts.rays || day <= 0) return;
-    if (opts.liveWater && r.visible(810, w.terrain.waterLevel + 100, 300)) {
+    if (opts.liveWater && r.visible(ZONE_MID.pond, w.terrain.waterLevel + 100, 300)) {
       g.save();
       g.globalCompositeOperation = 'lighter';
       this.waterRays([r.k, r.ox, r.oy], g, w, time, day);

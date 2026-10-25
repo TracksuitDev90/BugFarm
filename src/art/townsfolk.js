@@ -686,6 +686,19 @@ function hat(g, A, L) {
       paint(g, '#77b255', LW * 0.5, () => ell(g, 9, top - 7, 2.2, 1.1, 0.4));
       break;
     }
+    case 'hardhat': {
+      // a builder's hard hat: a shiny dome with a ridge, and a little peak
+      paint(g, c, LW, () => ell(g, 0, top + 3, 17, 2.8));
+      paint(g, c, LW, () => {
+        g.beginPath();
+        g.moveTo(-13.5, top + 3);
+        g.bezierCurveTo(-13.5, top - 13, 13.5, top - 13, 13.5, top + 3);
+        g.closePath();
+      });
+      curve(g, 0, top - 9, 0.6, top - 3, 0, top + 2.5, LW * 2.4, 'rgba(58,42,31,0.22)');
+      highlight(g, -6, top - 4.5, 3.4, 1.8, 0.55, -0.5);
+      break;
+    }
     case 'tophat': {
       paint(g, '#3d3632', LW, () => ell(g, 0, top + 3, 14, 3.2));
       paint(g, '#3d3632', LW, () => {

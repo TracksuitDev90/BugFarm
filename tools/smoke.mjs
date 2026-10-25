@@ -35,7 +35,15 @@ await pg.goto(url);
 await pg.waitForSelector('text=Start my farm', { timeout: 15000 });
 check(true, 'welcome screen shows');
 await pg.click('text=Start my farm');
+// Busytown asks who to write to
+await pg.waitForSelector('.name-in', { timeout: 5000 });
+check(true, 'a new farm asks for a name');
+await pg.fill('.name-in', 'Juniper');
+await pg.click("text=That's us!");
 await pg.waitForTimeout(2500);
+check((await pg.evaluate(() => window.bugfarm.game.world.keeper && window.bugfarm.game.world.keeper.name)) === 'Juniper', 'the farm remembers its name');
+// a new farm settles in quietly: discoveries queue for the herald rather than piling up
+check((await pg.locator('#toasts .toast.big').count()) === 0, 'a new farm starts calm (no discovery cards piling up)');
 const n0 = await pg.evaluate(() => window.bugfarm.game.world.creatures.length);
 const sp0 = await pg.evaluate(() => Object.entries(window.bugfarm.game.world.counts).filter(([, v]) => v).length);
 check(n0 > 15 && sp0 === 6, `a new farm starts with two kinds of critter per zone (${sp0} kinds, ${n0} critters)`);
@@ -135,6 +143,7 @@ await pg.evaluate(() => {
 });
 await pg.waitForTimeout(400);
 check(await pg.isVisible('#post .postcard canvas'), 'a letter pops up with a portrait of whoever wrote it');
+check((await pg.textContent('#post .postcard .bubble')).includes('Dear Juniper,'), 'the letter is addressed to the keeper by name');
 await pg.click('#post >> text=Later');
 const coins0 = await pg.evaluate(() => window.bugfarm.game.world.coins);
 await pg.click('button[aria-label="Keeper\'s clipboard"]');
@@ -159,9 +168,23 @@ const bought = await pg.evaluate(() => ({ owns: window.bugfarm.game.world.owns('
 check(bought.owns && bought.plant && bought.coins === 70, 'buying a ware pays for it and unlocks it');
 await pg.click('#modal .card-close');
 
+// the herald brings a discovery round when there's room, and the journal button shows it's new
+const herald = await pg.evaluate(async () => {
+  const { ui } = window.bugfarm;
+  const h = ui.herald;
+  h.holdUntil = 0;
+  h.last = -1e9;
+  h.busyAt = -1e9;
+  ui.discovery({ id: 'x', title: 'Test discovery', text: 'Something happened.' });
+  await new Promise((r) => setTimeout(r, 500));
+  // (the oldest waiting discovery comes first)
+  return { card: [...document.querySelectorAll('#toasts .toast')].some((t) => t.textContent.includes('Discovery:')), dot: !ui.journalDot.classList.contains('hidden') };
+});
+check(herald.card && herald.dot, 'the herald shows a discovery, and the journal button has a dot');
 // journal & settings
 await pg.click('#toolbar >> text=Journal');
 check(await pg.isVisible('text=Field Journal'), 'journal opens');
+check(await pg.evaluate(() => window.bugfarm.ui.journalDot.classList.contains('hidden')), 'opening the journal clears its dot');
 await pg.click('#modal .tabs >> text=Field guide');
 await pg.click('#modal .card-close');
 await pg.click('button[aria-label="Settings"]');
@@ -190,6 +213,25 @@ check(Math.abs(after.n - before.n) <= 3 && after.t >= before.t, `tank restored a
 check(after.pond === 2 && after.shrimp, 'farm levels and unlocks survive a reload');
 check(after.sent === 1 && after.lily >= 1, 'the basket and sent orders survive a reload');
 check(after.moon && after.hearts === 1 && after.coins >= 70, 'coins, friendships and Market wares survive a reload');
+
+// the builder makes the desert bigger: the game saves, widens the tank and comes back to it
+await pg.evaluate(() => {
+  const { game, journal, ui } = window.bugfarm;
+  journal.progress.levels.desert = 2;
+  game.world.coins = 200;
+  ui.openMarket();
+});
+await pg.waitForTimeout(300);
+await pg.locator('#modal .ware', { hasText: 'Bigger desert' }).locator('button').click();
+await pg.waitForEvent('load', { timeout: 15000 });
+await pg.waitForTimeout(2500);
+const built = await pg.evaluate(() => {
+  const { game } = window.bugfarm;
+  const w = game.world;
+  return { cols: w.terrain.groundTop.length, n: w.creatures.length, coins: w.coins, name: w.keeper && w.keeper.name, toast: [...document.querySelectorAll('#toasts .toast')].some((t) => t.textContent.includes('desert is bigger')) };
+});
+check(built.cols === 464 && built.coins <= 150 && built.coins >= 135, `the builder widens the desert (${built.cols * 4} wide, ${built.coins} coins left)`);
+check(Math.abs(built.n - after.n) <= 3 && built.name === 'Juniper' && built.toast, `everyone moves into the bigger tank, and it's celebrated (${built.n} critters)`);
 
 check(errors.length === 0, 'no errors on the page' + (errors.length ? ':\n' + [...new Set(errors)].slice(0, 6).join('\n') : ''));
 await browser.close();

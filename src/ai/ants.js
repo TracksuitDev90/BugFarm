@@ -245,7 +245,7 @@ export class Colony {
   cap(w) {
     let n = 0;
     for (const col of w.colonies) if (col.queen(w) && !col.queen(w).dead) n++;
-    return Math.max(22, Math.round(w.spDef('ant').maxPop / Math.max(1, n)));
+    return Math.max(22, Math.round(w.maxPop('ant') / Math.max(1, n)));
   }
 
   // A forager has brought something home. Harvesters keep the seeds and

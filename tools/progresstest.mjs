@@ -78,7 +78,8 @@ for (let i = 0; i < steps; i++) {
     w.collectAll();
     for (const o of j.orders.ready()) j.orders.send(o);
     // shop at the Market: the cheapest thing on offer that the purse covers
-    const sale = WARES.filter((wr) => wr.kind !== 'stock' && wareState(j, w, wr).state === 'sale').sort((a, b) => a.cost - b.cost);
+    // (making the tank bigger reloads the game, so it's left to tools/tanktest.mjs)
+    const sale = WARES.filter((wr) => wr.kind !== 'stock' && wr.kind !== 'build' && wareState(j, w, wr).state === 'sale').sort((a, b) => a.cost - b.cost);
     if (sale.length && w.coins >= sale[0].cost && buy(j, w, sale[0]).ok) bought.push(`day ${env.day}: ${sale[0].name} (${sale[0].cost})`);
     // snacks twice a day in each zone, chosen for whoever lives there
     if (Math.round(env.hour) % 12 === 8) {

@@ -8,13 +8,13 @@
 // It's one shared field (only one tank ever runs at a time), read by the
 // plants and critters in the simulation and by the renderer, so a bending
 // stem and the ladybug clinging to it always agree.
-import { W } from '../config.js';
+import { W, ZONE_X, ZONE_MID } from '../config.js';
 import { clamp } from '../util/math.js';
 import { rrange, chance } from '../util/rng.js';
 
 // the pond's middle and half-width, in tank units
-const POND_CX = 810;
-const POND_HW = 250;
+const POND_CX = ZONE_MID.pond;
+const POND_HW = (ZONE_X.pond[1] - ZONE_X.pond[0]) / 2;
 
 class Breeze {
   constructor() {

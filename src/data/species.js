@@ -168,6 +168,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 26,
+    body: [17, 11], // half the length and height of its body, kept in the water
     blurb: 'Bubbly, sociable swimmers. They love flakes, nibble algae, and gulp at the surface if the water runs low on air.',
     facts: [
       'Warm water holds less oxygen than cool water.',
@@ -238,6 +239,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'amphibious',
     size: 48,
+    body: [26, 13],
     blurb: 'A gentle paddler who climbs onto the rock to bask under the lamp. Slow, steady and very fond of lettuce.',
     facts: [
       'Turtles bask to warm up and to help their shells stay healthy.',
@@ -578,6 +580,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 12,
+    body: [10, 5],
     blurb: 'Teeny fish with enormous rainbow tails. They whizz about near the top of the pond snapping up stray flies and floating flakes.',
     facts: [
       'Guppies have live babies instead of laying eggs.',
@@ -613,6 +616,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 11,
+    body: [8, 4.5],
     blurb: 'Little fish with a shining blue stripe. They swim in tight, twinkly schools that turn all at once, and glow softly after dark.',
     facts: [
       'The neon stripe helps the school find each other in dark water.',
@@ -648,6 +652,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 34,
+    body: [21, 8],
     blurb: 'Big, gentle pond fish splashed with red, white and gold. They rummage in the gravel with their whiskers, and now and then turn up a lost coin!',
     facts: [
       'Koi can live for a very long time, some for over 100 years!',
@@ -682,6 +687,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 12,
+    body: [8, 7],
     blurb: 'The smallest pufferfish in the world. They hover like little helicopters, roll their eyes in every direction, and puff up into a prickly ball when startled.',
     facts: [
       'Pea puffers can move each eye on its own!',
@@ -717,6 +723,7 @@ export const SPECIES = {
     zone: 'pond',
     habitat: 'water',
     size: 26,
+    body: [17, 8],
     blurb: 'A smiling pink salamander with frilly gills who never quite grows up. It strolls along the bottom of the pond, and everyone in Busytown adores it.',
     facts: [
       'Axolotls breathe through the feathery gills on their heads.',

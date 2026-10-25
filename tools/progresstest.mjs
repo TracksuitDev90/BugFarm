@@ -76,7 +76,8 @@ for (let i = 0; i < steps; i++) {
     }
     // collect what the critters made and post any order that's ready
     w.collectAll();
-    for (const o of j.orders.ready()) j.orders.send(o);
+    // (a critter letter: the keeper picks whoever's free to go)
+    for (const o of j.orders.ready()) j.orders.send(o, o.critter ? j.orders.eligible(o)[0] : undefined);
     // shop at the Market: the cheapest thing on offer that the purse covers
     // (making the tank bigger reloads the game, so it's left to tools/tanktest.mjs)
     const sale = WARES.filter((wr) => wr.kind !== 'stock' && wr.kind !== 'build' && wareState(j, w, wr).state === 'sale').sort((a, b) => a.cost - b.cost);

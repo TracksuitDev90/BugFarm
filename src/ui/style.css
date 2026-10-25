@@ -963,6 +963,78 @@ input[type='range']::-moz-range-thumb {
 .ototal {
   margin-top: 6px;
 }
+/* a letter asking for one flavour, prize goods or a critter */
+.order.picky {
+  border-style: dashed;
+}
+.order.pet {
+  background: #f2f8ea;
+}
+.order.pet.ready {
+  background: #e6f4d6;
+}
+.oneed[title] {
+  cursor: help;
+}
+/* the basket's flavours */
+.flavours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  margin-top: 2px;
+}
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px 1px 2px;
+  border: 1px solid rgba(58, 42, 31, 0.4);
+  border-radius: 12px;
+  background: #fffaf0;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+}
+.fchip b {
+  font-weight: normal;
+  opacity: 0.75;
+}
+.fchip.prize {
+  border-color: #c9962a;
+  background: #fff3c4;
+}
+/* choosing who goes to live in Busytown */
+.pick-critters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1.5px solid rgba(58, 42, 31, 0.35);
+  border-radius: 12px;
+  background: #fffaf0;
+}
+.pick-text {
+  flex: 1;
+  min-width: 0;
+}
+.pick-text b {
+  font-family: 'Chewy', 'Patrick Hand', sans-serif;
+  font-weight: normal;
+  font-size: 17px;
+}
+.pick-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .unlocks {
   font-size: 14px;
   margin-top: 6px;
@@ -1968,4 +2040,92 @@ p.small {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---------- visitors from the garden ---------- */
+.postcard.visit {
+  background: #eef6e2;
+}
+.vnote {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border: 2px dashed var(--ink);
+  border-radius: 12px;
+  background: #fff6c9;
+}
+.vnote canvas {
+  flex: none;
+}
+.vbook .guide canvas {
+  height: 62px;
+}
+
+/* ---------- dressing up ---------- */
+.dress-pic {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 6px;
+}
+.dress-pic canvas {
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  background: #fffaf0;
+}
+.wardrobe {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+.wear {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 2px;
+  border: 1.5px solid rgba(58, 42, 31, 0.35);
+  border-radius: 10px;
+  background: #fffaf0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.wear small {
+  font-size: 12px;
+  line-height: 1.05;
+  text-align: center;
+}
+.wear.on {
+  border: 2.5px solid var(--ink);
+  background: #fff6c9;
+}
+.wear.locked {
+  opacity: 0.75;
+}
+.wear .none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 40px;
+  font-size: 26px;
+  opacity: 0.6;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.swatch {
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.swatch.on {
+  box-shadow: 0 0 0 3px #fffaf0, 0 0 0 5px var(--ink);
 }

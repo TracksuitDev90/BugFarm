@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bug Farm flowers, flavours, outfits and visitors</title>
+<style>body{margin:0;background:#f7eed6;font:12px sans-serif}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// Every flowering plant, every flavour of every good (and its prize
+// version), every outfit and every visitor, on one page.
+import { PLANTS, PLANT_ORDER, blooms } from '../src/data/plants.js';
+import { Plant } from '../src/entities/plant.js';
+import { drawPlant } from '../src/art/plants.js';
+import { VISITOR_ART, drawVisitor } from '../src/art/visitors.js';
+import { CREATURE_ART, PALETTES } from '../src/art/creatures.js';
+import { OUTFIT_ORDER, OUTFITS, canWear } from '../src/data/outfits.js';
+import { SPECIES } from '../src/data/species.js';
+import { GOOD_ORDER, FLAVOURS } from '../src/data/goods.js';
+import { drawGood, goodBox } from '../src/art/goods.js';
+const c = document.getElementById('c');
+const S = 3;
+c.width = 1600;
+c.height = 4200;
+const g = c.getContext('2d');
+g.fillStyle = '#f7eed6';
+g.fillRect(0, 0, c.width, c.height);
+g.lineCap = 'round';
+g.lineJoin = 'round';
+let x = 20;
+let y = 20;
+let rowH = 0;
+// place a box of w x h (css px) on the page, wrapping rows
+function cell(w, h, label, draw) {
+  if (x + w > c.width - 20) {
+    x = 20;
+    y += rowH + 8;
+    rowH = 0;
+  }
+  g.save();
+  g.strokeStyle = 'rgba(0,0,0,0.08)';
+  g.strokeRect(x, y, w, h);
+  g.fillStyle = '#333';
+  g.fillText(label, x + 4, y + 12);
+  g.translate(x, y);
+  draw(g);
+  g.restore();
+  x += w + 6;
+  rowH = Math.max(rowH, h);
+}
+function heading(t) {
+  x = 20;
+  y += rowH + 30;
+  rowH = 0;
+  g.fillStyle = '#333';
+  g.font = 'bold 16px sans-serif';
+  g.fillText(t, x, y - 8);
+  g.font = '12px sans-serif';
+}
+window.cell = cell;
+window.heading = heading;
+heading('Flowers');
+for (const id of PLANT_ORDER) {
+  const def = PLANTS[id];
+  if (!blooms(def)) continue;
+  const p = new Plant(id, 0, 0, { growth: 1, waterY: -30, seed: 11 });
+  const [x0, y0, x1, y1] = p.shape.box;
+  const w = Math.max(90, (x1 - x0) * S + 10);
+  const h = (y1 - y0) * S + 24;
+  cell(w, h, def.name, (gg) => {
+    gg.translate(w / 2 - ((x0 + x1) / 2) * S, 18 - y0 * S);
+    gg.scale(S, S);
+    drawPlant(gg, p, 0);
+  });
+  // and one with its flowers pollinated
+  const q = new Plant(id, 0, 0, { growth: 1, waterY: -30, seed: 11, flowers: [{ pollinated: true }, { pollinated: true }, { pollinated: true }] });
+  cell(w, h, def.name + ' (pollinated)', (gg) => {
+    gg.translate(w / 2 - ((x0 + x1) / 2) * S, 18 - y0 * S);
+    gg.scale(S, S);
+    drawPlant(gg, q, 0);
+  });
+}
+heading('Visitors');
+const POSES = { hedgehog: ['idle', 'walk'], tortoise: ['idle', 'walk'], crab: ['idle', 'walk'], mole: ['pop'], robin: ['idle', 'fly'], kingfisher: ['idle', 'fly'], vole: ['idle', 'swim'] };
+const VS = 4;
+for (const [type, poses] of Object.entries(POSES)) {
+  const [x0, y0, x1, y1] = VISITOR_ART[type].box;
+  for (const pose of poses) {
+    for (const frame of pose === 'pop' ? [0, 1, 2] : [0, 1]) {
+      const w = (x1 - x0) * VS + 10;
+      const h = (y1 - y0) * VS + 24;
+      cell(w, h, `${type} ${pose} ${frame}`, (gg) => {
+        gg.translate(5 - x0 * VS, 18 - y0 * VS);
+        gg.scale(VS, VS);
+        if (pose === 'swim') {
+          gg.fillStyle = 'rgba(120,180,220,0.5)';
+          gg.fillRect(x0, 0, x1 - x0, y1);
+        }
+        drawVisitor(gg, type, pose, frame);
+      });
+    }
+  }
+}
+heading('Goods: every flavour, and a prize one');
+const GS = 3;
+for (const g of GOOD_ORDER) {
+  for (const f of Object.keys(FLAVOURS[g])) {
+    for (const prize of f === Object.keys(FLAVOURS[g])[0] ? [false, true] : [false]) {
+      const [x0, y0, x1, y1] = goodBox(g, prize);
+      const w = Math.max(74, (x1 - x0) * GS + 10);
+      const h = (y1 - y0) * GS + 24;
+      cell(w, h, FLAVOURS[g][f].name + (prize ? ' (prize)' : ''), (gg) => {
+        gg.translate(w / 2 - ((x0 + x1) / 2) * GS, 18 - y0 * GS);
+        gg.scale(GS, GS);
+        drawGood(gg, g, f === 'castings' ? 'castings' : '', f, prize);
+      });
+    }
+  }
+}
+heading('Dressed up');
+const WEAR_SP = ['cricket', 'grasshopper', 'gecko', 'beetle', 'goldfish', 'frog', 'turtle', 'ladybug', 'butterfly', 'snail', 'bee', 'firefly', 'pillbug', 'koi', 'axolotl'];
+const CS = 4;
+WEAR_SP.forEach((sp, k) => {
+  const art = CREATURE_ART[sp];
+  const st = SPECIES[sp].adultStage;
+  const [bw, bh] = art.box(st);
+  for (const item of [OUTFIT_ORDER[(k * 3) % OUTFIT_ORDER.length], 'tophat', SPECIES[sp] && canWear({ sp, isAdult: true }, 'pearls') ? 'pearls' : 'flowercrown']) {
+    const w = bw * 2 * CS + 10;
+    const h = bh * 2 * CS + 26;
+    cell(w, h, `${sp} ${item}`, (gg) => {
+      gg.translate(w / 2, 18 + bh * CS);
+      gg.scale(CS, CS);
+      art.draw(gg, { stage: st, pose: SPECIES[sp].fish ? 'swim' : 'idle', frame: 1, pal: PALETTES[sp][0], acc: item, accColor: '#4c8fd6', lw: art.lw, closed: false });
+    });
+  }
+});
+window.__done = true;
+</script>
+</body>
+</html>

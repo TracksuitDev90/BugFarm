@@ -888,6 +888,69 @@ DECOR_ART.deliveryVan = function deliveryVan(g) {
   wheel(g, 16, -6, 6, '#e8e2d6');
 };
 
+// ---------------------------------------------------- built by visitors
+DECOR_ART.leafPile = (g) => {
+  // a heap of autumn leaves with a snug hollow in one side
+  const leaf = (x, y, a, col, s = 1) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(a);
+    paint(g, col, LW * 0.6, () => {
+      g.beginPath();
+      g.moveTo(-6 * s, 0);
+      g.quadraticCurveTo(0, -4.4 * s, 6 * s, 0);
+      g.quadraticCurveTo(0, 4.4 * s, -6 * s, 0);
+      g.closePath();
+    });
+    line(g, -5 * s, 0, 5 * s, 0, LW * 0.35, 'rgba(58,42,31,0.6)');
+    g.restore();
+  };
+  paint(g, '#a8642c', LW, () => {
+    g.beginPath();
+    g.moveTo(-25, 0);
+    g.quadraticCurveTo(-22, -21, 0, -23);
+    g.quadraticCurveTo(22, -21, 25, 0);
+    g.closePath();
+  });
+  const cols = ['#e2783f', '#f0bf45', '#c9473a', '#b8863a', '#e8a33a', '#9a5a2a'];
+  let k = 0;
+  for (const [x, y, a] of [[-18, -5, 0.4], [-10, -13, -0.3], [-2, -19, 0.2], [9, -15, -0.6], [17, -8, 0.5], [-14, -2, -0.2], [2, -9, 0.7], [-6, -6, -0.8], [12, -2, 0.1], [6, -20, 1.1], [-20, -10, 1.2]]) leaf(g, x, y, a, cols[k++ % cols.length], 1.05);
+  // the doorway
+  paint(g, '#3a2a1f', LW, () => {
+    g.beginPath();
+    g.moveTo(8, 0);
+    g.quadraticCurveTo(9, -9, 14, -9);
+    g.quadraticCurveTo(20, -9, 20, 0);
+    g.closePath();
+  });
+  leaf(g, 14, -10, 0.2, '#f0bf45', 0.8);
+  highlight(g, -8, -16, 5, 2, 0.25, -0.2);
+};
+DECOR_ART.stoneDen = (g) => {
+  // round stones heaped into an arch, a dark cool doorway, moss on top
+  paint(g, '#3a2a1f', LW, () => {
+    g.beginPath();
+    g.moveTo(-9, 0);
+    g.lineTo(-9, -12);
+    g.quadraticCurveTo(0, -22, 9, -12);
+    g.lineTo(9, 0);
+    g.closePath();
+  });
+  const stones = [[-20, -5, 7, 5.5], [-12, -12, 6.5, 5], [-17, -16, 5, 4.2], [-7, -21, 6, 4.6], [3, -24, 6.5, 4.8], [11, -18, 6, 5], [18, -9, 7, 5.5], [21, -2, 5, 3.2], [-23, -1, 4.5, 3], [14, -26, 4.4, 3.4], [-1, -29, 4.6, 3.4]];
+  const greys = ['#a8a39a', '#b8b2a6', '#9a958c', '#c4beb2'];
+  stones.forEach(([x, y, rx, ry], i) => {
+    paint(g, greys[i % greys.length], LW * 0.8, () => ell(g, x, y, rx, ry, (i % 3 - 1) * 0.3));
+    highlight(g, x - rx * 0.35, y - ry * 0.4, rx * 0.35, ry * 0.2, 0.35, -0.3);
+  });
+  // moss
+  fuzzPath(g, 2, -31, 8, 2.6, 10, 0.25, 3);
+  fill(g, '#8cc152');
+  stroke(g, LW * 0.6);
+  fuzzPath(g, -16, -20, 4, 1.6, 7, 0.3, 5);
+  fill(g, '#8cc152');
+  stroke(g, LW * 0.5);
+};
+
 export function decorBox(def) {
   if (def.place === 'top') return [-def.w / 2 - 6, -6, def.w / 2 + 6, def.h + 6];
   return [-def.w / 2 - 10, -def.h - 22, def.w / 2 + 10, 6];

@@ -12,6 +12,8 @@ export class Decor {
     this.flip = !!opts.flip;
     this.store = opts.store || 0; // bee hotel: pollen on its way to honey
     this.brood = opts.brood || 0; // bee hotel: pollen put by for raising young
+    this.flav = opts.flav || null; // bee hotel: whose nectar is in the comb (flavour -> pollen)
+    this.mp = opts.mp || 0; // bee hotel: of that, how much the master pollinators brought
     this.removed = false;
     // shelters: who calls it home, and whether it's sunk in the pond (both
     // kept up to date by the world every second)
@@ -48,9 +50,14 @@ export class Decor {
   serialize() {
     const o = { id: this.id, t: this.type, x: Math.round(this.x), y: Math.round(this.y), f: this.flip ? 1 : 0, s: this.store };
     if (this.brood) o.b = this.brood;
+    if (this.flav) {
+      o.fl = {};
+      for (const k in this.flav) if (this.flav[k] > 0.05) o.fl[k] = +this.flav[k].toFixed(2);
+    }
+    if (this.mp) o.mp = +this.mp.toFixed(2);
     return o;
   }
   static load(o) {
-    return new Decor(o.t, o.x, o.y, { id: o.id, flip: !!o.f, store: o.s, brood: o.b });
+    return new Decor(o.t, o.x, o.y, { id: o.id, flip: !!o.f, store: o.s, brood: o.b, flav: o.fl, mp: o.mp });
   }
 }

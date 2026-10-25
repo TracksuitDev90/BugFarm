@@ -73,6 +73,39 @@ const j2 = new Journal();
 j2.attach(w2);
 j2.load(JSON.parse(jstr));
 expect(j2.orders.heartsOf('baker') === 2 && j2.orders.heartsOf('postie') === 1, 'friendships survive');
+{
+  // the basket's flavours, a critter letter, what the critters wear, a
+  // visitor in the tank and what visitors have given
+  w.stashGood('honey', 'clover', false, 2);
+  w.stashGood('honey', 'lavender', true, 1);
+  w.stashGood('lily', 'gold', false, 1);
+  j.orders.list.push({ id: 77, who: 'school', needs: {}, critter: { sp: 'cricket' }, why: 'For story time.', stars: 2, coins: 10, day: 1, t: 0 });
+  j.orders.list.push({ id: 78, who: 'baker', needs: { honey: 2 }, flav: { honey: 'clover' }, why: 'Clover!', stars: 6, coins: 30, day: 1, t: 0 });
+  const dressed = w.creatures.find((c) => !c.dead && c.sp === 'snail' && c.isAdult);
+  w.wardrobeAdd('tophat');
+  w.dress(dressed, 'tophat', '#8d6cc0');
+  const v = j.visitors.arrive('hedgehog');
+  for (let i = 0; i < 90; i++) w.step(SIM_DT);
+  w.boons.plants.lotus = true;
+  j.visitors.leaveNote('mole', j.visitors.giftFor('mole'));
+  const w5 = new World();
+  w5.load(JSON.parse(JSON.stringify(w.serialize())));
+  const j5 = new Journal();
+  j5.attach(w5);
+  j5.load(JSON.parse(JSON.stringify(j.serialize())));
+  expect(w5.basketHas('honey', 'clover') === 2 && w5.basketHas('honey', null, true) === 1 && w5.basketHas('lily', 'gold') === 1, `the basket's flavours survive (${JSON.stringify(w5.flavours.honey)})`);
+  expect(j5.orders.list.some((o) => o.critter && o.critter.sp === 'cricket') && j5.orders.list.some((o) => o.flav && o.flav.honey === 'clover'), 'critter letters and flavour letters survive');
+  const d5 = w5.byId(dressed.id);
+  expect(d5 && d5.acc === 'tophat' && d5.accColor === '#8d6cc0' && w5.wardrobeHas('tophat'), 'outfits and the wardrobe survive');
+  expect(w5.visitors.length === 1 && w5.visitors[0].type === 'hedgehog' && Math.abs(w5.visitors[0].x - v.x) < 1, 'a visitor in the tank survives');
+  expect(w5.boons.plants.lotus && j5.canUse('plant', 'lotus') && j5.visitors.notes.length === 1 && j5.visitors.book.hedgehog.n === 1, 'visitors\' gifts, notes and the Visitors\' Book survive');
+  // a save from before flavours: the basket's goods count as plain ones
+  const old = JSON.parse(JSON.stringify(w.serialize()));
+  delete old.flavours;
+  const w6 = new World();
+  w6.load(old);
+  expect(w6.basketHas('honey', 'wild') === w.pantry.honey && w6.basketHas('honey') === w.pantry.honey, 'an older save\'s basket counts as plain goods');
+}
 for (let i = 0; i < 600; i++) w2.step(SIM_DT);
 console.log('stepped loaded world ok, creatures', w2.creatures.length);
 const t0 = performance.now();

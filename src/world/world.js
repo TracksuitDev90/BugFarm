@@ -12,11 +12,12 @@ import { Plant } from '../entities/plant.js';
 import { Food } from '../entities/food.js';
 import { Decor } from '../entities/decor.js';
 import { Good } from '../entities/good.js';
+import { Visitor } from '../entities/visitor.js';
 import { SPECIES, ANT_KINDS, antKindOf } from '../data/species.js';
 import { PLANTS } from '../data/plants.js';
 import { DECOR } from '../data/decor.js';
 import { FOODS } from '../data/foods.js';
-import { GOODS, GOOD_ORDER } from '../data/goods.js';
+import { GOODS, GOOD_ORDER, PLAIN, SILK_OF, basketKey, splitKey } from '../data/goods.js';
 import { tickBrain, force } from '../ai/brain.js';
 import { varietyName } from '../art/creatures.js';
 import { Colony } from '../ai/ants.js';
@@ -45,6 +46,10 @@ export class World {
     // what the keeper has collected, ready to send to Busytown
     this.pantry = {};
     for (const id of GOOD_ORDER) this.pantry[id] = 0;
+    // ...and what flavour each one is: good -> { 'clover': 2, 'clover+': 1 }
+    // ('+' for a prize one). Always adds up to the pantry's totals.
+    this.flavours = {};
+    for (const id of GOOD_ORDER) this.flavours[id] = {};
     // Busytown coins in the keeper's purse, what's been bought at the Market
     // (ware id -> true) and treats bought to hand out (busy buns)
     this.coins = 0;
@@ -94,6 +99,15 @@ export class World {
     this.has = {};
     this.climateT = 0;
     this.barrelAcc = {}; // water the rain barrel has poured into each jug
+    this.departures = []; // (render side) critters floating off to Busytown
+    // visitors from the garden outside who are in the tank right now (see
+    // sim/visitors.js), and the lasting good they've done: plants and
+    // buildings they've given the keeper, and how many times the mole has
+    // aired the jungle soil
+    this.visitors = [];
+    this.boons = { plants: {}, decor: {}, airy: 0 };
+    // the critters' dressing-up box: outfit id -> true (see data/outfits.js)
+    this.wardrobe = {};
   }
 
   get time() {
@@ -236,6 +250,24 @@ export class World {
     if (i >= 0) this.creatures.splice(i, 1);
     this.byIdMap.delete(c.id);
     this.counts[c.sp] = Math.max(0, (this.counts[c.sp] || 0) - 1);
+  }
+  // A critter sets off to live with a neighbour in Busytown: a happy
+  // wave, and up it floats under a balloon (the renderer draws it from
+  // `departures`), out over the lid and away.
+  sendOff(c, nb) {
+    if (c.inside) this.leaveShelter(c);
+    this.sparkle(c.x, c.y - 6, 10);
+    this.addLog(`${c.name} the ${c.def.name.toLowerCase()} set off for Busytown to live with ${nb.name}. Bye bye, ${c.name}!`, 'heart');
+    this.events.emit('sentOff', { c, nb });
+    this.removeCreature(c);
+    if (!this.awayMode) {
+      c.emote('heart', 3);
+      // (each neighbour sends a balloon of their own colour)
+      const cols = ['#e2553f', '#4c8fd6', '#f0bf45', '#77b255', '#e57a8a', '#8d6cc0', '#f0913a'];
+      let h = 0;
+      for (const ch of nb.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      this.departures.push({ c, t: 0, x: c.x, y: c.y, col: cols[h % cols.length], wet: !!(c.inWater || c.mode === 'swim') });
+    }
   }
   byId(id) {
     return this.byIdMap.get(id) || null;
@@ -387,11 +419,94 @@ export class World {
   collectGood(g, by) {
     if (!g || g.gone) return false;
     this.removeGood(g);
-    this.pantry[g.type] = (this.pantry[g.type] || 0) + (g.plant === 'moonflower' ? 2 : 1);
+    this.stashGood(g.type, g.flav, g.prize, g.plant === 'moonflower' ? 2 : 1);
     this.stats.collected = (this.stats.collected || 0) + 1;
+    if (g.prize) {
+      const pz = this.stats.prizes || (this.stats.prizes = {});
+      pz[g.type] = (pz[g.type] || 0) + 1;
+    }
     this.sparkle(g.x, g.y - 4, 5);
     this.events.emit('collect', { g, type: g.type, by: by || null });
     return true;
+  }
+  // ---- the basket's flavours
+  // The flavours of one good in the basket, squared up with its total
+  // (an old save, or anything that set the total by itself): extra goods
+  // are plain ones, and goods gone missing come off the plainest first.
+  tallyFlavours(type) {
+    const L = this.flavours[type] || (this.flavours[type] = {});
+    let sum = 0;
+    for (const k in L) {
+      if (!(L[k] > 0)) delete L[k];
+      else sum += L[k];
+    }
+    const tot = this.pantry[type] || 0;
+    if (sum < tot) L[PLAIN[type]] = (L[PLAIN[type]] || 0) + tot - sum;
+    else if (sum > tot) this.dropFlavours(L, sum - tot, null, false, null);
+    return L;
+  }
+  stashGood(type, flav, prize, n = 1) {
+    const L = this.tallyFlavours(type);
+    const k = basketKey(flav || PLAIN[type], prize);
+    L[k] = (L[k] || 0) + n;
+    this.pantry[type] = (this.pantry[type] || 0) + n;
+  }
+  // How many of a good are in the basket: of one flavour (or any), and
+  // prize ones only if `best`.
+  basketHas(type, flav = null, best = false) {
+    const L = this.tallyFlavours(type);
+    let n = 0;
+    for (const k in L) {
+      const [f, pz] = splitKey(k);
+      if ((!flav || f === flav) && (!best || pz)) n += L[k];
+    }
+    return n;
+  }
+  // Take n of a good out of the basket. Plain ones go first (prize ones
+  // are saved for whoever asks for the best), the most plentiful flavour
+  // first, and flavours someone else is waiting for (keep: flavour -> n)
+  // last of all. Returns how many prize ones went, or -1 if there aren't
+  // enough.
+  takeGoods(type, n, flav = null, best = false, keep = null) {
+    if (this.basketHas(type, flav, best) < n) return -1;
+    const L = this.flavours[type];
+    const pz = this.dropFlavours(L, n, flav, best, keep);
+    this.pantry[type] -= n;
+    return pz;
+  }
+  dropFlavours(L, n, flav, best, keep) {
+    let prizes = 0;
+    while (n > 0) {
+      let bk = null;
+      let bs = -Infinity;
+      for (const k in L) {
+        if (!(L[k] > 0)) continue;
+        const [f, pz] = splitKey(k);
+        if ((flav && f !== flav) || (best && !pz)) continue;
+        const kept = keep && keep[f] ? Math.min(L[k], keep[f]) : 0;
+        const s = L[k] - kept * 100 - (pz && !best ? 1000 : 0);
+        if (s > bs) {
+          bs = s;
+          bk = k;
+        }
+      }
+      if (!bk) break;
+      L[bk]--;
+      if (keep) {
+        const f = splitKey(bk)[0];
+        if (keep[f]) keep[f]--;
+      }
+      if (bk.endsWith('+')) prizes++;
+      if (!L[bk]) delete L[bk];
+      n--;
+    }
+    return prizes;
+  }
+  // Is the soil here rich (well composted), for prize seed heads?
+  richSoil(x) {
+    const z = this.env.zoneAt(x);
+    if (z === 'pond') return this.env.pond.clarity > 0.85;
+    return (this.env.fertility[z] || 0) >= (z === 'desert' ? 0.65 : 0.9);
   }
   collectAll() {
     let n = 0;
@@ -414,23 +529,38 @@ export class World {
   // A bee unloads its pollen at the bee hotel. Enough loads fill a jar of
   // honey, which waits beside the hotel; with two jars waiting the comb is
   // full until the keeper collects them.
+  // The honey tastes of whichever flowers the pollen came from: mostly one
+  // kind of flower and it's that flower's honey, a bit of everything and
+  // it's wildflower honey. One flower's honey that the master pollinators
+  // mostly made is a prize jar.
   depositPollen(c, hive) {
     const n = c.memory.pollen || 0;
+    const from = c.memory.pf || {};
     c.memory.pollen = 0;
+    c.memory.pf = {};
     if (!n) return;
     hive.store = (hive.store || 0) + n;
+    const fl = hive.flav || (hive.flav = {});
+    let tot = 0;
+    for (const k in from) tot += from[k];
+    for (const k in from) fl[k] = (fl[k] || 0) + (n * from[k]) / tot;
+    if (!tot) fl.wild = (fl.wild || 0) + n;
+    if (c.memory.master) hive.mp = (hive.mp || 0) + n;
     // some is put by to feed the young bees the hotel raises
     hive.brood = Math.min(12, (hive.brood || 0) + n * 0.5);
     while (hive.store >= HONEY_POLLEN) {
       const jars = this.goods.filter((g) => g.type === 'honey' && g.src === hive.id).length;
       if (jars >= 2) {
+        this.scaleComb(hive, HONEY_POLLEN / hive.store);
         hive.store = HONEY_POLLEN;
         break;
       }
+      const [flav, prize] = this.combFlavour(hive);
+      this.scaleComb(hive, (hive.store - HONEY_POLLEN) / hive.store);
       hive.store -= HONEY_POLLEN;
       const side = this.goods.some((g) => g.type === 'honey' && g.src === hive.id && g.x < hive.x) ? 1 : -1;
       const x = hive.x + side * 12;
-      const g = this.addGood('honey', x, this.terrain.surfaceY(x), { src: hive.id, by: c });
+      const g = this.addGood('honey', x, this.terrain.surfaceY(x), { src: hive.id, by: c, flav, prize });
       if (!g) break;
       this.credit(c);
       this.events.emit('honey', { c, hive, g });
@@ -441,6 +571,24 @@ export class World {
   honeyFill(hive) {
     return Math.min(1, (hive.store || 0) / HONEY_POLLEN);
   }
+  // What the honey in the comb tastes of so far: [flavour, prize, shares]
+  // (shares: [[flavour, fraction], ...], biggest first).
+  combFlavour(hive) {
+    const fl = hive.flav || {};
+    let tot = 0;
+    for (const k in fl) tot += fl[k];
+    const shares = Object.entries(fl).map(([k, v]) => [k, tot ? v / tot : 0]).filter((e) => e[1] > 0.04).sort((a, b) => b[1] - a[1]);
+    const top = shares[0];
+    const flav = top && top[0] !== 'wild' && top[1] >= 0.5 ? top[0] : 'wild';
+    // a prize jar: one flower's honey, made mostly by master pollinators
+    const prize = flav !== 'wild' && tot > 0 && (hive.mp || 0) / tot >= 0.5;
+    return [flav, prize, shares];
+  }
+  scaleComb(hive, k) {
+    k = clamp01(k);
+    for (const f in hive.flav || {}) hive.flav[f] *= k;
+    if (hive.mp) hive.mp *= k;
+  }
 
   // Recyclers at work: a ball of compost a beetle buried, or a little heap
   // of worm castings. Either way the soil gets richer.
@@ -449,7 +597,9 @@ export class World {
     if (this.env.fertility[z] != null) this.env.fertility[z] = Math.min(1.2, this.env.fertility[z] + 0.03);
     this.credit(c);
     const crowded = this.goods.some((g) => g.type === 'compost' && Math.abs(g.x - x) < 14) || this.goodsOf('compost') >= 6;
-    const g = crowded ? null : this.addGood('compost', x, y, { look, by: c });
+    const flav = look === 'castings' ? 'castings' : 'compost';
+    // (a master recycler's work is often prize compost)
+    const g = crowded ? null : this.addGood('compost', x, y, { look, by: c, flav, prize: !!(c && c.memory.master) && chance(0.4) });
     this.events.emit('compost', { c, g });
     return g;
   }
@@ -474,7 +624,9 @@ export class World {
       return;
     }
     const [x, y] = p.slotWorld(slot, this.time);
-    this.addGood('seeds', x, y, { src: p.id, plant: p.type, fi });
+    // a healthy, comfy plant in rich soil sometimes grows prize seed heads
+    const prize = p.health > 0.9 && p.comfort > 0.85 && this.richSoil(p.x) && chance(0.35);
+    this.addGood('seeds', x, y, { src: p.id, plant: p.type, fi, flav: p.type, prize });
   }
   // How well the pond critters look after the water lilies (0..1): goldfish
   // feed them, and snails and shrimp keep the water clear enough to bloom.
@@ -483,11 +635,24 @@ export class World {
     const clean = Math.min(1, (this.count('pondsnail') + this.count('shrimp')) / 3);
     return (0.2 + fish * 0.8) * (0.45 + clean * 0.55) * clamp01((this.env.pond.clarity - 0.35) / 0.4);
   }
+  // The colour a water lily blooms: the water decides. Cool water gives
+  // white lilies, mild water pink and warm water golden; very clear water
+  // with a school of neon tetras now and then gives a rare blue star. A
+  // lotus always gives lotus blooms.
+  lilyColour(p) {
+    if (p && p.def.lotus) return 'lotus';
+    const pond = this.env.pond;
+    if (pond.clarity > 0.85 && this.count('tetra') >= 3 && chance(0.3)) return 'blue';
+    return pond.temp < 20 ? 'white' : pond.temp < 24.5 ? 'pink' : 'gold';
+  }
   bloomLily(p, fi) {
     if (this.goods.some((g) => g.type === 'lily' && g.src === p.id)) return false;
     const slot = p.shape.slots.find((s) => s.kind === 'flower' && s.i === fi);
     const [x] = slot ? p.slotWorld(slot, this.time) : [p.x];
-    const g = this.addGood('lily', x, this.terrain.waterLevel - 1, { src: p.id });
+    // the pond critters at their best (crystal water, lilies well tended)
+    // grow prize blooms
+    const prize = this.env.pond.clarity > 0.9 && this.lilyCare() > 0.75;
+    const g = this.addGood('lily', x, this.terrain.waterLevel - 1, { src: p.id, flav: this.lilyColour(p), prize });
     if (g) this.events.emit('bloom', { plant: p, g });
     return !!g;
   }
@@ -1102,8 +1267,11 @@ export class World {
         if (house && chance(0.45)) c.palIdx = rpick(def.rarePals);
       }
       this.sparkle(c.x, c.y, 10);
-      // the empty chrysalis stays behind: fine silk for the keeper
-      this.addGood('silk', c.x, c.y + 2, { by: c });
+      // the empty chrysalis stays behind: fine silk for the keeper, with
+      // the sheen of whoever spun it (and a prize one from a caterpillar
+      // that grew up well fed and healthy)
+      const silk = SILK_OF[c.sp + ':' + c.palIdx] || PLAIN.silk;
+      this.addGood('silk', c.x, c.y + 2, { by: c, flav: silk, prize: c.health > 0.85 && c.plump >= 1.04 });
       this.credit(c);
       this.events.emit('metamorph', { c, kind: c.sp });
       const v = varietyName(c.sp, c.palIdx);
@@ -1195,9 +1363,10 @@ export class World {
         return { ok: true };
       }
       if (def.place === 'shore') {
-        if (wetSurface) return { ok: false, msg: 'Cattails like the muddy edge of the pond.' };
+        const them = def.id === 'reed' ? 'Cattails' : `${def.name}es`;
+        if (wetSurface) return { ok: false, msg: `${them} like the muddy edge of the pond.` };
         const sh = this.shores.some((s) => Math.abs(s - x) < 90);
-        return sh ? { ok: true } : { ok: false, msg: 'Cattails grow right beside the pond.' };
+        return sh ? { ok: true } : { ok: false, msg: `${them} grow right beside the pond.` };
       }
       if (def.place === 'underwater' || def.place === 'surface') {
         if (!wetSurface) return { ok: false, msg: `${def.name} needs to be planted in the pond.` };
@@ -1797,6 +1966,15 @@ export class World {
     }
 
     for (const col of this.colonies) col.update(this, dt);
+    for (let i = this.visitors.length - 1; i >= 0; i--) {
+      const v = this.visitors[i];
+      v.update(dt, this);
+      if (v.state === 'gone') {
+        this.visitors.splice(i, 1);
+        v.removed = true;
+        this.events.emit('visitorLeft', { v });
+      }
+    }
     for (let i = this.goods.length - 1; i >= 0; i--) {
       const g = this.goods[i];
       if (g) g.update(dt, this);
@@ -1978,12 +2156,132 @@ export class World {
   runFeeders() {
     this.runHampers();
     for (const d of this.decor) {
+      if (d.def.litter && this.foods.filter((f) => f.litter).length < 8) {
+        // a leaf drifts off the leaf pile for the recyclers
+        const f = this.addFood('leaves', clamp(d.x + rrange(-24, 24), 10, W - 10), d.y - 14, { amount: 0.6, max: 0.6, vy: 10 });
+        f.litter = true;
+      }
       if (!d.def.feeder) continue;
       const z = this.env.zoneAt(d.x);
       const types = z === 'desert' ? ['seedmix', 'apple'] : z === 'pond' ? ['flakes', 'pellets', 'algae'] : ['apple', 'lettuce', 'honey', 'leaves'];
       for (const ty of types) this.addFood(ty, d.x + rrange(-14, 14), 34, { vy: 20 });
       this.events.emit('feeder', { d });
     }
+  }
+
+  // ------------------------------------------------------------------ dressing up
+  wardrobeHas(id) {
+    return !!this.wardrobe[id];
+  }
+  wardrobeAdd(id) {
+    this.wardrobe[id] = true;
+  }
+  // Put something on a critter (null: take it off). colour: for things
+  // that come in any colour.
+  dress(c, item, colour) {
+    c.acc = item || null;
+    c.accC = item && colour ? colour : null;
+    if (item) {
+      c.emote('heart', 1.6);
+      this.sparkle(c.x, c.y - 6, 5);
+    }
+    this.events.emit('dress', { c, item });
+  }
+
+  // ------------------------------------------------------------------ visitors
+  addVisitor(type) {
+    const [x, y] = Visitor.entry(type, this);
+    const v = new Visitor(type, x, y, { facing: x > W / 2 ? -1 : 1 });
+    this.visitors.push(v);
+    this.addNovelty(x, y - 10, 1);
+    return v;
+  }
+  // How much faster the jungle plants grow in soil the mole has aired.
+  soilBoost(zone) {
+    return zone === 'jungle' && this.boons.airy ? 1 + 0.15 * Math.min(2, this.boons.airy) : 1;
+  }
+  // Somewhere to put a decoration in a zone, as near x as there's room.
+  spotNear(type, zone, x) {
+    const def = DECOR[type];
+    const [x0, x1] = ZONE_X[zone];
+    for (let i = 0; i < 40; i++) {
+      const xx = Math.round(clamp(x + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 18, x0 + 30, x1 - 30));
+      if (this.decor.some((d) => Math.abs(d.x - xx) < (d.def.w + def.w) * 0.45)) continue;
+      if (this.plants.some((p) => !p.dead && p.def.h > 40 && Math.abs(p.x - xx) < def.w * 0.4)) continue;
+      if (this.canPlace('decor', type, xx, null).ok) return xx;
+    }
+    return null;
+  }
+  // A visitor builds something (and from then on the keeper can too).
+  visitorBuild(type, zone, x) {
+    const xx = this.spotNear(type, zone, x);
+    if (xx == null) return null;
+    const r = this.placeDecor(type, xx, null);
+    if (!r.ok) return null;
+    this.boons.decor[type] = true;
+    this.sparkle(xx, r.d.y - 14, 12);
+    this.dust(xx, r.d.y - 4, 6);
+    return r.d;
+  }
+  // A visitor sows some plants near x (on open ground, or the pond for a
+  // water plant), and from then on the keeper can plant them too.
+  visitorSow(type, n, zone, x) {
+    const def = PLANTS[type];
+    const out = [];
+    const [x0, x1] = ZONE_X[zone];
+    for (let i = 0; i < 60 && out.length < n; i++) {
+      const xx = clamp(x + rrange(-1, 1) * (40 + i * 6), x0 + 14, x1 - 14);
+      if (this.plants.some((p) => !p.dead && Math.abs(p.x - xx) < (def.aquatic ? 34 : 16))) continue;
+      if (!this.canPlace('plant', type, xx, null).ok) continue;
+      const p = this.addPlant(type, xx, null, { growth: 0.45 });
+      if (!p) break;
+      this.sparkle(xx, p.y - 8, 6);
+      this.events.emit('plant', { plant: p, by: 'visitor' });
+      out.push(p);
+    }
+    if (out.length) this.boons.plants[type] = true;
+    return out;
+  }
+  // The mole airs the jungle soil: a few winding tunnels with a chamber or
+  // two, a molehill at each way in. Plants grow faster in airy soil, and
+  // the worms and critters come to explore. (Well clear of the pond, so
+  // no water drains away.)
+  digTunnels(nearX) {
+    const t = this.terrain;
+    const [z0, z1] = ZONE_X.jungle;
+    const lo = Math.max(z0 + 60, (POND_R + 24) * CELL);
+    const hi = z1 - 30;
+    if (hi - lo < 80) return 0;
+    const ok = (x, y, m) => m === MAT.SOIL || m === MAT.SAND || m === MAT.CLAY;
+    let dug = 0;
+    const runs = 2;
+    for (let k = 0; k < runs; k++) {
+      let x = clamp(nearX + (k ? 1 : -1) * rrange(30, 110), lo + 20, hi - 20);
+      // a way in, away from any plant
+      for (let i = 0; i < 8 && this.plants.some((p) => !p.dead && Math.abs(p.x - x) < 14); i++) x = clamp(x + rrange(-40, 40), lo + 20, hi - 20);
+      let cx = x / CELL;
+      let cy = t.top[Math.floor(cx)];
+      const surf = cy;
+      const dir = chance(0.5) ? 1 : -1;
+      const depth = rrange(12, 22);
+      // down, then along, winding
+      for (let s = 0; s < 70; s++) {
+        const down = cy < surf + depth ? 0.7 : (Math.random() - 0.5) * 0.5;
+        cx += dir * (s < 6 ? 0.3 : 0.85);
+        cy += down;
+        if (cx * CELL < lo || cx * CELL > hi) break;
+        dug += t.dig(cx, cy, 1.15, ok);
+        // a chamber partway along
+        if (s === 34 || s === 62) for (let a = -2; a <= 2; a++) dug += t.dig(cx + a * 0.8, cy, 1.9, ok);
+      }
+      // the molehill at the way in
+      for (let i = 0; i < 22; i++) t.deposit(Math.floor(x / CELL) + (i % 3) - 1, MAT.SOIL, 3);
+      this.noteChange(x, surf * CELL + 20, 40, 'dig');
+    }
+    this.boons.airy = (this.boons.airy || 0) + 1;
+    this.env.fertility.jungle = Math.min(1.2, (this.env.fertility.jungle || 0.6) + 0.15);
+    this.computeRegions();
+    return dug;
   }
 
   // ------------------------------------------------------------------ save / load
@@ -2000,6 +2298,10 @@ export class World {
       decor: this.decor.map((d) => d.serialize()),
       goods: this.goods.map((g) => g.serialize()),
       pantry: this.pantry,
+      flavours: this.flavours,
+      visitors: this.visitors.map((v) => v.serialize()),
+      boons: this.boons,
+      wardrobe: this.wardrobe,
       coins: this.coins,
       perks: this.perks,
       stock: this.stock,
@@ -2054,6 +2356,13 @@ export class World {
       this.goods.push(g);
     }
     Object.assign(this.pantry, d.pantry || {});
+    this.visitors = (d.visitors || []).map((o) => Visitor.load(o)).filter(Boolean);
+    this.boons = Object.assign({ plants: {}, decor: {}, airy: 0 }, d.boons || {});
+    this.wardrobe = Object.assign({}, d.wardrobe || {});
+    for (const id of GOOD_ORDER) {
+      this.flavours[id] = Object.assign({}, (d.flavours && d.flavours[id]) || {});
+      this.tallyFlavours(id);
+    }
     // (a farm from before the Market opened gets the town's welcome gift)
     this.coins = d.coins != null ? d.coins : 20;
     this.perks = Object.assign({}, d.perks || {});

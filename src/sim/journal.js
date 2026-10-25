@@ -3,6 +3,8 @@ import { DISCOVERIES, DISC_BY_ID, lockedItems } from '../data/discoveries.js';
 import { Progress } from './progress.js';
 import { Orders } from './orders.js';
 import { Dreams } from './dreams.js';
+import { Visitors } from './visitors.js';
+import { VISITORS, VISITOR_ORDER, VISITOR_ONLY } from '../data/visitors.js';
 import { ORDER_GIFTS, NEIGHBOURS } from '../data/neighbours.js';
 import { MARKET_LOCK, WARE_BY_ID } from '../data/market.js';
 
@@ -14,8 +16,10 @@ export class Journal {
     this.met = {};
     this.sandbox = false;
     this.locked = lockedItems();
-    // Busytown's thank-you gifts start locked too
+    // Busytown's thank-you gifts start locked too, and so does what only
+    // visitors bring
     for (const gf of ORDER_GIFTS) this.locked.decor.add(gf.decor);
+    for (const id of VISITOR_ONLY.decor) this.locked.decor.add(id);
     this.onUnlock = null;
     this.world = null;
     this.checkT = 0;
@@ -23,7 +27,19 @@ export class Journal {
     this.progress = new Progress();
     this.orders = this.newOrders();
     this.dreams = new Dreams();
+    this.visitors = this.newVisitors();
     this.seenVar = {}; // 'sp:palIdx' -> true for every variety the keeper has met
+  }
+
+  newVisitors() {
+    const v = new Visitors();
+    v.canUse = (k, id) => this.canUse(k, id);
+    if (this.visitors) {
+      v.onArrive = this.visitors.onArrive;
+      v.onOffer = this.visitors.onOffer;
+      v.onGift = this.visitors.onGift;
+    }
+    return v;
   }
 
   newOrders() {
@@ -59,6 +75,7 @@ export class Journal {
     this.progress.attach(world);
     this.orders.attach(world);
     this.dreams.attach(world);
+    this.visitors.attach(world);
   }
 
   meet(sp) {
@@ -70,6 +87,7 @@ export class Journal {
     if (!w) return;
     this.progress.update(dt);
     this.orders.update();
+    this.visitors.update();
     this.checkT -= dt;
     if (this.checkT > 0) return;
     this.checkT = 2;
@@ -108,6 +126,10 @@ export class Journal {
   canUse(kind, id) {
     if (this.sandbox) return true;
     if (kind === 'feed' && id === 'bun') return !!(this.world && this.world.stock.buns > 0);
+    // what a visitor has given the farm (and what only a visitor can)
+    const boons = this.world && this.world.boons;
+    if (kind === 'plant' && boons && boons.plants[id]) return true;
+    if (kind === 'plant' && VISITOR_ONLY.plant.includes(id)) return false;
     const ware = MARKET_LOCK[kind] && MARKET_LOCK[kind][id];
     if (ware && !(this.world && this.world.owns(ware))) return false;
     if (kind === 'decor' && !this.isDecorUnlocked(id)) return false;
@@ -116,6 +138,8 @@ export class Journal {
   // Why something is locked, as a hint the keeper can act on.
   lockHint(kind, id) {
     if (kind === 'feed' && id === 'bun') return 'buy a bag from Baker Bramble at the Busytown Market.';
+    const by = VISITOR_ORDER.find((v) => VISITORS[v].gift.decor === id || VISITORS[v].gift.plant === id);
+    if (by) return `${VISITORS[by].name} the ${VISITORS[by].animal} brings the first one, when visiting. See the Visitors' Book in the Journal.`;
     const ware = MARKET_LOCK[kind] && MARKET_LOCK[kind][id];
     if (ware && !(this.world && this.world.owns(ware))) {
       const wr = WARE_BY_ID[ware];
@@ -135,6 +159,7 @@ export class Journal {
 
   isDecorUnlocked(id) {
     if (this.sandbox || !this.locked.decor.has(id)) return true;
+    if (this.world && this.world.boons.decor[id]) return true;
     if (this.orders.gifts[id]) return true;
     return DISCOVERIES.some((d) => d.reward && d.reward.decor === id && this.unlocked[d.id]);
   }
@@ -155,7 +180,7 @@ export class Journal {
   }
 
   serialize() {
-    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), orders: this.orders.serialize(), dreams: this.dreams.serialize(), seenVar: this.seenVar };
+    return { unlocked: this.unlocked, flags: this.flags, counts: this.counts, met: this.met, progress: this.progress.serialize(), orders: this.orders.serialize(), dreams: this.dreams.serialize(), visitors: this.visitors.serialize(), seenVar: this.seenVar };
   }
   load(d) {
     if (!d) return;
@@ -170,11 +195,14 @@ export class Journal {
     this.orders = this.newOrders();
     this.orders.load(d.orders);
     this.dreams.load(d.dreams);
+    this.visitors = this.newVisitors();
+    this.visitors.load(d.visitors);
     this.seenVar = d.seenVar || {};
     if (this.world) {
       this.progress.attach(this.world);
       this.orders.attach(this.world);
       this.dreams.attach(this.world);
+      this.visitors.attach(this.world);
     }
   }
   // A brand-new farm: every zone back to level 1.

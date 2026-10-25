@@ -1,5 +1,6 @@
 // Small DOM helpers shared by the UI modules.
 import { CREATURE_ART, PALETTES, drawWorm } from '../art/creatures.js';
+import { drawHat, drawNeckwear, isNeckwear } from '../art/ink.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export function el(tag, attrs = {}, ...kids) {
@@ -45,14 +46,24 @@ export function creatureArt(sp, stage, pose = 'idle', palIdx = 0, acc = null, ac
   if (!art) return artCanvas(css, [-10, -10, 10, 10], () => {});
   const [bw, bh] = art.box(stage);
   const pal = PALETTES[sp][palIdx % PALETTES[sp].length];
-  if (sp === 'worm') return wormIcon(css, palIdx);
+  if (sp === 'worm') return wormIcon(css, palIdx, acc, accColor);
   return artCanvas(css, [-bw, -bh, bw, bh], (g) => art.draw(g, { stage, pose, frame: 1, pal, acc, accColor, lw: art.lw, closed: false }));
 }
 
-export function wormIcon(css = [64, 52], palIdx = 0) {
-  return artCanvas(css, [-22, -9, 22, 9], (g) => {
+// Something to wear on its own, big enough to see (for the wardrobe and
+// the Market).
+export function outfitIcon(id, colour = '#e2553f', css = [46, 40]) {
+  const neck = isNeckwear(id);
+  return artCanvas(css, neck ? [-7, -6, 7, 6] : [-12, -14, 12, 4], (g) => {
+    if (neck) drawNeckwear(g, id, 0, 0, 6, 0.9, colour);
+    else drawHat(g, id, 0, 2, 6, 0.9, colour);
+  });
+}
+
+export function wormIcon(css = [64, 52], palIdx = 0, acc = 'cap', accColor = '#4c8fd6') {
+  return artCanvas(css, [-22, -11, 22, 9], (g) => {
     const pts = [];
     for (let i = 0; i < 12; i++) pts.push({ x: 17 - i * 3.2, y: Math.sin(i * 0.7) * 3 });
-    drawWorm(g, pts, PALETTES.worm[palIdx % PALETTES.worm.length], 0.8, false, 'cap', '#4c8fd6');
+    drawWorm(g, pts, PALETTES.worm[palIdx % PALETTES.worm.length], 0.8, false, acc, accColor);
   });
 }

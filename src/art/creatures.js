@@ -574,6 +574,7 @@ function drawFish(g, o) {
     ell(g, 9.4, 1.0, 0.7, 0.8);
     stroke(g, lw * 0.7);
   }
+  if (!fry) accessory(g, o, 5.4, -4.6 - (fan ? 1 : 0), 2.4, 8.2, 3.8, 1.5);
   if (fry) g.restore();
 }
 
@@ -952,6 +953,7 @@ function drawLadybug(g, o) {
   }
   antenna(g, 6.9, -1.0, 7.6, -2.6, 8.4, -2.8, lw * 0.6, 0.45);
   cheek(g, 7.6, 1.5, 0.45);
+  if (!young) accessory(g, o, 6.2, -1.1, 1.5, 5.2, 2.4, 0.9);
 }
 
 // ---------------------------------------------------------------- APHID
@@ -1066,6 +1068,7 @@ function drawButterfly(g, o) {
   cheek(g, 6.9, 0.5, 0.5);
   line(g, 2.6, 0.8, 3.4, 2.0, lw * 0.5);
   line(g, 3.8, 0.8, 4.8, 2.0, lw * 0.5);
+  accessory(g, o, 5.9, -1.9, 1.5, 4.6, 1.2, 1.0);
 }
 
 // Both butterfly wings (hind and fore) in body coordinates, hinged along y = -0.6.
@@ -1329,6 +1332,7 @@ function drawFirefly(g, o) {
     fill(g, INK);
   }
   cheek(g, 5.2, 1.2, 0.45);
+  accessory(g, o, 4.4, -0.8, 1.3, 3.8, 1.8, 0.9);
 }
 
 // ---------------------------------------------------------------- PILL BUG
@@ -1381,6 +1385,7 @@ function drawPillbug(g, o) {
   bent(g, 6.4, 0.2, 8.2, -1.4, 9.4, 0.4, lw * 0.6);
   dotEye(g, 6.0, 0.8, 0.55, o.closed);
   cheek(g, 6.5, 1.9, 0.45);
+  accessory(g, o, 5.6, -0.2, 1.4, 4.6, 2.6, 0.9);
 }
 
 // ---------------------------------------------------------------- FRUIT FLY

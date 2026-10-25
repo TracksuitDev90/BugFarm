@@ -41,6 +41,15 @@ j.orders.onOrder = (o) => {
   herald.note();
   letterT = 10;
 };
+// visitors' cards pop up like letters do
+const card = (kind, text) => {
+  seen.push([clock(), kind, text]);
+  herald.note();
+  letterT = 10;
+};
+j.visitors.onArrive = (v) => card('visitor', v.name);
+j.visitors.onOffer = (v) => card('visitor', v.name + ' has an idea');
+j.visitors.onGift = (id) => card('visitor', id + ' left a present');
 w.events.on('log', (l) => {
   const nw = newsPriority(l);
   if (nw) herald.push({ prio: nw.prio, kind: 'news', key: nw.key, text: l.text.slice(0, 64) });

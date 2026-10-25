@@ -120,7 +120,7 @@ export function expandSave(data, zone) {
   if (water) tr.water = encodeRuns(water2);
 
   // ---- everything in the tank moves along with the ground under it
-  for (const list of [w.creatures, w.plants, w.foods, w.decor, w.goods]) for (const e of list || []) if (typeof e.x === 'number') e.x = moveX(e.x);
+  for (const list of [w.creatures, w.plants, w.foods, w.decor, w.goods, w.visitors]) for (const e of list || []) if (typeof e.x === 'number') e.x = moveX(e.x);
   const shiftColony = (o) => {
     if (Array.isArray(o)) return o.forEach(shiftColony);
     if (!o || typeof o !== 'object') return;

@@ -12,6 +12,8 @@ import { PLANT_ORDER } from '../src/data/plants.js';
 import { DECOR_ORDER } from '../src/data/decor.js';
 import { mulberry32 } from '../src/util/rng.js';
 import { Journal } from '../src/sim/journal.js';
+import { VISITOR_ORDER } from '../src/data/visitors.js';
+import { OUTFIT_ORDER, canWear } from '../src/data/outfits.js';
 
 const days = +(process.argv[2] || 4);
 const seed = +(process.argv[3] || 1);
@@ -30,7 +32,7 @@ const steps = Math.round((days * DAY_LEN) / SIM_DT);
 const actions = {};
 for (let i = 0; i < steps; i++) {
   if (i % 90 === 0) {
-    const a = Math.floor(R() * 13);
+    const a = Math.floor(R() * 15);
     const x = R() * W;
     const y = R() * H;
     try {
@@ -71,7 +73,7 @@ for (let i = 0; i < steps; i++) {
           // goods and Busytown's orders
           const k = Math.floor(R() * 3);
           if (k === 0 && w.goods.length) w.collectGood(pick(w.goods));
-          else if (k === 1) for (const o of j.orders.ready()) j.orders.send(o);
+          else if (k === 1) for (const o of j.orders.ready()) j.orders.send(o, o.critter ? pick(j.orders.eligible(o)) : undefined);
           else if (j.orders.list.length) j.orders.decline(pick(j.orders.list));
           actions.orders = (actions.orders || 0) + 1;
           break;
@@ -80,6 +82,24 @@ for (let i = 0; i < steps; i++) {
           // the Busytown Market
           buy(j, w, pick(WARES));
           actions.market = (actions.market || 0) + 1;
+          break;
+        }
+        case 13: {
+          // a visitor from the garden, and saying yes (or no) to their idea
+          const v = j.visitors.current();
+          if (!v) j.visitors.arrive(pick(VISITOR_ORDER));
+          else if (v.waiting) {
+            if (R() < 0.7) j.visitors.accept(v.type, v.offer, v);
+            else j.visitors.decline(v.type, v.offer, v);
+          } else if (R() < 0.2) v.leave(w);
+          actions.visitor = (actions.visitor || 0) + 1;
+          break;
+        }
+        case 14: {
+          // dressing up
+          const c = pick(w.creatures.filter((k) => canWear(k)));
+          if (c) w.dress(c, R() < 0.15 ? null : pick(OUTFIT_ORDER), pick(['#d9483b', '#4c8fd6', null]));
+          actions.dress = (actions.dress || 0) + 1;
           break;
         }
       }
@@ -97,12 +117,17 @@ for (let i = 0; i < steps; i++) {
   if (i % 300 === 0) {
     for (const c of w.creatures) {
       if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !Number.isFinite(c.hunger) || !Number.isFinite(c.health)) report(`NaN in ${c.sp}/${c.stage} mode=${c.mode} b=${c.brain.b && c.brain.b.id} x=${c.x} y=${c.y}`);
-      else if (c.x < -5 || c.x > W + 5 || c.y < -30 || c.y > H + 5) report(`${c.sp}/${c.stage} out of tank at ${c.x.toFixed(0)},${c.y.toFixed(0)} mode=${c.mode}`);
+      else if (c.x < -5 || c.x > W + 5 || c.y < -30 || c.y > H + 5) report(`${c.sp}/${c.stage} out of tank at ${c.x.toFixed(0)},${c.y.toFixed(0)} mode=${c.mode}${c.climb && c.climb.plant ? ` on a ${c.climb.plant.type} (planted at ${c.climb.plant.y.toFixed(0)})` : ''}`);
     }
     for (const f of w.foods) if (!Number.isFinite(f.x) || !Number.isFinite(f.y) || f.y > H + 5) report(`food ${f.type} bad pos ${f.x},${f.y} state=${f.state}`);
     for (const p of w.plants) if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !p.shape.box.every(Number.isFinite)) report(`plant ${p.type} bad`);
     for (const g of w.goods) if (!Number.isFinite(g.x) || !Number.isFinite(g.y) || g.y > H + 5) report(`good ${g.type} bad pos ${g.x},${g.y}`);
     for (const [k, v] of Object.entries(w.pantry)) if (!Number.isFinite(v) || v < 0) report(`pantry ${k} = ${v}`);
+    for (const [k, L] of Object.entries(w.flavours)) {
+      const sum = Object.values(L).reduce((a, n) => a + n, 0);
+      if (sum !== w.pantry[k] || Object.values(L).some((n) => !(n > 0))) report(`basket flavours of ${k} don't add up: ${JSON.stringify(L)} vs ${w.pantry[k]}`);
+    }
+    for (const v of w.visitors) if (!Number.isFinite(v.x) || !Number.isFinite(v.y) || v.x < -5 || v.x > W + 5 || v.y > H + 5) report(`visitor ${v.type} out of the tank at ${v.x},${v.y} (${v.state})`);
     if (!Number.isFinite(w.coins) || w.coins < 0) report(`coins = ${w.coins}`);
     if (w.creatures.filter((c) => c.role === 'courier' && !c.dead).length > 1) report('more than one mail dragonfly');
   }

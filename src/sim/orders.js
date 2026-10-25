@@ -7,8 +7,10 @@
 // get any other way.
 // Lives beside the zone progress in the journal, and ticks on game time,
 // so letters keep arriving while you're away.
-import { GOODS, GOOD_ORDER, goodWord } from '../data/goods.js';
-import { NEIGHBOURS, ORDER_GIFTS, MAX_HEARTS } from '../data/neighbours.js';
+import { GOODS, GOOD_ORDER, goodWord, flavourOf, FLAVOURS, SILK_OF, splitKey } from '../data/goods.js';
+import { NEIGHBOURS, ORDER_GIFTS, MAX_HEARTS, CRITTER_PAY, VARIETY_PAY } from '../data/neighbours.js';
+import { blooms } from '../data/plants.js';
+import { varietyName } from '../art/creatures.js';
 import { WARES, COINS_PER_STAR } from '../data/market.js';
 import { SPECIES } from '../data/species.js';
 import { residents, favouriteFoods, listWords } from './care.js';
@@ -54,10 +56,35 @@ export function neighbour(id) {
   return NB[id] || NEIGHBOURS[0];
 }
 
-// "2 jars of honey and 3 seed heads"
-export function needsWords(needs) {
-  return listWords(Object.entries(needs).map(([g, n]) => goodWord(g, n)));
+// "2 jars of honey and 3 seed heads" (flav: good -> the flavour asked for;
+// best: prize ones only)
+export function needsWords(needs, flav, best) {
+  return listWords(Object.entries(needs).map(([g, n]) => goodWord(g, n, flav && flav[g], best)));
 }
+const an = (w) => (/^[aeiou]/i.test(w) ? 'an ' : 'a ') + w;
+// "a grown-up cricket", "a comet", "a caterpillar"
+export function critterWords(cr) {
+  const def = SPECIES[cr.sp];
+  if (cr.stage) return an(cr.stage);
+  if (cr.pal != null) return an(varietyName(cr.sp, cr.pal).toLowerCase());
+  return an('grown-up ' + def.name.toLowerCase());
+}
+// What a letter asks for, in words.
+export function orderWords(o) {
+  return o.critter ? critterWords(o.critter) : needsWords(o.needs, o.flav, o.best);
+}
+const capital = (t) => t[0].toUpperCase() + t.slice(1);
+// What a prize-hunting neighbour says.
+const BEST_WHY = [
+  'It\'s for the Busytown show, so only your very best will do!',
+  'I\'m after a rosette this year. Prize ones only, please!',
+  'It\'s a very special occasion, so it has to be the best you have.',
+];
+// How a critter's new home is getting on, in the thank-you.
+const SETTLED = ['Everyone adores them already.', 'They\'ve made lots of new friends.', 'They have the sunniest spot by the window.', 'I\'ll send news of how they\'re getting on.'];
+// Who the keeper's critters have gone to live with in Busytown is kept in
+// a little list (for the Orders tab), newest first.
+const MOVED_MAX = 24;
 
 export class Orders {
   constructor() {
@@ -73,6 +100,7 @@ export class Orders {
     this.sold = 0; // goods the farm stand has sold
     this.standDay = 0; // the day the farm stand last opened
     this.vanDay = 0; // the day the van last went out
+    this.moved = []; // critters who went to live in Busytown: { name, sp, pal, who, day }
     this.world = null;
     this.canUse = () => true;
     this.onOrder = null;
@@ -101,6 +129,61 @@ export class Orders {
     return out;
   }
 
+  // The flavours of a good the farm could make right now (or has in the
+  // basket), so a neighbour only asks for one the keeper can manage.
+  flavoursMakeable(w, id) {
+    const out = new Set();
+    const L = w.flavours[id] || {};
+    for (const k in L) if (L[k] > 0) out.add(splitKey(k)[0]);
+    const alive = (p) => !p.dead && p.growth > 0.4;
+    if (id === 'honey') {
+      if (w.count('bee') > 0 && w.hive()) {
+        out.add('wild');
+        for (const p of w.plants) if (alive(p) && blooms(p.def) && FLAVOURS.honey[p.type]) out.add(p.type);
+      }
+      if (w.colonies.some((col) => col.kind === 'honeypot')) out.add('desert');
+    } else if (id === 'seeds') {
+      for (const p of w.plants) if (alive(p) && blooms(p.def) && !p.def.aquatic && p.def.kind !== 'strawberry' && FLAVOURS.seeds[p.type]) out.add(p.type);
+    } else if (id === 'lily') {
+      const lilies = w.plants.filter((p) => !p.dead && p.def.kind === 'lily');
+      if (lilies.some((p) => !p.def.lotus)) ['white', 'pink', 'gold'].forEach((f) => out.add(f));
+      if (lilies.some((p) => !p.def.lotus) && w.count('tetra') >= 3) out.add('blue');
+      if (lilies.some((p) => p.def.lotus)) out.add('lotus');
+    } else if (id === 'silk') {
+      for (const c of w.creatures) {
+        if (c.dead || (c.sp !== 'butterfly' && c.sp !== 'moth') || c.stage === 'egg') continue;
+        const k = SILK_OF[c.sp + ':' + c.palIdx];
+        if (k) out.add(k);
+      }
+    } else if (id === 'compost') {
+      if (w.count('beetle') > 0) out.add('compost');
+      if (w.count('worm') > 0) out.add('castings');
+    }
+    return [...out].filter((f) => flavourOf(id, f));
+  }
+
+  // How likely each flavour is to turn up soon: in the basket already,
+  // waiting in the tank, or filling the comb.
+  flavoursSoon(w, id) {
+    const out = {};
+    const L = w.flavours[id] || {};
+    for (const k in L) if (L[k] > 0) out[splitKey(k)[0]] = 4;
+    for (const g of w.goods) if (g.type === id) out[g.flav] = Math.max(out[g.flav] || 1, 3);
+    if (id === 'silk') {
+      // caterpillars and chrysalises: silk to come
+      for (const c of w.creatures) {
+        if (c.dead || (c.sp !== 'butterfly' && c.sp !== 'moth') || c.isAdult || c.stage === 'egg') continue;
+        const k = SILK_OF[c.sp + ':' + c.palIdx];
+        if (k) out[k] = Math.max(out[k] || 1, c.pupa ? 3 : 2);
+      }
+    }
+    if (id === 'honey') {
+      const hive = w.hive();
+      if (hive) for (const [k, v] of w.combFlavour(hive)[2]) if (v > 0.35) out[k] = Math.max(out[k] || 1, 1 + v * 3);
+    }
+    return out;
+  }
+
   // What the farm could make if a few more critters moved in.
   hintMakers(w) {
     const can = this.makeable(w);
@@ -118,7 +201,7 @@ export class Orders {
     if (!o) return null;
     this.list.push(o);
     const nb = neighbour(o.who);
-    w.addLog(`A letter from ${nb.name}, ${nb.job}, asking for ${needsWords(o.needs)}.`, 'clip');
+    w.addLog(`A letter from ${nb.name}, ${nb.job}, asking for ${orderWords(o)}.`, 'clip');
     w.events.emit('letter', { o });
     if (this.onOrder) this.onOrder(o);
     return o;
@@ -145,6 +228,12 @@ export class Orders {
   }
 
   make(w) {
+    // now and then a neighbour would love to give one of the critters a home
+    // (one such letter at a time)
+    if (this.sent >= 3 && chance(0.22) && !this.list.some((o) => o.critter)) {
+      const o = this.makeCritter(w);
+      if (o) return o;
+    }
     const can = this.makeable(w);
     if (!can.length) return null;
     const busy = this.list.map((o) => o.who).concat(this.lastWho);
@@ -168,10 +257,96 @@ export class Orders {
       const second = rpick(goods.filter((g) => g !== first));
       needs[second] = GOODS[second].batch[0];
     }
-    const why = rpick(nb.why[first] || ['It would be such a help.']).replace('{n}', goodWord(first, needs[first]));
+    // Once the farm is up and running, a neighbour may ask for one flavour
+    // in particular (and pays half as much again for it), or for prize
+    // goods (twice as much) once the farm has made some of those.
+    // (one picky letter at a time, so the rest keep coming)
+    let flav = null;
+    let best = false;
+    const single = Object.keys(needs).length === 1;
+    const picky = !this.list.some((o) => o.flav || o.best);
+    const prizes = (w.stats.prizes && w.stats.prizes[first]) || 0;
+    if (picky && single && this.sent >= 6 && prizes > 0 && chance(0.18)) {
+      best = true;
+      needs[first] = lo;
+    } else if (picky && single && this.sent >= 3 && chance(0.5)) {
+      const soon = this.flavoursSoon(w, first);
+      // (silk only of a butterfly that's on its way: there's no telling
+      // what colour a caterpillar not yet born will be)
+      const fl = this.flavoursMakeable(w, first).filter((k) => first !== 'silk' || soon[k]);
+      const likes = (nb.likes && nb.likes[first]) || [];
+      // (only worth asking when there's a choice to make, or it's a
+      // favourite; flavours on their way, or already made, come up most)
+      if (fl.length >= 2 || fl.some((f) => likes.includes(f))) {
+        const f = weighted(fl, (k) => (likes.includes(k) ? 2.5 : 1) * (soon[k] || 0.5) * (k === 'wild' ? 0.3 : 1));
+        flav = { [first]: f };
+        needs[first] = Math.min(needs[first], lo + 1);
+      }
+    }
+    const words = goodWord(first, needs[first], flav && flav[first], best);
+    let why = rpick(nb.why[first] || ['It would be such a help.']).replace('{n}', words);
+    if (flav && nb.picky) {
+      const f = flavourOf(first, flav[first]).name.toLowerCase();
+      why = rpick(nb.picky).split('{f}').join(f).split('{F}').join(capital(f));
+    } else if (best) why = rpick(BEST_WHY);
     let stars = 0;
     for (const [g, n] of Object.entries(needs)) stars += n * GOODS[g].value;
-    return { id: this.seq++, who: nb.id, needs, why, stars, coins: stars * COINS_PER_STAR, day: w.env.day, t: Math.round(w.time) };
+    if (best) stars *= 2;
+    else if (flav) stars = Math.ceil(stars * 1.5);
+    const o = { id: this.seq++, who: nb.id, needs, why, stars, coins: stars * COINS_PER_STAR, day: w.env.day, t: Math.round(w.time) };
+    if (flav) o.flav = flav;
+    if (best) o.best = true;
+    return o;
+  }
+
+  // Critters the keeper could send for a critter letter: grown-ups (or the
+  // young stage asked for) of the right kind and variety, never a queen or
+  // the mail dragonfly.
+  eligible(o) {
+    const w = this.world;
+    const cr = o.critter;
+    if (!w || !cr) return [];
+    return w.creatures.filter((c) => !c.dead && c.sp === cr.sp && !c.role && c.stage !== 'queen' && !c.pupa && (cr.stage ? c.stage === cr.stage : c.isAdult) && (cr.pal == null || c.palIdx === cr.pal));
+  }
+  // A letter asking for a critter. Only for critters the farm has a few of
+  // (it never asks for the last one), and more often for crowded ones.
+  makeCritter(w) {
+    const busy = this.list.map((o) => o.who).concat(this.lastWho);
+    const opts = [];
+    for (const nb of NEIGHBOURS) {
+      if (!nb.pets || busy.includes(nb.id)) continue;
+      for (const [key, wt] of Object.entries(nb.pets)) {
+        const [sp, stage] = key.split(':');
+        if (!SPECIES[sp]) continue;
+        const list = w.creatures.filter((c) => !c.dead && c.sp === sp && !c.role && (stage ? c.stage === stage : c.isAdult));
+        const adults = w.creatures.filter((c) => !c.dead && c.sp === sp && c.isAdult && !c.role).length;
+        // a young one only if there are a few; a grown-up only if it leaves at least two
+        if (stage ? list.length < 2 : list.length < 3 || adults < 3) continue;
+        const crowd = w.count(sp) >= SPECIES[sp].maxPop * 0.7 ? 3 : 1;
+        opts.push({ nb, key, sp, stage, list, wt: wt * crowd });
+      }
+    }
+    if (!opts.length) return null;
+    const pick = weighted(opts, (op) => op.wt);
+    const cr = { sp: pick.sp };
+    if (pick.stage) cr.stage = pick.stage;
+    let coins = CRITTER_PAY[pick.key] || 10;
+    // a particular variety, if the farm has a spare one
+    if (!pick.stage && chance(0.4)) {
+      const by = {};
+      for (const c of pick.list) if (varietyName(c.sp, c.palIdx)) by[c.palIdx] = (by[c.palIdx] || 0) + 1;
+      const pals = Object.keys(by).filter((k) => by[k] >= 1).map(Number);
+      if (pals.length) {
+        cr.pal = rpick(pals);
+        coins += VARIETY_PAY;
+      }
+    }
+    const nb = pick.nb;
+    const words = critterWords(cr);
+    const lines = (nb.petWhy && nb.petWhy[pick.key]) || ['They would have a lovely home with me.'];
+    const why = rpick(lines).split('{c}').join(words).split('{C}').join(capital(words));
+    const stars = Math.max(2, Math.round(coins / COINS_PER_STAR));
+    return { id: this.seq++, who: nb.id, needs: {}, critter: cr, why, stars, coins, day: w.env.day, t: Math.round(w.time) };
   }
 
   // Nobody waits for ever: a letter that's sat two days without the farm
@@ -181,10 +356,12 @@ export class Orders {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const o = this.list[i];
       const t = o.t != null ? o.t : (o.day - 1) * DAY_LEN;
-      if (w.time - t < DAY_LEN * 2 || this.canSend(o)) continue;
+      // (a particular flavour, or prize ones, can take a little longer)
+      const wait = o.flav || o.best ? 3 : 2;
+      if (w.time - t < DAY_LEN * wait || this.canSend(o)) continue;
       this.list.splice(i, 1);
       const nb = neighbour(o.who);
-      w.addLog(`${nb.name} found ${needsWords(o.needs)} elsewhere in the end. No harm done: they'll write again!`, 'clip');
+      w.addLog(`${nb.name} found ${orderWords(o)} elsewhere in the end. No harm done: they'll write again!`, 'clip');
       this.nextT = Math.min(this.nextT, w.time + DAY_LEN * 0.15);
     }
   }
@@ -210,20 +387,40 @@ export class Orders {
   }
 
   canSend(o) {
-    const p = this.world ? this.world.pantry : {};
-    return Object.entries(o.needs).every(([g, n]) => (p[g] || 0) >= n);
+    const w = this.world;
+    if (!w) return false;
+    if (o.critter) return this.eligible(o).length > 0;
+    return Object.entries(o.needs).every(([g, n]) => w.basketHas(g, o.flav && o.flav[g], !!o.best) >= n);
   }
   ready() {
     return this.list.filter((o) => this.canSend(o));
   }
+  // The flavours other open letters are waiting for (so an order for any
+  // honey doesn't use up the clover honey someone else asked for).
+  reserved(g, except) {
+    const keep = {};
+    for (const o of this.list) {
+      if (o === except || !o.flav || !o.flav[g]) continue;
+      keep[o.flav[g]] = (keep[o.flav[g]] || 0) + o.needs[g];
+    }
+    return keep;
+  }
 
   // Pack the order off to Busytown. Returns what came back: the treats
-  // dropped into the tank and any gifts newly earned.
-  send(o) {
+  // dropped into the tank and any gifts newly earned. A critter letter
+  // needs the critter the keeper chose to send (c).
+  send(o, c) {
     const w = this.world;
     const i = this.list.indexOf(o);
     if (!w || i < 0 || !this.canSend(o)) return null;
-    for (const [g, n] of Object.entries(o.needs)) w.pantry[g] -= n;
+    if (o.critter && (!c || !this.eligible(o).includes(c))) return null;
+    let prizes = 0;
+    for (const [g, n] of Object.entries(o.needs)) prizes += Math.max(0, w.takeGoods(g, n, o.flav && o.flav[g], !!o.best, this.reserved(g, o)));
+    if (o.critter) {
+      this.moved.unshift({ name: c.name, sp: c.sp, pal: c.palIdx, who: o.who, day: w.env.day, master: c.memory.master || '' });
+      if (this.moved.length > MOVED_MAX) this.moved.length = MOVED_MAX;
+      w.sendOff(c, neighbour(o.who));
+    }
     this.list.splice(i, 1);
     this.sent++;
     const before = this.stars;
@@ -238,19 +435,24 @@ export class Orders {
     // paid (with a tip from old friends), then a heart of friendship, and
     // maybe a ware they'll now sell the farm
     const pay = this.pay(o);
+    // prize goods on an everyday order (or a master critter) get noticed
+    pay.prize = o.best ? 0 : prizes * 2 + (o.critter && c.memory.master ? 5 : 0);
+    pay.total += pay.prize;
     const h0 = this.heartsOf(o.who);
     const h1 = Math.min(MAX_HEARTS, h0 + 1);
     this.hearts[o.who] = h1;
     const offers = WARES.filter((wr) => wr.who === o.who && h0 < wr.hearts && h1 >= wr.hearts);
     w.earn(pay.total, `an order for ${nb.name}`);
-    const thanks = rpick(nb.thanks || ['You made my day.']);
-    this.letters.unshift({ who: o.who, day: w.env.day, text: `Thank you for the ${needsWords(o.needs)}! ${thanks}` });
+    const thanks = o.critter ? `${c.name} has settled in beautifully. ${rpick(SETTLED)}` : rpick(nb.thanks || ['You made my day.']);
+    const what = o.critter ? `${c.name} the ${c.def.name.toLowerCase()}` : orderWords(o);
+    const text = o.critter ? `Thank you for trusting me with ${c.name}! ${thanks}` : `Thank you for the ${what}! ${thanks}`;
+    this.letters.unshift({ who: o.who, day: w.env.day, text });
     if (this.letters.length > 30) this.letters.length = 30;
-    w.addLog(`Sent ${needsWords(o.needs)} to ${nb.name}. Busytown paid ${pay.total} coins!`, 'coin');
-    w.events.emit('delivered', { o, stars: o.stars, gifts, coins: pay.total, hearts: h1 });
+    w.addLog(o.critter ? `${what} went to live with ${nb.name}. Busytown paid ${pay.total} coins!` : `Sent ${what} to ${nb.name}. Busytown paid ${pay.total} coins!`, 'coin');
+    w.events.emit('delivered', { o, stars: o.stars, gifts, coins: pay.total, hearts: h1, prizes, c: c || null });
     // a reply usually brings another letter along (after a breather)
     this.nextT = Math.min(this.nextT, w.time + DAY_LEN * rrange(0.3, 0.45));
-    return { o, nb, treats, gifts, pay, hearts: h1, offers, thanks };
+    return { o, nb, treats, gifts, pay, hearts: h1, offers, thanks, prizes, c: c || null };
   }
 
   // The town's gifts at work. Each evening the farm stand sells a few
@@ -267,7 +469,8 @@ export class Orders {
     if (h >= 9 && h < 12 && this.vanDay !== day && has('deliveryVan')) {
       this.vanDay = day;
       const sent = [];
-      for (const o of this.ready()) {
+      // (the van carries parcels; who moves to Busytown is the keeper's choice)
+      for (const o of this.ready().filter((r) => !r.critter)) {
         const r = this.send(o);
         if (r) sent.push(r);
       }
@@ -287,10 +490,12 @@ export class Orders {
     let coins = 0;
     const sold = {};
     for (const g of GOOD_ORDER) {
-      const spare = (w.pantry[g] || 0) - (want[g] || 0) - 1; // (always keeps one of each)
+      // (always keeps one of each, and never sells a prize one)
+      const plain = w.basketHas(g) - w.basketHas(g, null, true);
+      const spare = Math.min(plain, (w.pantry[g] || 0) - (want[g] || 0) - 1);
       const n = Math.max(0, Math.min(left, spare));
       if (!n) continue;
-      w.pantry[g] -= n;
+      w.takeGoods(g, n, null, false, this.reserved(g, null));
       left -= n;
       sold[g] = n;
       coins += n * GOODS[g].value * 2;
@@ -315,7 +520,7 @@ export class Orders {
   // A thank-you basket of snacks for the critters who did the work.
   treats(w, o) {
     const g = Object.keys(o.needs)[0];
-    const zone = SPECIES[GOODS[g].makers[0]].zone;
+    const zone = o.critter ? SPECIES[o.critter.sp].zone : SPECIES[GOODS[g].makers[0]].zone;
     const sps = [...new Set(residents(w, zone).map((c) => c.sp))];
     const foods = favouriteFoods(sps, this.canUse, 2);
     if (!foods.length) return [];
@@ -335,11 +540,12 @@ export class Orders {
   }
 
   serialize() {
-    return { list: this.list, sent: this.sent, stars: this.stars, seq: this.seq, nextT: this.nextT == null ? null : Math.round(this.nextT), letters: this.letters, gifts: this.gifts, lastWho: this.lastWho, hearts: this.hearts, sold: this.sold, standDay: this.standDay, vanDay: this.vanDay };
+    return { list: this.list, sent: this.sent, stars: this.stars, seq: this.seq, nextT: this.nextT == null ? null : Math.round(this.nextT), letters: this.letters, gifts: this.gifts, lastWho: this.lastWho, hearts: this.hearts, sold: this.sold, standDay: this.standDay, vanDay: this.vanDay, moved: this.moved };
   }
   load(d) {
     if (!d) return;
-    this.list = (d.list || []).filter((o) => o && o.needs && Object.keys(o.needs).every((g) => GOODS[g]));
+    this.list = (d.list || []).filter((o) => o && o.needs && Object.keys(o.needs).every((g) => GOODS[g]) && (!o.critter || SPECIES[o.critter.sp]) && (Object.keys(o.needs).length || o.critter));
+    this.moved = d.moved || [];
     this.sent = d.sent || 0;
     this.stars = d.stars || 0;
     this.seq = d.seq || this.list.length + 1;

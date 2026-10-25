@@ -226,6 +226,7 @@ export function drawKoi(g, o) {
   cheek(g, 10.6, 1.4, 1.1);
   ell(g, 12.9, 1.0, 0.7, 0.6);
   stroke(g, lw * 0.7);
+  if (o.stage !== 'fry') hatOn(g, o, 8.8, -4.8, 2.6, 11.6, 4.2, 1.6);
   if (o.stage === 'fry') g.restore();
 }
 

@@ -41,6 +41,9 @@ export class Terrain {
     this.wsim.seepR = POND_R + 3;
     this.deriveT = 0;
     this.dbox = [0, 0, GW - 1, GH - 1];
+    this.pourMark = null; // (stroke stamps for pour(), made when first needed)
+    this.pourGen = 1;
+    this.pourSpan = [GW, -1];
   }
 
   idx(cx, cy) {
@@ -159,8 +162,10 @@ export class Terrain {
     const ws = this.wsim;
     if (m !== 0 && ws.mass[i] > 0) ws.displace(cx, cy);
     else if (ws.x1 >= ws.x0 && cx >= ws.x0 - 2 && cx <= ws.x1 + 2 && cy >= ws.y0 - 2 && cy <= ws.y1 + 2) ws.wake(cx, cy);
+    // (the column's top only moves if this cell was or becomes it)
     const oldTop = this.top[cx];
-    this.computeTop(cx);
+    if (m !== 0 && cy < oldTop) this.top[cx] = cy;
+    else if (m === 0 && cy === oldTop) this.computeTop(cx);
     if (this.top[cx] !== oldTop) this.markColumnDirty(cx, oldTop - 4, this.top[cx] + 4);
     if (m === 0 && cy > this.groundTop[cx]) this.tunnelCells++;
     else if (old === 0 && cy > this.groundTop[cx]) this.tunnelCells = Math.max(0, this.tunnelCells - 1);
@@ -210,6 +215,77 @@ export class Terrain {
       }
     }
     return n;
+  }
+
+  // The keeper's brush pours material m rather than stamping it in place:
+  // each cell of air the brush passes over gives one grain, once a stroke
+  // (so a stroke lays down as much as it covers, however often the brush
+  // goes back over a spot), and the grain falls until it lands, through air
+  // and water alike. So the new ground settles onto the old instead of
+  // hanging in mid-air, and never piles higher than the brush. A loose grain
+  // rolls on down the side of a slope steeper than it can hold: slide is
+  // how far below it the next column must be before it rolls (1 for sand
+  // and gravel, 2 for soil, which holds a steeper bank, 3 for rock, which
+  // stacks into a crag; 0 drops straight down). Returns cells added;
+  // this.pourSpan holds the first and last columns they landed in.
+  pour(cx, cy, r, m, slide, canFill) {
+    const mark = (this.pourMark = this.pourMark || new Uint32Array(GW * GH));
+    const gen = this.pourGen;
+    let n = 0;
+    let lo = GW;
+    let hi = -1;
+    const r2 = r * r + 0.5;
+    const xa = Math.max(0, Math.floor(cx - r));
+    const xb = Math.min(GW - 1, Math.ceil(cx + r));
+    // bottom row first, so each layer lands on the one before; and from
+    // alternate sides, so the heap doesn't lean one way
+    let row = 0;
+    for (let y = Math.ceil(cy + r); y >= Math.floor(cy - r); y--, row++) {
+      if (y < 0 || y >= GH) continue;
+      for (let k = 0; k <= xb - xa; k++) {
+        const x = row & 1 ? xb - k : xa + k;
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const i = y * GW + x;
+        if (this.mat[i] !== 0 || mark[i] === gen) continue;
+        if (canFill && !canFill(x, y)) continue;
+        mark[i] = gen;
+        let gx = x;
+        let gy = y;
+        for (let guard = 0; guard < GH * 2; guard++) {
+          if (!this.solid(gx, gy + 1)) {
+            gy++;
+            continue;
+          }
+          if (!slide) break;
+          const d = Math.random() < 0.5 ? -1 : 1;
+          // (soil and rock now and then give a little, so banks aren't ruler-straight)
+          const s = slide > 1 && Math.random() < 0.5 ? slide - 1 : slide;
+          const roll = (nx) => {
+            if (this.solid(nx, gy)) return false;
+            for (let j = 1; j <= s; j++) if (this.solid(nx, gy + j)) return false;
+            return true;
+          };
+          if (roll(gx + d)) gx += d;
+          else if (roll(gx - d)) gx -= d;
+          else break;
+          gy++;
+        }
+        if (this.set(gx, gy, m)) {
+          n++;
+          if (gx < lo) lo = gx;
+          if (gx > hi) hi = gx;
+        }
+      }
+    }
+    this.pourSpan = [lo, hi];
+    return n;
+  }
+
+  // A new brush stroke: every cell can give a grain again.
+  newStroke() {
+    this.pourGen++;
   }
 
   // Sand pile physics for deposits: add one cell of sand near column cx,

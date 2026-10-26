@@ -8,7 +8,7 @@
 // Lives beside the zone progress in the journal, and ticks on game time,
 // so letters keep arriving while you're away.
 import { GOODS, GOOD_ORDER, goodWord, flavourOf, FLAVOURS, SILK_OF, splitKey } from '../data/goods.js';
-import { NEIGHBOURS, ORDER_GIFTS, MAX_HEARTS, CRITTER_PAY, VARIETY_PAY } from '../data/neighbours.js';
+import { NEIGHBOURS, ORDER_GIFTS, STAR_FAIR, MAX_HEARTS, CRITTER_PAY, VARIETY_PAY } from '../data/neighbours.js';
 import { blooms } from '../data/plants.js';
 import { varietyName } from '../art/creatures.js';
 import { WARES, COINS_PER_STAR } from '../data/market.js';
@@ -355,15 +355,32 @@ export class Orders {
   tidyLetters(w) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const o = this.list[i];
-      const t = o.t != null ? o.t : (o.day - 1) * DAY_LEN;
-      // (a particular flavour, or prize ones, can take a little longer)
-      const wait = o.flav || o.best ? 3 : 2;
-      if (w.time - t < DAY_LEN * wait || this.canSend(o)) continue;
+      if (this.waitLeft(o) > 0 || this.canSend(o)) continue;
       this.list.splice(i, 1);
       const nb = neighbour(o.who);
       w.addLog(`${nb.name} found ${orderWords(o)} elsewhere in the end. No harm done: they'll write again!`, 'clip');
       this.nextT = Math.min(this.nextT, w.time + DAY_LEN * 0.15);
     }
+  }
+
+  // How much longer (game seconds) a neighbour will wait for this letter.
+  // (a particular flavour, or prize ones, can take a little longer)
+  waitLeft(o) {
+    const w = this.world;
+    if (!w) return Infinity;
+    const t = o.t != null ? o.t : (o.day - 1) * DAY_LEN;
+    return t + DAY_LEN * (o.flav || o.best ? 3 : 2) - w.time;
+  }
+  // What a letter still needs from the basket: [[good, how many more]].
+  missing(o) {
+    const w = this.world;
+    if (!w || o.critter) return [];
+    const out = [];
+    for (const [g, n] of Object.entries(o.needs)) {
+      const have = w.basketHas(g, o.flav && o.flav[g], !!o.best);
+      if (have < n) out.push([g, n - have]);
+    }
+    return out;
   }
 
   // Friendship with a neighbour, 0..MAX_HEARTS.
@@ -432,6 +449,14 @@ export class Orders {
     const treats = this.treats(w, o);
     const gifts = ORDER_GIFTS.filter((gf) => before < gf.stars && this.stars >= gf.stars);
     for (const gf of gifts) this.gifts[gf.decor] = true;
+    // (and once every gift is here, a fair now and then)
+    const fairs = this.fairsAt(this.stars) - this.fairsAt(before);
+    if (fairs > 0) {
+      const coins = fairs * STAR_FAIR.coins;
+      w.earn(coins, 'the Busytown fair');
+      w.addLog(`Busytown held a fair in the farm's honour and sent ${coins} coins from the takings!`, 'coin');
+      gifts.push({ fair: true, coins, text: `Busytown held a fair in your farm's honour! ${coins} coins from the takings are in your purse.` });
+    }
     // paid (with a tip from old friends), then a heart of friendship, and
     // maybe a ware they'll now sell the farm
     const pay = this.pay(o);
@@ -519,11 +544,9 @@ export class Orders {
 
   // A thank-you basket of snacks for the critters who did the work.
   treats(w, o) {
-    const g = Object.keys(o.needs)[0];
-    const zone = o.critter ? SPECIES[o.critter.sp].zone : SPECIES[GOODS[g].makers[0]].zone;
-    const sps = [...new Set(residents(w, zone).map((c) => c.sp))];
-    const foods = favouriteFoods(sps, this.canUse, 2);
-    if (!foods.length) return [];
+    const plan = this.treatPlan(w, o);
+    if (!plan) return [];
+    const { zone, foods } = plan;
     const mid = ZONE_MID[zone];
     const out = [];
     for (let k = 0; k < 3; k++) {
@@ -536,7 +559,29 @@ export class Orders {
   }
 
   nextGift() {
-    return ORDER_GIFTS.find((gf) => this.stars < gf.stars) || null;
+    const gf = ORDER_GIFTS.find((g) => this.stars < g.stars);
+    if (gf) return gf;
+    // every gift is here: the next fair
+    return { stars: this.lastGiftStars() + (this.fairsAt(this.stars) + 1) * STAR_FAIR.every, fair: true, coins: STAR_FAIR.coins };
+  }
+  lastGiftStars() {
+    return ORDER_GIFTS[ORDER_GIFTS.length - 1].stars;
+  }
+  // Fairs held by the time the farm has this many stars.
+  fairsAt(stars) {
+    return Math.max(0, Math.floor((stars - this.lastGiftStars()) / STAR_FAIR.every));
+  }
+
+  // Which zone's critters a thank-you basket goes to, and what's in it
+  // (their favourite snacks), or null if nobody there would eat them.
+  treatPlan(w, o) {
+    const g = Object.keys(o.needs)[0];
+    const sp = o.critter ? o.critter.sp : g ? GOODS[g].makers[0] : null;
+    if (!sp || !SPECIES[sp]) return null;
+    const zone = SPECIES[sp].zone;
+    const sps = [...new Set(residents(w, zone).map((c) => c.sp))];
+    const foods = favouriteFoods(sps, this.canUse, 2);
+    return foods.length ? { zone, foods } : null;
   }
 
   serialize() {

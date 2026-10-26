@@ -276,6 +276,9 @@ export const ORDER_GIFTS = [
   { stars: 1, decor: 'farmStand', text: 'Busytown sent you a farm stand! Each evening it sells a few spare goods for coins.' },
   { stars: 12, decor: 'deliveryVan', text: 'Busytown sent you your very own delivery van! It posts any order that\'s ready every morning.' },
 ];
+// Once the farm has every gift, stars still count: every so many more and
+// Busytown holds a fair in the farm's honour and sends the takings.
+export const STAR_FAIR = { every: 10, coins: 15 };
 
 // Friendship with a neighbour: one heart for every order sent to them.
 export const MAX_HEARTS = 5;

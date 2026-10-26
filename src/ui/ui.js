@@ -24,6 +24,7 @@ import { heatLamp, mister, pondHeater, pondFilter } from '../art/equipment.js';
 import { GOODS, GOOD_ORDER, JOBS, goodWord, jobOf, flavourOf, splitKey, FLAVOURS } from '../data/goods.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { neighbour, needsWords, orderWords, critterWords } from '../sim/orders.js';
+import { ORDER_GIFTS, STAR_FAIR } from '../data/neighbours.js';
 import { $, el, esc, artCanvas, creatureArt, wormIcon, outfitIcon } from './dom.js';
 import { Postbag, buildMarket, folkCanvas, heartsEl, coinsEl, nextOffer, goodIcon } from './busytown.js';
 import { onSale, wareKey } from '../sim/market.js';
@@ -507,7 +508,9 @@ export class UI {
     const status = el('div', { class: 'dock-status', 'aria-live': 'polite' });
     const say = () => {
       const t = tools.find((x) => x[0] === this.choice.shape) || tools[0];
-      status.textContent = (this.choice.shape === 'dig' ? 'Drag to dig' : `Drag to paint ${t[1].toLowerCase()}`) + ' · two fingers to move';
+      // (a mouse moves the view with a right-drag; fingers with two)
+      const mouse = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      status.textContent = (this.choice.shape === 'dig' ? 'Drag to dig' : `Drag to pour ${t[1].toLowerCase()}`) + (mouse ? ' · right-drag to move' : ' · two fingers to move');
     };
     const chips = el('div', { class: 'dock-chips', role: 'radiogroup', 'aria-label': 'Paint with' });
     for (const [id, name, col] of tools) {
@@ -836,6 +839,7 @@ export class UI {
       this.ordEls.pantry,
       this.ordEls.waiting,
       el('h4', {}, 'Letters from Busytown'),
+      (this.ordEls.legend = el('p', { class: 'small olegend' }, 'Every order pays coins to spend at the Market, ★ thank-you stars towards Busytown\'s gifts, and a basket of treats for the critters. Tap any of them to see more.')),
       this.ordEls.list,
       this.ordEls.foot
     );
@@ -847,7 +851,7 @@ export class UI {
     const w = this.world;
     const ord = this.journal.orders;
     const E = this.ordEls;
-    const key = GOOD_ORDER.map((g) => JSON.stringify(w.tallyFlavours(g))).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id + (o.critter ? ':' + ord.eligible(o).length : '')).join(',') + '|' + ord.stars + '|' + w.coins;
+    const key = GOOD_ORDER.map((g) => JSON.stringify(w.tallyFlavours(g))).join(',') + '|' + w.goods.length + '|' + ord.list.map((o) => o.id + (o.critter ? ':' + ord.eligible(o).length : '') + (ord.waitLeft(o) < DAY_LEN * 0.5 ? '!' : '')).join(',') + '|' + ord.stars + '|' + w.coins;
     if (!force && key === this.ordKey) return;
     this.ordKey = key;
     // the letters
@@ -857,17 +861,20 @@ export class UI {
       const can = ord.makeable(w).length;
       E.list.append(el('p', { class: 'small' }, can ? 'No letters right now. Busytown writes every few hours.' : `Busytown will write as soon as your farm makes something.${hint.length ? ` For example, ${hint[0].makers.join(' or ')} make ${GOODS[hint[0].id].name.toLowerCase()}.` : ''}`));
     }
+    E.legend.classList.toggle('hidden', ord.sent >= 6);
     for (const o of ord.list) {
       const nb = neighbour(o.who);
       const ok = ord.canSend(o);
       const needs = el('div', { class: 'oneeds' });
-      let btn = ok ? 'Send it!' : 'Not enough yet';
+      // the main button: send it, choose who goes, or (not yet) what's
+      // still missing and how long they'll wait
+      let btn = ok ? 'Send it!' : 'Check back soon';
       if (o.critter) {
         const n = ord.eligible(o).length;
         const cr = o.critter;
         const pic = creatureArt(cr.sp, cr.stage || SPECIES[cr.sp].adultStage, SPECIES[cr.sp].fish ? 'swim' : 'idle', cr.pal || 0, null, '#e2553f', [30, 24]);
         needs.append(el('span', { class: 'oneed' + (n ? ' ok' : '') }, pic, n ? `${n} in your tank to choose from` : `None in your tank right now`));
-        btn = n ? 'Choose who goes' : 'Nobody yet';
+        if (n) btn = 'Choose who goes';
       }
       for (const [g, n] of Object.entries(o.needs)) {
         const f = o.flav && o.flav[g];
@@ -878,20 +885,24 @@ export class UI {
       }
       const offer = nextOffer(this.journal, w, nb.id);
       const pay = ord.pay(o);
+      const plan = ord.treatPlan(w, o);
+      const first = nb.name.split(' ')[0];
+      const hurry = !ok && ord.waitLeft(o) < DAY_LEN * 0.5;
       E.list.append(
         el('div', { class: 'order' + (ok ? ' ready' : '') + (o.flav || o.best ? ' picky' : '') + (o.critter ? ' pet' : '') },
           el('div', { class: 'ohead' }, folkCanvas(nb, ok ? 'happy' : 'ask', 46), el('span', {}, el('b', {}, nb.name), ', ' + nb.job, el('br'), heartsEl(ord.heartsOf(nb.id)))),
           el('p', { class: 'letter' }, `“${dear(w.keeper)}, could you send ${orderWords(o)}? ${o.why}”`),
           needs,
           offer ? el('div', { class: 'small ooffer' }, `Help ${nb.name} ${offer.need === 1 ? 'once more' : offer.need + ' more times'} to unlock the ${offer.ware.name.toLowerCase()}.`) : null,
+          hurry ? el('div', { class: 'small ohurry' }, `${first} can't wait much longer!`) : null,
           el('div', { class: 'ofoot' },
-            el('span', { class: 'ostars' }, coinsEl(pay.total), ` + ★${o.stars} + treats`),
-            el('button', { class: 'btn small', onclick: () => {
-              ord.decline(o);
-              this.refreshNeeds();
-              this.updateOrders(true);
-            } }, 'Not now'),
-            el('button', { class: 'btn small' + (ok ? ' yellow' : ''), disabled: !ok, onclick: () => this.sendOrder(o) }, btn)))
+            el('div', { class: 'orewards', 'aria-label': 'What it pays' },
+              el('button', { class: 'rew', title: 'Coins for the Market', onclick: () => this.explainReward('coins', o) }, coinsEl(pay.total)),
+              el('button', { class: 'rew star', title: 'Thank-you stars', onclick: () => this.explainReward('stars', o) }, `★${o.stars}`),
+              plan ? el('button', { class: 'rew treat', title: 'Treats for the critters', onclick: () => this.explainReward('treats', o) }, iconCanvas('food', 16), 'treats') : null),
+            el('div', { class: 'obtns' },
+              el('button', { class: 'btn small', title: `Pass on this letter for now. ${first} will write again another time.`, onclick: () => this.notNow(o) }, 'Not now'),
+              el('button', { class: 'btn small' + (ok ? ' yellow' : ' wait'), onclick: () => (ok ? this.sendOrder(o) : this.checkBack(o)) }, btn))))
       );
     }
     // the basket: tap a good to hear who makes it; underneath, what
@@ -934,8 +945,16 @@ export class UI {
       const who = ord.moved.slice(0, 6).map((m) => `${m.name} the ${SPECIES[m.sp].name.toLowerCase()} (with ${neighbour(m.who).name})`);
       E.foot.append(el('p', { class: 'small' }, el('b', {}, 'Living in Busytown: '), listWords(who) + (ord.moved.length > 6 ? ` and ${ord.moved.length - 6} more` : '') + '.'));
     }
+    // the stars so far, and how near the next gift (or fair) is
+    const prev = next.fair ? next.stars - STAR_FAIR.every : ORDER_GIFTS.filter((gf) => gf.stars <= ord.stars).reduce((a, gf) => Math.max(a, gf.stars), 0);
+    const pct = clamp01((ord.stars - prev) / Math.max(1, next.stars - prev)) * 100;
     E.foot.append(
-      el('div', { class: 'row ototal' }, coinsEl(w.coins), el('span', { class: 'small', style: 'flex:1' }, `Orders sent: ${ord.sent} · ★${ord.stars}${next ? ` · next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}` : ''}`), el('button', { class: 'btn small yellow', onclick: () => this.openMarket() }, iconCanvas('shop', 20), 'Market'))
+      el('div', { class: 'row ototal' },
+        el('button', { class: 'ogift', onclick: () => this.explainReward('stars') },
+          el('span', {}, el('b', {}, `★${ord.stars}`), ` thank-you star${ord.stars === 1 ? '' : 's'} · ${ord.sent} order${ord.sent === 1 ? '' : 's'} sent`),
+          el('div', { class: 'meter' }, el('i', { style: `width:${pct}%` })),
+          el('span', { class: 'small' }, next.fair ? `Next fair at ★${next.stars}: ${next.coins} coins` : `Next gift at ★${next.stars}: a ${DECOR[next.decor].name.toLowerCase()}`)),
+        el('button', { class: 'btn small yellow', onclick: () => this.openMarket() }, iconCanvas('shop', 20), 'Market'))
     );
   }
 
@@ -1339,6 +1358,66 @@ export class UI {
     if (this.tool === 'clip') this.renderSheet();
   }
 
+  // "Not now": the keeper passes on a letter (no harm done; a new one comes
+  // along soon, and they'll write again another time).
+  notNow(o) {
+    const nb = neighbour(o.who);
+    this.journal.orders.decline(o);
+    this.sound.play('pop', 0.4);
+    this.toast(`No rush! <b>${esc(nb.name)}</b> will write again another time, and another letter will come along soon.`, 'clip', false, 4000);
+    this.refreshNeeds();
+    this.updateOrders(true);
+  }
+
+  // "Check back soon": what a letter still needs, where it comes from, and
+  // how long its writer will wait for it.
+  checkBack(o) {
+    const ord = this.journal.orders;
+    const nb = neighbour(o.who);
+    const first = nb.name.split(' ')[0];
+    const left = ord.waitLeft(o) / DAY_LEN;
+    const hrs = Math.max(1, Math.round(left * 24));
+    const wait = left >= 1.5 ? `about ${Math.round(left)} more days` : left >= 0.75 ? 'about a day' : `about ${hrs} more hour${hrs === 1 ? '' : 's'}`;
+    let msg;
+    let icon = 'clip';
+    if (o.critter) {
+      const def = SPECIES[o.critter.sp];
+      msg = `<b>Nobody can go just yet.</b> ${esc(first)} would love ${esc(critterWords(o.critter))}, and none of yours ${o.critter.stage ? 'are at that age' : 'are grown up and free'} right now.`;
+      icon = creatureArt(o.critter.sp, o.critter.stage || def.adultStage, def.fish ? 'swim' : 'idle', o.critter.pal || 0, null, '#e2553f', [30, 24]);
+    } else {
+      const miss = ord.missing(o);
+      const g = miss.length ? miss[0][0] : Object.keys(o.needs)[0];
+      const f = o.flav && o.flav[g];
+      const how = o.best ? 'Prize goods come from master critters and from plants and ponds kept just right.' : f ? this.flavourHow(g, f) : GOODS[g].how;
+      msg = `<b>Still to come: ${esc(needsWords(Object.fromEntries(miss), o.flav, o.best))}.</b> ${esc(how)}`;
+      icon = goodCanvas(g, 26, '', f, !!o.best);
+    }
+    this.sound.play('pop', 0.35);
+    this.toast(`${msg} ${esc(first)} can wait ${wait}.`, icon, false, 6500);
+  }
+
+  // What an order's coins, stars and treats are for.
+  explainReward(kind, o) {
+    const ord = this.journal.orders;
+    const w = this.world;
+    if (kind === 'coins') {
+      const p = ord.pay(o);
+      const extra = [p.tip ? `${p.tip} tip from a friend` : '', p.board ? `${p.board} from the notice board` : '', p.fans ? `${p.fans} from the axolotl's fans` : ''].filter(Boolean);
+      this.toast(`<b>${p.total} coins</b> for your purse${extra.length ? ` (${p.base} for the order, ${esc(listWords(extra))})` : ''}. Spend them at the Busytown Market, on each neighbour's special ware.`, 'coin', false, 6000);
+    } else if (kind === 'stars') {
+      const next = ord.nextGift();
+      const have = `You have <b>★${ord.stars}</b>.`;
+      const what = next.fair ? `Busytown has sent every gift it has, so every ★${STAR_FAIR.every} more it holds a fair for your farm and sends ${STAR_FAIR.coins} coins from the takings (next at ★${next.stars}).` : `Busytown sends a thank-you gift you can't get any other way at ${listWords(ORDER_GIFTS.map((gf) => `★${gf.stars} (a ${DECOR[gf.decor].name.toLowerCase()})`))}.`;
+      this.toast(`<b>${o ? `★${o.stars} thank-you stars` : 'Thank-you stars'}.</b> ${have} ${what}`, 'star', false, 7000);
+    } else if (kind === 'treats') {
+      const plan = ord.treatPlan(w, o);
+      if (!plan) return;
+      const foods = listWords(plan.foods.map((f) => FOODS[f].name.toLowerCase()));
+      this.toast(`<b>Treats:</b> when the order arrives, ${esc(neighbour(o.who).name)} sends a basket of snacks for the critters in the ${ZONE_NAMES[plan.zone].toLowerCase()}: their favourites (${esc(foods)}), dropped straight into the tank.`, iconCanvas('food', 24), false, 6000);
+    }
+    this.sound.play('pop', 0.3);
+  }
+
   sendOrder(o, c) {
     if (o.critter && !c) {
       this.pickCritter(o);
@@ -1530,6 +1609,7 @@ export class UI {
     if (this.tool !== 'shape') return;
     clearTimeout(this.dockT);
     this.sheet.classList.add('painting');
+    this.world.beginStroke();
     this.paint(wx, wy);
   }
   // Fill in the gap since the last dab, so quick swipes paint a solid stroke.

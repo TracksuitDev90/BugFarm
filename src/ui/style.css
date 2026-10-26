@@ -2113,19 +2113,21 @@ p.small {
   font-size: 26px;
   opacity: 0.6;
 }
-.swatches {
+/* the colour dots for an outfit (kept apart from the Style tab's .swatch) */
+.dyes {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
 }
-.swatch {
+.dye {
   width: 34px;
   height: 34px;
+  padding: 0;
   border: 2px solid var(--ink);
   border-radius: 50%;
   cursor: pointer;
 }
-.swatch.on {
+.dye.on {
   box-shadow: 0 0 0 3px #fffaf0, 0 0 0 5px var(--ink);
 }

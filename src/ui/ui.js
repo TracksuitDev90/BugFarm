@@ -460,7 +460,7 @@ export class UI {
   buildStyle(body) {
     const w = this.world;
     const groups = [
-      ['backdrop', 'Back wall', Object.entries(BACKDROPS).map(([k, v]) => [k, v.name, null])],
+      ['backdrop', 'Back wall', Object.entries(BACKDROPS).map(([k, v]) => [k, v.name, v.chip])],
       ['sand', 'Sand', Object.entries(SAND_STYLES).map(([k, v]) => [k, v.name, v.base])],
       ['soil', 'Soil', Object.entries(SOIL_STYLES).map(([k, v]) => [k, v.name, v.base])],
       ['gravel', 'Pond gravel', Object.entries(GRAVEL_STYLES).map(([k, v]) => [k, v.name, v.pebbles[0]])],
@@ -2052,7 +2052,7 @@ export class UI {
         pic.append(c.sp === 'worm' ? wormIcon([120, 100], c.palIdx, item, colour) : creatureArt(c.sp, c.stage, pose, c.palIdx, item, colour, [120, 100]));
       };
       const grid = el('div', { class: 'wardrobe' });
-      const swatches = el('div', { class: 'swatches' });
+      const swatches = el('div', { class: 'dyes' });
       const done = el('button', { class: 'btn green', onclick: () => {
         w.dress(c, item, item && OUTFITS[item].colour ? colour : null);
         this.closeModal();
@@ -2100,7 +2100,7 @@ export class UI {
         } }, art, el('small', {}, owned ? o.name : '?')));
       }
       for (const col of ACC_COLORS) {
-        swatches.append(el('button', { class: 'swatch', 'data-col': col, style: `background:${col}`, 'aria-label': 'Colour', onclick: () => {
+        swatches.append(el('button', { class: 'dye', 'data-col': col, style: `background:${col}`, 'aria-label': 'Colour', onclick: () => {
           colour = col;
           refresh();
         } }));

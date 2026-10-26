@@ -5,13 +5,14 @@ import { ell, circ, fill, stroke, paint, smoothPath, INK } from './ink.js';
 import { RNG, fbm1 } from '../util/rng.js';
 import { blooms, poolEdge } from './paper.js';
 
+// chip: a little horizon (sky over ground) for the Style tab's swatch
 export const BACKDROPS = {
-  meadow: { name: 'Sunny meadow' },
-  town: { name: 'Busy little town' },
-  desert: { name: 'Desert sunset' },
-  seaside: { name: 'Seaside' },
-  night: { name: 'Starry night' },
-  paper: { name: 'Plain paper' },
+  meadow: { name: 'Sunny meadow', chip: 'linear-gradient(#b7e0f3 55%, #a6cf7f 55%)' },
+  town: { name: 'Busy little town', chip: 'linear-gradient(#bfe2f2 40%, #e2553f 40% 62%, #b9d98f 62%)' },
+  desert: { name: 'Desert sunset', chip: 'linear-gradient(#f6a37a, #f8d39a 55%, #efc08a 55%)' },
+  seaside: { name: 'Seaside', chip: 'linear-gradient(#a9d8f0 55%, #6fb3d9 55%)' },
+  night: { name: 'Starry night', chip: 'linear-gradient(#1f2a52 55%, #2c3a5e 55%)' },
+  paper: { name: 'Plain paper', chip: '#f8f1dc' },
 };
 
 function cloud(g, x, y, s) {

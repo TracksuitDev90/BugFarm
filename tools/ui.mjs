@@ -293,7 +293,7 @@ const steps = {
     await pg.waitForTimeout(800);
     await shot('dress-1');
     await pg.click('.wear >> text=Top hat');
-    await pg.click('.swatch >> nth=1');
+    await pg.click('.dye >> nth=1');
     await pg.waitForTimeout(400);
     await shot('dress-2');
     await pg.click('text=Looking good!');

@@ -165,7 +165,13 @@ the tank. It can be changed in Settings.
 When a letter comes it pops up with a portrait of whoever wrote it. Their
 letters wait on the clipboard's **Orders** tab, and the mailbox flag goes up.
 Send an order and they reply, delighted, with **coins**, thank-you stars, a
-basket of treats for the critters, and a **heart** of friendship.
+basket of treats for the critters, and a **heart** of friendship. Coins are
+spent at the Market, stars bring Busytown's gifts (below), and the treats are
+the critters' favourite snacks, dropped into the zone whose critters made
+the goods. Tap any of them on a letter to see what it's for. A letter you
+can't fill yet says **Check back soon**: tap it to see what's still missing,
+where it comes from and how long they'll wait. **Not now** passes on a letter
+(they'll write again another time, and a new letter comes along sooner).
 
 Once the farm is up and running the letters get more particular. Every
 neighbour has favourite flavours: Baker Bramble's grandmother's recipe
@@ -211,7 +217,9 @@ None of them are just for show:
 
 Enough stars and Busytown also sends a farm stand (it sells a few spare
 goods for coins each evening) and a delivery van (it posts any order that's
-ready each morning), which you can't get any other way.
+ready each morning), which you can't get any other way. After that, every 10
+more stars Busytown holds a fair in the farm's honour and sends 15 coins from
+the takings.
 
 ### Dressing up
 
@@ -326,7 +334,7 @@ None of that comes as a pop-up. Instead:
 | **Critters** | Adopt new critters and choose where they live. |
 | **Plants** | 28 plants, including daisies, sunflowers, poppies, lavender, orchids, hibiscus, ferns, monsteras, palms, bromeliads, cactus, aloe, cattails, irises, water lilies and eelgrass. Each has its own temperature and moisture needs, and each flower gives the bees a honey of its own. A plant's card says what it gives the farm. |
 | **Decor** | 35 decorations, including a library, a mushroom cottage, a teapot house, a boot, a banana car, a castle and a clay pipe. Many of them do something useful: shelters are homes (see below), bubblers add oxygen, lamp posts glow at night, the bee hotel is where bees make honey and raise young, the mailbox raises its flag when letters come, and feeders drop food every morning. Four more (the clinic, butterfly house, schoolhouse and picnic hamper) come from the Market, and two (the leaf pile and the stone den) from visitors. The Styles tab changes the sand, soil and pond gravel, and the scenery painted behind the tank. |
-| **Shape** | Paint sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
+| **Shape** | Pour sand, soil, rock or gravel, or dig tunnels yourself, from a slim dock that steps aside while you paint. What you pour settles onto the ground below the brush rather than hanging in the air: sand and gravel slump into gentle slopes, soil holds a steeper bank and rock stacks into crags, and each stroke lays down as much as it covers. The water flows: dig under or beside the pond and it drains into the hole, dump sand in and it rises, and the *Pond* button pours water in or bails it out. |
 | **Climate** | Set each zone's heat lamp (a dome lamp clamped to the lid over the middle of its zone, however wide the zone is built: sunset red for the desert, blue for the pond, leaf green for the jungle, with a dimmer on its cord) and mister (a pump on the lid beside it that drinks from a water jug and sprays a shower of mist out over the whole zone), the pond's glass heater and its filter, the room thermostat and the day/night cycle. Each zone shows its comfy range against the current reading. Refill the misters, clean the pond, rinse the filter, top up the water and tidy leftovers. Presets include *Just right*, *Heat wave*, *Cold snap*, *Rainy day* and *Dry spell*, and changing weather can be switched off. |
 | **Journal** | The logbook of births, metamorphoses, meals and farewells, plus 68 discoveries to unlock, a field guide with every critter's job and the varieties you've collected, and the Visitors' Book. Discoveries unlock new decorations and styles. Sandbox mode unlocks everything (and the Market gives its wares away). |
 | **Clipboard** | The button at the top right. What needs doing now, Busytown's orders and your basket of goods, how each zone is doing, and the goals for its next level. |

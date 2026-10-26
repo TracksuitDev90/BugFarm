@@ -1788,6 +1788,10 @@ export class World {
   }
 
   // Terrain brush. mode: 'sand' | 'soil' | 'rock' | 'gravel' | 'dig'
+  // (call beginStroke() as the keeper starts each stroke)
+  beginStroke() {
+    this.terrain.newStroke();
+  }
   sculpt(x, y, r, mode) {
     const t = this.terrain;
     const cx = x / CELL;
@@ -1801,10 +1805,11 @@ export class World {
         if (t.top[xx] > t.groundTop[xx] && cy - rc <= t.groundTop[xx] + 1) t.setGroundTop(xx, t.top[xx]);
       }
     } else {
+      // (poured, so it lands on the ground and loose stuff slumps into a slope)
       const m = mode === 'soil' ? MAT.SOIL : mode === 'rock' ? MAT.ROCK : mode === 'gravel' ? MAT.GRAVEL : MAT.SAND;
-      n = t.fill(cx, cy, rc, m, (xx, yy) => yy > 20);
-      for (let xx = Math.floor(cx - rc); xx <= Math.ceil(cx + rc); xx++) {
-        if (xx < 0 || xx >= GW) continue;
+      n = t.pour(cx, cy, rc, m, mode === 'rock' ? 3 : mode === 'soil' ? 2 : 1, (xx, yy) => yy > 20);
+      const [lo, hi] = t.pourSpan;
+      for (let xx = lo; xx <= hi; xx++) {
         if (t.top[xx] < t.groundTop[xx]) t.setGroundTop(xx, t.top[xx]);
       }
     }

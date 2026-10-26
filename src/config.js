@@ -1,17 +1,20 @@
-// Global constants for Bug Farm. World units are "tank units": the tank interior
-// spans 0..W horizontally and 0..H vertically, y grows downward.
+// Global constants for Critter Farm. World units are "tank units": the tank
+// interior spans 0..W horizontally and 0..H vertically, y grows downward.
 
-export const SAVE_KEY = 'bugfarm.save.v1';
-export const SETTINGS_KEY = 'bugfarm.settings.v1';
-export const TANK_KEY = 'bugfarm.tank.v1';
+export const SAVE_KEY = 'critterfarm.save.v1';
+export const SETTINGS_KEY = 'critterfarm.settings.v1';
+export const TANK_KEY = 'critterfarm.tank.v1';
+// The farm used to be called Bug Farm: a tank saved under the old name is
+// still found (and moves across the next time it's saved; see save.js).
+export const OLD_KEYS = { save: 'bugfarm.save.v1', settings: 'bugfarm.settings.v1', tank: 'bugfarm.tank.v1' };
 export const SAVE_VERSION = 1;
 
 // The tank can be made bigger (the builder in Busytown sells extensions; see
 // sim/tank.js): extra width for the desert (new sand on its left), the pond
 // (it widens down the middle) and the jungle (new ground on its right).
 // Every size below follows from it, so it's read once, before anything else
-// is set up: from the browser's storage, or BUGFARM_TANK for the headless
-// tools. Changing it means reloading.
+// is set up: from the browser's storage, or CRITTERFARM_TANK for the
+// headless tools. Changing it means reloading.
 export const TANK_STEP = { desert: 256, pond: 128, jungle: 256 };
 export const TANK_MAX = { desert: 512, pond: 256, jungle: 512 };
 export function parseTank(src) {
@@ -30,9 +33,9 @@ export function parseTank(src) {
 function readTank() {
   let src = null;
   try {
-    if (globalThis.BUGFARM_TANK) src = globalThis.BUGFARM_TANK;
-    else if (typeof process !== 'undefined' && process.env && process.env.BUGFARM_TANK) src = process.env.BUGFARM_TANK;
-    else if (typeof localStorage !== 'undefined') src = localStorage.getItem(TANK_KEY);
+    if (globalThis.CRITTERFARM_TANK) src = globalThis.CRITTERFARM_TANK;
+    else if (typeof process !== 'undefined' && process.env && process.env.CRITTERFARM_TANK) src = process.env.CRITTERFARM_TANK;
+    else if (typeof localStorage !== 'undefined') src = localStorage.getItem(TANK_KEY) || localStorage.getItem(OLD_KEYS.tank);
   } catch (e) {
     src = null;
   }

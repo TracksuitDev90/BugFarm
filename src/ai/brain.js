@@ -77,9 +77,10 @@ export function sense(c, w) {
   }
   // schooling info for fish
   if (d.schools) {
-    const s = c.school || (c.school = { n: 0, cx: 0, cy: 0, vx: 0, vy: 0, sepx: 0, sepy: 0 });
+    // (keeping out of each other's way is worked out as they swim; see moveSwim)
+    const s = c.school || (c.school = { n: 0, cx: 0, cy: 0, vx: 0, vy: 0 });
     s.n = 0;
-    s.cx = s.cy = s.vx = s.vy = s.sepx = s.sepy = 0;
+    s.cx = s.cy = s.vx = s.vy = 0;
     const list = w.hashC.query(c.x, c.y, 90, (o) => o !== c && o.sp === c.sp && !o.dead && o.mode === 'swim');
     for (const o of list) {
       s.n++;
@@ -87,21 +88,12 @@ export function sense(c, w) {
       s.cy += o.y;
       s.vx += o.vx;
       s.vy += o.vy;
-      const dx = o.x - c.x;
-      const dy = o.y - c.y;
-      const dd = Math.hypot(dx, dy) || 1;
-      if (dd < 26) {
-        s.sepx += (dx / dd) * (26 - dd);
-        s.sepy += (dy / dd) * (26 - dd);
-      }
     }
     if (s.n) {
       s.cx /= s.n;
       s.cy /= s.n;
       s.vx /= s.n;
       s.vy /= s.n;
-      s.sepx /= s.n;
-      s.sepy /= s.n;
     }
     s.n = s.n * clamp01(c.traits.social + 0.3);
   }

@@ -332,7 +332,7 @@ export const DECOR_ART = {
       g.lineTo(-24, -40);
       g.closePath();
     });
-    text(g, 'BUG FARM', 0, -31, 8.6, '#9a3c2e');
+    text(g, 'CRITTER FARM', 0, -31, 8, '#9a3c2e');
   },
   // bare: leave the flag off, so the tank can raise it when letters come
   mailbox(g, t, bare) {
@@ -767,8 +767,8 @@ DECOR_ART.farmStand = function farmStand(g) {
   // the counter, with a sign
   rect(g, -25, -17, 50, 17, '#c98f4a');
   for (const y of [-11, -5]) line(g, -25, y, 25, y, LW * 0.5, 'rgba(58,42,31,0.45)');
-  rect(g, -14, -14, 28, 8, '#fbf3df', LW * 0.8);
-  text(g, 'BUG FARM', 0, -9.8, 5.2, '#9a3c2e');
+  rect(g, -16.5, -14, 33, 8, '#fbf3df', LW * 0.8);
+  text(g, 'CRITTER FARM', 0, -9.8, 4.9, '#9a3c2e');
   // goods on the counter: honey, a basket of seed heads, a lily in a jug
   paint(g, '#f0a830', LW * 0.8, () => {
     g.beginPath();
@@ -868,7 +868,7 @@ DECOR_ART.deliveryVan = function deliveryVan(g) {
   });
   highlight(g, 13, -23, 1, 3, 0.6, 0.3);
   // the farm's name and a ladybug on the side
-  text(g, 'BUG FARM', -8, -23, 6.4, '#9a3c2e');
+  text(g, 'CRITTER FARM', -8, -23, 5.4, '#9a3c2e');
   text(g, 'deliveries', -8, -16.5, 4.6, INK);
   blob(g, 4, -13.5, 3, 2.4, '#d9483b', LW * 0.7);
   line(g, 4, -15.9, 4, -11.1, LW * 0.5);

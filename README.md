@@ -1,4 +1,4 @@
-# Bug Farm
+# Critter Farm
 
 A cosy picture-book terrarium. One big glass tank with a sandy desert, a pond
 and a grassy jungle, full of small critters going about their lives. Every
@@ -16,7 +16,7 @@ rearrange their world, and run gentle experiments to see what happens.
 
 ![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond beside its heater and filter, and a misty rainforest jungle hung with all sorts of vines, with dome heat lamps and misters on the lid and thermometers on the glass](docs/tank.jpg)
 
-<img src="docs/phone.jpg" width="260" align="right" alt="Bug Farm on a phone: a bumblebee's card in the jungle, saying its job is honey maker and that it has made a jar of honey so far">
+<img src="docs/phone.jpg" width="260" align="right" alt="Critter Farm on a phone: a bumblebee's card in the jungle, saying its job is honey maker and that it has made a jar of honey so far">
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
@@ -63,7 +63,7 @@ remember.
 | Zone | Who lives there | What to watch for |
 | --- | --- | --- |
 | Desert | Ants (garden, harvester and honeypot colonies), crickets, a gecko, beetles | The ants run a real colony. The queen lays eggs, nurses raise the brood, and diggers carve tunnels and flat-floored rooms and pile the sand into a mound. The queen walks slowly among her eggs, and moves to whichever room is the right warmth for them, with workers escorting her and carrying the brood after her. Scouts patrol the tunnels and rush to anything new (dig a hollow by the nest and they'll make it a room), a couple of guards stand at the door and shoo away big visitors, and well-fed ants feed hungry sisters mouth to mouth. Every colony digs in its own style (steep shafts or long galleries, winding or straight), so no two nests look alike. Colonies come in three kinds: garden ants herd aphids, big-headed harvester ants stock a granary and pile spare seeds by the door, and honeypot ants swell up golden with nectar and fill jars of desert honey. Each kind you adopt digs its own nest. Ants walk on floors, walls and ceilings, and stop to touch antennae when they meet. Foragers lay scent trails to food and recruit their nestmates. Crickets chirp faster when it is warm. The gecko basks under the lamp and stalks crickets. |
-| Pond | Goldfish (common, comet, fantail, black moor, oranda, shubunkin...), guppies, neon tetras, koi, pea puffers, an axolotl, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp, dragonflies (nymphs underwater, then up and away) | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. Their whole bodies stay in the water: they glide just clear of the gravel and the banks, and tip their noses down to nibble what's on the bottom. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks under the pond's lamp, floating at the top with its shell in the warm air, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. Guppies skim the surface for flies, neon tetras school shoulder to shoulder and glow after dark, koi rummage in the gravel (and sometimes find a lost coin), pea puffers puff up into prickly balls when startled and keep the snails in check, and the axolotl strolls along the bottom smiling. Dragonfly nymphs hunt along the bottom, then climb out and zoom off on four wings. |
+| Pond | Goldfish (common, comet, fantail, black moor, oranda, shubunkin...), guppies, neon tetras, koi, pea puffers, an axolotl, frogs (from eggs to tadpoles to froglets), a turtle, pond snails, shrimp, dragonflies (nymphs underwater, then up and away) | The fish swim in loose shoals at every depth, flicking their tails and coasting, darting off now and then, playing tag, and dozing among the weeds or tucked up in the castle. Their whole bodies stay in the water, fins and tails included: they glide just clear of the gravel, slide along a sloping bank rather than nosing into it, tip their noses down to nibble what's on the bottom and then swim off again, and spread out through the water rather than bunching up in the same few spots. They learn when and where you feed them: open the Feed tool and they crowd up to the top, and at the usual time of day the hungry ones wait at the usual spot. The turtle basks under the pond's lamp, floating at the top with its shell in the warm air, then goes for long swims and comes up for air. Pond snails glide all over the glass and hang under the water's skin, and shrimp swim up in little hops and climb the water plants. Warm water holds less oxygen, so overfeeding or a heat wave sends fish gasping at the surface. Tadpoles turn into frogs. Guppies skim the surface for flies, neon tetras school shoulder to shoulder and glow after dark, koi rummage in the gravel (and sometimes find a lost coin), pea puffers puff up into prickly balls when startled and keep the snails in check, and the axolotl strolls along the bottom smiling. Dragonfly nymphs hunt along the bottom, then climb out and zoom off on four wings. |
 | Jungle | Ladybugs, aphids, butterflies (monarch, blue morpho, tiger swallowtail, pink rose, cabbage white, and rare peacocks, glasswings and emerald swallowtails), moths (luna, rosy maple, polyphemus), snails, bumblebees, earthworms, fireflies, grasshoppers, pill bugs | A misty rainforest of palms, monsteras and bromeliads. The vines hanging from the lid are living plants: pothos in a clay pot, string of pearls on a moss ball, a woody liana looped between two hooks, Spanish moss on a twig, hoya, passion flower, morning glory, pitcher plants and string of hearts. Each one roots as a little cutting, grows down over a day or two, lives a week or two, then yellows, drops its leaves and withers away. Most new vines are cuttings of a neighbour, so the canopy has runs of the same plant with the odd newcomer. A dry jungle browns them; they swing from their hooks like rope in the breeze. Ants farm aphids for honeydew and ladybugs hunt them. Bees fly pollen home to their hotel to make honey. Worms surface when it rains. At night the fireflies' blinking slowly falls into sync, and moths loop round every lamp. |
 
 Fruit flies are uninvited guests who show up when fruit is left to rot.
@@ -344,6 +344,13 @@ Sunk in the pond, the castle, the seashell, the treasure chest, the diver's
 helmet and the clay pipe are hidey-holes for the fish, tadpoles, shrimp and
 pond snails. Tap a home to see who lives there.
 
+Everything you put down settles into the tank as if it had always been
+there: it beds a little way into the sand, gravel or soil, leans a touch with
+the slope, and the ground heaps up round its foot in a drift of whatever
+it's standing in (pebbles in the pond, sand in the desert), with pond weed,
+moss or grass taking hold there. Put one down half up a rock face and it
+shuffles along to where it can sit level.
+
 The lens button in the top right switches between overlays for temperature,
 dampness, ant scent trails and what each critter is thinking. The speed control
 offers pause, 1×, 3× and 8×. On a keyboard, `Space` pauses, `1` to `8` pick
@@ -406,6 +413,7 @@ Other tools in `tools/`:
 | `node tools/progresstest.mjs [days] [seed]` | Plays a new farm with an attentive keeper (who also collects goods, sends orders and shops at the Market) and checks that every zone levels up. Reports coins, friendships, dreams and what was bought when. |
 | `node tools/markettest.mjs` | Buys every ware at the Market in turn and checks that each one does its job (hats and all). |
 | `node tools/visitortest.mjs` | Brings in every visitor and checks it keeps to its patch, makes its offer or leaves its present, that saying yes really changes the tank, that a visit survives a save, that a happy tank gets visitors by itself, and that time away can bring one. |
+| `node tools/hulls.mjs` | Fits each swimmer's collision body to its drawing (every look, tail beat and pose) and prints the circles to paste into `body` in `src/data/species.js`. |
 | `node tools/tanktest.mjs` | Widens each zone of a farm (and all of them, twice) and loads the result into a tank of the new size, checking the ground, water, ant nest, critters and plants all came through in the right places. |
 | `node tools/pacingtest.mjs [minutes] [seed] [-v]` | Plays the first hour of a new farm at 1× and logs everything the keeper would see pop up (discoveries, news, letters, new to-dos), and fails if a new farm gets noisy. |
 | `node tools/perf.mjs [dir] [cpuSlowdown]` | Frame times with the CPU throttled to imitate an old phone. |
@@ -432,7 +440,9 @@ src/
   world/               terrain grid (sand/soil/rock/gravel/clay), flowing water,
                        environment (zone climate, pond chemistry, day/night),
                        the breeze and the pond's current, the jungle's living
-                       vines, spatial hash, A* pathfinding, the World itself
+                       vines, how far the water is from the ground (for
+                       swimmers' bodies), spatial hash, A* pathfinding, the
+                       World itself
   entities/            Creature (needs, life stages, movement), Plant, Food, Decor,
                        Good, Visitor (a visitor's comings and goings)
   ai/                  utility brain, shared behaviours, food/prey/mate search,
@@ -447,8 +457,9 @@ src/
                        gadgets...),
                        paper grain and watercolour washes
   render/              sprite cache, chunked terrain and water, the pond's
-                       depth, light shafts, particles, drifting specks and
-                       wind-blown leaves, frame
+                       depth, where decorations meet the ground, light
+                       shafts, particles, drifting specks and wind-blown
+                       leaves, frame
   ui/                  camera, touch input, toolbar, sheets, cards, journal,
                        Busytown's letters and the Market, the herald (paces
                        what pops up)
@@ -495,10 +506,18 @@ src/
   search for food in short casts that double back. Only urgent trips go
   straight: fleeing, hunting, a starving dash for food, a gasp for air, or a
   short hop. Fish swim in bursts and coast in between, and each one has
-  a favourite depth that drifts over the day. A swimmer's whole body is an
-  oval that has to stay in the water: it eases up off a sloping floor and
-  away from the banks, and picks spots where it fits. An amphibian in water
-  too small to swim in wades along the bottom instead.
+  a favourite depth that drifts over the day, and they pick places to go
+  that nobody else is already at. A swimmer's body is a few circles fitted
+  to its drawing (every look, tail beat and pose, by `tools/hulls.mjs`), and
+  all of it has to stay in the water. `src/world/clearance.js` keeps a
+  signed distance field of how far every spot round the water is from the
+  ground (worked out again only when the ground there changes), so each
+  step the body is turned and flipped as it's drawn, pushed straight out of
+  any ground it touches, and stops swimming into it, sliding along a bank
+  instead. Places to swim to are moved to where the whole body fits with a
+  little open water round it, and swimmers keep a body's width apart. A fish
+  buried by the keeper's sculpting wriggles out into the water nearby. An
+  amphibian in water too small to swim in wades along the bottom instead.
 - **Noticing changes.** The water is mapped from the cells that really hold
   water (redrawn whenever it moves), so swimmers can go anywhere there's
   water, including channels and flooded tunnels, and they find a route through
@@ -513,6 +532,15 @@ src/
   current is one slow loop driven by the
   filter. It carries swimmers, bubbles, floating flakes and frogspawn a
   little, and stops short of the shallows so food never strands out of reach.
+- **Decorations settle in.** `seatOf` in `src/world/world.js` rests a
+  decoration's base on the ground under its whole footprint (not just its
+  middle), sinks it in a little and leans it with the slope; placing one
+  shuffles it along to level ground if it's put down on a rock face.
+  `src/render/footing.js` then puts the painted ground back in front of its
+  sunken base (copied from the cached background, so it matches exactly),
+  heaps a drift of the same material against it, shades where it sits and
+  grows a little weed or grass round its foot. The drift is painted once into
+  a small canvas of its own and redrawn only when something changes.
 - **Simulation and rendering are separate.** `src/world` and `src/entities`
   never touch the DOM, so the whole tank runs headless in Node for the tests and
   for the catch-up after you've been away.
@@ -538,7 +566,8 @@ src/
 - **Saving.** The save is compact JSON (about 50 KB, with run-length-encoded
   terrain, plus goods, the basket and Busytown's orders) in `localStorage`,
   with a backup copy, and the tank's size alongside it. Settings can export
-  and import saves as files.
+  and import saves as files. (A tank saved back when the farm was called Bug
+  Farm is found under its old name and moves across the next time it saves.)
 
 ### Adding things
 
@@ -552,11 +581,14 @@ The catalogs are plain data, and most additions are a single line:
   its own automatically; give it a `honey` colour (and a `taste` if its name
   doesn't make a good adjective).
 - **Decoration:** add an entry to `src/data/decor.js`, plus a draw function in
-  `src/art/decor.js` if it needs new art.
+  `src/art/decor.js` if it needs new art (drawn standing on its base at
+  (0, 0)). It settles into the ground by itself.
 - **Critter:** add a species to `src/data/species.js`, built from existing
   behaviours, and an entry in `CREATURE_ART` in `src/art/creatures.js`.
   Flyers also get a `WINGS` entry there (hinge point, length, beat rate) and
-  a `FLIGHT` style in `src/entities/creature.js`. Give it a job in
+  a `FLIGHT` style in `src/entities/creature.js`. Swimmers get a `body`:
+  add them to the list in `tools/hulls.mjs`, run it and paste in the circles
+  it prints (and again whenever their art changes). Give it a job in
   `src/data/goods.js` and a dream or two in `src/data/dreams.js`. Named
   varieties are palettes with a `name`.
 - **Unlock:** list a critter, food, plant or decoration under a zone level in

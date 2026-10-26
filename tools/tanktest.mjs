@@ -66,7 +66,7 @@ const { expandSave } = await import('../src/sim/tank.js');
 const w = new World();
 w.newGame(11, true);
 for (let i = 0; i < Math.round((DAY_LEN * 0.5) / SIM_DT); i++) w.step(SIM_DT);
-const base = { v: 1, app: 'bugfarm', savedAt: Date.now(), world: w.serialize(), cam: { x: 800, y: 450, zoom: 1 }, speed: 1, journal: {} };
+const base = { v: 1, app: 'critterfarm', savedAt: Date.now(), world: w.serialize(), cam: { x: 800, y: 450, zoom: 1 }, speed: 1, journal: {} };
 let wet0 = 0;
 for (let x = 0; x < 1600; x += 8) if (w.terrain.waterAt(x, w.terrain.waterLevel + 20)) wet0++;
 const before = {
@@ -75,7 +75,7 @@ const before = {
   wet: wet0,
   plantOff: w.plants.map((p) => Math.round(p.y - w.terrain.surfaceY(p.x))).sort((a, b) => a - b).join(),
 };
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bugfarm-tank-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'critterfarm-tank-'));
 fs.writeFileSync(path.join(dir, 'before.json'), JSON.stringify(before));
 
 let failed = 0;
@@ -85,7 +85,7 @@ for (const plan of plans) {
   for (const z of plan) d = expandSave(d, z);
   const file = path.join(dir, plan.join('-') + '.json');
   fs.writeFileSync(file, JSON.stringify(d));
-  const r = spawnSync(process.execPath, [self, '--load', file, path.join(dir, 'before.json')], { env: { ...process.env, BUGFARM_TANK: JSON.stringify(d.world.tank) }, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [self, '--load', file, path.join(dir, 'before.json')], { env: { ...process.env, CRITTERFARM_TANK: JSON.stringify(d.world.tank) }, encoding: 'utf8' });
   let res = null;
   try {
     res = JSON.parse(r.stdout.trim().split('\n').pop());

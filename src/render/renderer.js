@@ -1,7 +1,7 @@
 // Draws the tank. Static things (terrain, backdrop, water body, plants) are
 // cached; per frame we mostly blit sprites with a single setTransform each.
 import { W, H, CELL, GW, INK, ZONE_X, ZONE_MID, X } from '../config.js';
-import { TerrainRenderer } from './terrainRender.js';
+import { TerrainRenderer, GRAVEL_STYLES } from './terrainRender.js';
 import { SpriteCache, bucketFor } from './sprites.js';
 import { Particles } from './particles.js';
 import { Ambient } from './ambient.js';
@@ -14,6 +14,7 @@ import { drawFood } from '../art/food.js';
 import { drawPlant } from '../art/plants.js';
 import { drawVine, vineBox } from '../art/vines.js';
 import { DECOR_ART, decorBox } from '../art/decor.js';
+import { footingOf, footingPaths, baseShade, drawGrowth, driftMaterial, drawDriftTop } from './footing.js';
 import { VISITOR_ART, drawVisitor } from '../art/visitors.js';
 import { drawGood, goodBox } from '../art/goods.js';
 import { drawIcon } from '../art/icons.js';
@@ -412,7 +413,7 @@ export class Renderer {
     this.deep.draw(g, this, t, this.tr.waterShape(), this.tr.waterPathVer);
     const sel = this.selected;
     for (const p of w.plants) if (p.def.aquatic && this.visible(p.x, p.y, 120)) this.drawPlantE(g, p);
-    for (const d of w.decor) if (d.def.place === 'floor' && t.waterAt(d.x, d.y - 4) && this.visible(d.x, d.y, 80)) this.drawDecorE(g, d);
+    for (const d of w.decor) if (d.def.place === 'floor' && d.underwater(t) && this.visible(d.x, d.y, 80)) this.drawDecorE(g, d);
     for (const f of w.foods) if (f.inWater && f.state !== 'float' && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
     // swimmers further back are drawn first, so the near ones pass in front
     const wet = (this.wetList = this.wetList || []);
@@ -435,7 +436,7 @@ export class Renderer {
     for (const c of w.creatures) if (c.sp === 'worm' && this.visible(c.x, c.y, 60)) this.drawWormE(g, c, alpha);
     // --- land layer
     this.setWorld(g);
-    for (const d of w.decor) if (!d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
+    for (const d of w.decor) if (!d.def.shelter && !(d.def.place === 'floor' && d.underwater(t)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     for (const p of w.plants) if (!p.def.aquatic && this.visible(p.x, p.y, 120)) this.drawPlantE(g, p);
     this.drawVines(g);
     for (const f of w.foods) if ((!f.inWater || f.state === 'float') && this.visible(f.x, f.y, 20)) this.drawFoodE(g, f, alpha);
@@ -448,7 +449,7 @@ export class Renderer {
       else this.drawCreatureE(g, c, alpha);
     }
     this.setWorld(g);
-    for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && t.waterAt(d.x, d.y - 4)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
+    for (const d of w.decor) if (d.def.shelter && !(d.def.place === 'floor' && d.underwater(t)) && this.visible(d.x, d.y, 90)) this.drawDecorE(g, d);
     if (doorstep) {
       for (const c of w.creatures) {
         if ((c.inside || c.doorT > 0) && c.sp !== 'worm' && this.visible(c.x, c.y, 40) && !t.waterAt(c.x, c.y)) this.drawCreatureE(g, c, alpha);
@@ -684,8 +685,12 @@ export class Renderer {
     const def = d.def;
     const box = decorBox(def);
     const bare = d.type === 'mailbox';
-    const s = this.sprites.get('d|' + d.type + (bare ? '|bare' : ''), Math.min(this.bucket, 3), box, (gg) => DECOR_ART[d.type](gg, 0, bare));
-    this.put(g, d.x, d.y, 0, d.flip ? -1 : 1, 1);
+    const grounded = def.place !== 'top';
+    const s = this.sprites.get('d|' + d.type + (bare ? '|bare' : '') + (grounded ? '|g' : ''), Math.min(this.bucket, 3), box, (gg) => {
+      DECOR_ART[d.type](gg, 0, bare);
+      if (grounded) baseShade(gg, def);
+    });
+    this.put(g, d.x, d.y, d.lean || 0, d.flip ? -1 : 1, 1);
     g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
     // the mailbox's flag is up while Busytown's letters are waiting
     if (bare) DECOR_ART.mailboxFlag(g, this.mail > 0);
@@ -695,6 +700,115 @@ export class Renderer {
       DECOR_ART.windmillBlades(g, d.spin);
     }
     if (d.def.hive) this.drawHoneycomb(g, d);
+    if (grounded) this.drawFooting(g, d);
+  }
+
+  // Where a decoration meets the ground (see render/footing.js): the ground
+  // in front of its sunken base, the drift heaped against it, a little shade
+  // where it sits, and whatever's growing round its foot. The drift, shade
+  // and ink are painted once into a little canvas of their own (until it's
+  // moved, the ground under it changes, or the zoom or the ground's style
+  // does); only the ground in front and the swaying growth are drawn live.
+  drawFooting(g, d) {
+    const t = this.world.terrain;
+    const f = footingOf(d, t);
+    const P = footingPaths(f);
+    const n = f.xs.length;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      y0 = Math.min(y0, f.top[i] - 4);
+      y1 = Math.max(y1, Math.max(f.ground[i], f.buried[i]) + 8);
+    }
+    const x0 = f.xs[0] - 3;
+    const x1 = f.xs[n - 1] + 3;
+    // the ground in front: put the painted ground back over the sunken base
+    const bg = this.bg;
+    if (bg) {
+      const k = this.k;
+      const X0 = Math.floor(k * x0 + this.ox);
+      const Y0 = Math.floor(k * y0 + this.oy);
+      const ww = Math.ceil(k * (x1 - x0)) + 2;
+      const hh = Math.ceil(k * (y1 - y0)) + 2;
+      const sx = X0 - this.bgDX;
+      const sy = Y0 - this.bgDY;
+      if (sx >= 0 && sy >= 0 && sx + ww <= bg.width && sy + hh <= bg.height) {
+        this.setWorld(g);
+        g.save();
+        g.clip(P.under);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.drawImage(bg, sx, sy, ww, hh, X0, Y0, ww, hh);
+        g.restore();
+      }
+    }
+    // the drift, its shade and its ink
+    const st = this.world.style;
+    const b = Math.min(this.bucket, 3);
+    const mat = driftMaterial(d, t);
+    const key = f.key + '|' + b + '|' + mat + '|' + st.sand + st.soil + st.gravel + '|' + (this.tr.patterns ? 1 : 0);
+    let c = d.ftCanvas;
+    if (!c || c.key !== key) {
+      const w = Math.max(1, Math.ceil((x1 - x0) * b));
+      const h = Math.max(1, Math.ceil((y1 - y0) * b));
+      c = d.ftCanvas && d.ftCanvas.canvas.width === w && d.ftCanvas.canvas.height === h ? d.ftCanvas : { canvas: Object.assign(document.createElement('canvas'), { width: w, height: h }) };
+      c.key = key;
+      c.x0 = x0;
+      c.y0 = y0;
+      c.w = w / b;
+      c.h = h / b;
+      d.ftCanvas = c;
+      const gg = c.canvas.getContext('2d');
+      gg.setTransform(1, 0, 0, 1, 0, 0);
+      gg.clearRect(0, 0, w, h);
+      // (in tank units, so the ground's pattern lines up with the ground's)
+      gg.setTransform(b, 0, 0, b, -x0 * b, -y0 * b);
+      this.paintDrift(gg, d, f, P, mat, t);
+    }
+    this.setWorld(g);
+    g.drawImage(c.canvas, c.x0, c.y0, c.w, c.h);
+    // whatever's growing round its foot, nodding in the current or the breeze
+    let sway;
+    if (t.waterAt(d.x, t.surfaceY(d.x) - 4)) {
+      breeze.current(d.x, t.surfaceY(d.x) - 6, this.flow || (this.flow = [0, 0]));
+      sway = clamp(this.flow[0] / 18, -1, 1);
+    } else sway = clamp(breeze.wind(d.x), -1, 1) * 0.8;
+    drawGrowth(g, d, f, t, this.time, sway);
+  }
+
+  paintDrift(g, d, f, P, mat, t) {
+    // the drift, painted like the ground it came from
+    const pats = this.tr.patterns;
+    g.fillStyle = (pats && pats[mat]) || '#c8b48c';
+    g.fill(P.drift);
+    // pigment pooled along the top of the wash, and shade where it sits
+    g.save();
+    g.clip(P.below);
+    g.lineJoin = 'round';
+    g.lineWidth = 5;
+    g.strokeStyle = 'rgba(98,54,22,0.16)';
+    g.stroke(P.line);
+    const cy = t.surfaceY(d.x);
+    const r = d.def.w * 0.62;
+    const gr = g.createRadialGradient(d.x, cy, 0, d.x, cy, r);
+    gr.addColorStop(0, 'rgba(40,24,10,0.24)');
+    gr.addColorStop(1, 'rgba(40,24,10,0)');
+    g.fillStyle = gr;
+    g.fillRect(d.x - r, cy - r * 0.4, r * 2, r * 0.8);
+    g.restore();
+    // an ink line along the top, with a faint pencil line beside it, and
+    // the top heaped with whatever it's made of
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.lineWidth = 1.3;
+    g.strokeStyle = INK;
+    g.stroke(P.line);
+    g.save();
+    g.translate(0.55, 0.45);
+    g.lineWidth = 0.45;
+    g.strokeStyle = 'rgba(58,42,31,0.35)';
+    g.stroke(P.line);
+    g.restore();
+    drawDriftTop(g, d, f, mat, (GRAVEL_STYLES[this.world.style.gravel] || GRAVEL_STYLES.natural).pebbles);
   }
 
   // Signs of life at home: smoke from the chimney (steam from the teapot's
@@ -848,8 +962,6 @@ export class Renderer {
       y += k * c.foot * 0.6;
     }
     if (c.pose === 'headstand') ang += -0.55 * c.facing;
-    // a fish nibbling at something below it tips its nose down to it
-    if (c.def.fish && c.pose === 'eat' && c.target && c.target.kind === 'food' && c.target.food && c.target.food.y > c.y + 4) ang += Math.min(0.5, (c.target.food.y - c.y) * 0.04) * c.facing;
     if (c.pupa) ang = Math.sin(this.time * 0.8 + c.id) * 0.04;
     if (c.vis < 1) g.globalAlpha = c.vis;
     if (c.dead) {
@@ -1737,7 +1849,7 @@ export class Renderer {
     } else if (gh.kind === 'decor') {
       const box = decorBox(gh.def);
       const s = this.sprites.get('d|' + gh.def.id, Math.min(this.bucket, 3), box, (gg) => DECOR_ART[gh.def.id](gg, 0));
-      this.put(g, gh.x, gh.y, 0, 1, 1);
+      this.put(g, gh.x, gh.y, gh.lean || 0, 1, 1);
       g.drawImage(s.canvas, s.x0, s.y0, s.w, s.h);
     }
     g.globalAlpha = 1;

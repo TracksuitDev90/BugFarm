@@ -34,8 +34,8 @@ export function thanksTo(k) {
 
 // The brass name plate on the front of the tank.
 export function plateText(k) {
-  if (!hasName(k)) return 'BUG FARM';
+  if (!hasName(k)) return 'CRITTER FARM';
   const n = k.name.toUpperCase();
-  if (k.kind === 'town') return `${n} BUG FARM`;
-  return `${n}${/S$/.test(n) ? '’' : '’S'} BUG FARM`;
+  if (k.kind === 'town') return `${n} CRITTER FARM`;
+  return `${n}${/S$/.test(n) ? '’' : '’S'} CRITTER FARM`;
 }

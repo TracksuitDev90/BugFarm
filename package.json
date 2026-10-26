@@ -1,5 +1,5 @@
 {
-  "name": "bug-farm",
+  "name": "critter-farm",
   "version": "1.0.0",
   "private": true,
   "description": "A cozy picture-book terrarium of cute critters. Runs in the browser, works offline.",

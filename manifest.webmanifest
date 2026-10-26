@@ -1,6 +1,6 @@
 {
-  "name": "Bug Farm",
-  "short_name": "Bug Farm",
+  "name": "Critter Farm",
+  "short_name": "Critter Farm",
   "description": "A cosy picture-book terrarium full of cute critters to care for and experiment with.",
   "start_url": "./",
   "scope": "./",

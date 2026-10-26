@@ -460,7 +460,7 @@ export class UI {
   buildStyle(body) {
     const w = this.world;
     const groups = [
-      ['backdrop', 'Back wall', Object.entries(BACKDROPS).map(([k, v]) => [k, v.name, null])],
+      ['backdrop', 'Back wall', Object.entries(BACKDROPS).map(([k, v]) => [k, v.name, v.chip])],
       ['sand', 'Sand', Object.entries(SAND_STYLES).map(([k, v]) => [k, v.name, v.base])],
       ['soil', 'Soil', Object.entries(SOIL_STYLES).map(([k, v]) => [k, v.name, v.base])],
       ['gravel', 'Pond gravel', Object.entries(GRAVEL_STYLES).map(([k, v]) => [k, v.name, v.pebbles[0]])],
@@ -1246,8 +1246,8 @@ export class UI {
             this.toast(v.msg, '!');
             return;
           }
-          d.x = wx;
-          d.y = d.def.place === 'top' ? 0 : w.terrain.surfaceY(wx);
+          d.x = w.placeSpot(d.type, wx, wy);
+          w.seatDecor(d);
           this.moving = null;
           this.r.ghost = null;
           this.sound.play('place', 0.6);
@@ -1582,9 +1582,12 @@ export class UI {
       this.ring(wx, wy, false);
     } else if (this.tool === 'decor' && (this.choice.decor || this.moving)) {
       const def = DECOR[this.moving ? this.moving.type : this.choice.decor];
-      const y = def.place === 'top' ? 0 : this.world.terrain.surfaceY(wx);
-      const ok = this.world.canPlace('decor', def.id, wx, y).ok;
-      this.r.ghost = { kind: 'decor', def, x: wx, y, ok };
+      const w = this.world;
+      const y = def.place === 'top' ? 0 : w.terrain.surfaceY(wx);
+      const ok = w.canPlace('decor', def.id, wx, y).ok;
+      // (shown just where it would settle in)
+      const seat = w.seatOf(def.id, ok ? w.placeSpot(def.id, wx, y) : wx);
+      this.r.ghost = { kind: 'decor', def, x: seat.x, y: seat.y, lean: seat.lean, ok };
     } else this.r.ghost = null;
     // a pointing hand over gadgets you can tap to learn about
     const cur = this.tool === 'look' && equipmentAt(this.world, wx, wy) ? 'pointer' : '';
@@ -2052,7 +2055,7 @@ export class UI {
         pic.append(c.sp === 'worm' ? wormIcon([120, 100], c.palIdx, item, colour) : creatureArt(c.sp, c.stage, pose, c.palIdx, item, colour, [120, 100]));
       };
       const grid = el('div', { class: 'wardrobe' });
-      const swatches = el('div', { class: 'swatches' });
+      const swatches = el('div', { class: 'dyes' });
       const done = el('button', { class: 'btn green', onclick: () => {
         w.dress(c, item, item && OUTFITS[item].colour ? colour : null);
         this.closeModal();
@@ -2100,7 +2103,7 @@ export class UI {
         } }, art, el('small', {}, owned ? o.name : '?')));
       }
       for (const col of ACC_COLORS) {
-        swatches.append(el('button', { class: 'swatch', 'data-col': col, style: `background:${col}`, 'aria-label': 'Colour', onclick: () => {
+        swatches.append(el('button', { class: 'dye', 'data-col': col, style: `background:${col}`, 'aria-label': 'Colour', onclick: () => {
           colour = col;
           refresh();
         } }));
@@ -2473,7 +2476,7 @@ export class UI {
       );
       b.append(el('p', { style: 'font-size:14px;opacity:.8' }, 'Your tank saves itself on this device automatically. Export a file to keep a backup or move your tank to another device.'));
       b.append(el('h4', {}, 'About'));
-      b.append(el('p', { style: 'font-size:14px;opacity:.85' }, 'Bug Farm — a little living terrarium. Every critter and plant is drawn by code in a picture-book style, so the whole game is tiny and works offline. Fonts: Patrick Hand & Chewy (open font licences).'));
+      b.append(el('p', { style: 'font-size:14px;opacity:.85' }, 'Critter Farm — a little living terrarium. Every critter and plant is drawn by code in a picture-book style, so the whole game is tiny and works offline. Fonts: Patrick Hand & Chewy (open font licences).'));
     });
   }
 
@@ -2539,7 +2542,7 @@ export class UI {
     this.openModal('Welcome!', (b, head) => {
       head.querySelector('.card-close').remove();
       this.modalLocked = true;
-      b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
+      b.append(el('div', { class: 'welcome-logo' }, 'CRITTER FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
       b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
       b.append(el('p', {}, 'Every critter has a job. The honey, silk, seeds, compost and water lilies they make are wanted in Busytown, and the townsfolk pay in coins. Make friends with them and spend your coins at the Busytown Market.'));

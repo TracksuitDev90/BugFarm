@@ -1,4 +1,4 @@
-// Bug Farm entry point.
+// Critter Farm entry point.
 import { W, H, DAY_LEN, TANK, parseTank } from './config.js';
 import { Game } from './game.js';
 import { Input } from './ui/input.js';
@@ -173,7 +173,7 @@ async function boot() {
         writeTankSize(parseTank(d.world.tank));
         location.reload();
       } catch (e) {
-        ui.toast('That file is not a Bug Farm save.', '!');
+        ui.toast('That file is not a Critter Farm save.', '!');
       }
     },
     newTank: () => {
@@ -209,7 +209,7 @@ async function boot() {
       frozen = true;
       const card = document.createElement('div');
       card.id = 'loading';
-      card.innerHTML = `<div><div class="logo">BUG FARM</div><div class="sub">${{ desert: 'The builders are laying fresh sand in the desert...', pond: 'The builders are digging the pond wider...', jungle: 'The builders are opening up more jungle...' }[zone]}</div><div class="bar"><i style="width:100%"></i></div></div>`;
+      card.innerHTML = `<div><div class="logo">CRITTER FARM</div><div class="sub">${{ desert: 'The builders are laying fresh sand in the desert...', pond: 'The builders are digging the pond wider...', jungle: 'The builders are opening up more jungle...' }[zone]}</div><div class="bar"><i style="width:100%"></i></div></div>`;
       card.style.opacity = '0';
       document.body.append(card);
       requestAnimationFrame(() => (card.style.opacity = '1'));
@@ -247,8 +247,8 @@ async function boot() {
   if (!sameTank(want, TANK)) {
     let last = 0;
     try {
-      last = +sessionStorage.getItem('bugfarm.resized') || 0;
-      sessionStorage.setItem('bugfarm.resized', String(Date.now()));
+      last = +sessionStorage.getItem('critterfarm.resized') || 0;
+      sessionStorage.setItem('critterfarm.resized', String(Date.now()));
     } catch (e) {
       /* no session storage */
     }
@@ -339,7 +339,7 @@ async function boot() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-  window.bugfarm = { game, journal, ui, settings };
+  window.critterfarm = { game, journal, ui, settings };
 }
 
 boot();

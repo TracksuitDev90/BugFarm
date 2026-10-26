@@ -1246,8 +1246,8 @@ export class UI {
             this.toast(v.msg, '!');
             return;
           }
-          d.x = wx;
-          d.y = d.def.place === 'top' ? 0 : w.terrain.surfaceY(wx);
+          d.x = w.placeSpot(d.type, wx, wy);
+          w.seatDecor(d);
           this.moving = null;
           this.r.ghost = null;
           this.sound.play('place', 0.6);
@@ -1582,9 +1582,12 @@ export class UI {
       this.ring(wx, wy, false);
     } else if (this.tool === 'decor' && (this.choice.decor || this.moving)) {
       const def = DECOR[this.moving ? this.moving.type : this.choice.decor];
-      const y = def.place === 'top' ? 0 : this.world.terrain.surfaceY(wx);
-      const ok = this.world.canPlace('decor', def.id, wx, y).ok;
-      this.r.ghost = { kind: 'decor', def, x: wx, y, ok };
+      const w = this.world;
+      const y = def.place === 'top' ? 0 : w.terrain.surfaceY(wx);
+      const ok = w.canPlace('decor', def.id, wx, y).ok;
+      // (shown just where it would settle in)
+      const seat = w.seatOf(def.id, ok ? w.placeSpot(def.id, wx, y) : wx);
+      this.r.ghost = { kind: 'decor', def, x: seat.x, y: seat.y, lean: seat.lean, ok };
     } else this.r.ghost = null;
     // a pointing hand over gadgets you can tap to learn about
     const cur = this.tool === 'look' && equipmentAt(this.world, wx, wy) ? 'pointer' : '';

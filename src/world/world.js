@@ -26,6 +26,10 @@ import { zoneStatus, residents, favouriteFoods } from '../sim/care.js';
 import { SPRINKLER_X } from '../data/market.js';
 import { cleanName } from '../sim/keeper.js';
 import { Vines } from './vines.js';
+import { Clearance } from './clearance.js';
+
+const SEAT_Y = new Float64Array(9);
+const SEAT_R = new Float64Array(9);
 
 const MAX_GOODS = 40;
 // Pollen loads it takes to fill a jar of honey, and how much a worm eats
@@ -86,6 +90,9 @@ export class World {
     this.waterMap = null;
     this.waterMapVer = -1;
     this.waterMapT = -99;
+    // ...and how far every spot in it is from the ground (so a swimmer keeps
+    // all of itself off the bottom and the banks)
+    this.clearance = new Clearance();
     // Where (and at what time of day) the keeper usually feeds the pond:
     // the fish learn it.
     this.feedMem = { x: ZONE_MID.pond, hours: new Array(24).fill(0) };
@@ -316,6 +323,7 @@ export class World {
           c.y = p[1];
         }
       }
+      c.settleInWater(this);
     } else if (loco === 'burrow') {
       if (y == null || !t.isUnderground(x, y)) c.y = t.surfaceY(x) + rrange(30, 120);
       c.body = null;
@@ -384,8 +392,99 @@ export class World {
     }
     if (y == null) y = def.place === 'top' ? 0 : t.surfaceY(x);
     const d = new Decor(type, x, y, opts);
+    this.seatDecor(d);
     this.decor.push(d);
     return d;
+  }
+
+  // ------------------------------------------------------------------ settling decorations in
+  // How a decoration sits on the ground at x: its base rests on the ground
+  // under its whole footprint (not just its middle), sunk in a little (deeper
+  // into loose sand and gravel than onto rock), and leaning a touch with the
+  // slope (squat things more than tall ones). The renderer heaps the ground
+  // up round its base to match (see render/footing.js).
+  seatOf(type, x) {
+    const def = DECOR[type];
+    if (def.place === 'top') return { x, y: 0, lean: 0, sink: 0 };
+    const t = this.terrain;
+    const half = def.w * 0.42;
+    const n = 9;
+    let sx = 0;
+    let sy = 0;
+    let sxx = 0;
+    let sxy = 0;
+    const ys = SEAT_Y;
+    for (let i = 0; i < n; i++) {
+      const u = -half + (2 * half * i) / (n - 1);
+      const y = t.surfaceY(x + u);
+      ys[i] = y;
+      sx += u;
+      sy += y;
+      sxx += u * u;
+      sxy += u * y;
+    }
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    const tall = def.h / def.w;
+    const lean = clamp(Math.atan(slope) * 0.6, -1, 1) * clamp(0.11 / tall, 0.035, 0.2);
+    const tl = Math.tan(lean);
+    // rest on most of it: where the ground dips away below the base, the
+    // footing heaps up to meet it
+    const r = SEAT_R;
+    for (let i = 0; i < n; i++) r[i] = ys[i] - tl * (-half + (2 * half * i) / (n - 1));
+    const sorted = Array.from(r).sort((a, b) => a - b);
+    const rest = sorted[Math.floor(n * 0.6)];
+    const m = t.matAt(x, t.surfaceY(x) + 2);
+    const loose = m === MAT.SAND || m === MAT.GRAVEL ? 4.5 : m === MAT.SOIL ? 3.5 : 1.5;
+    const sink = Math.min(loose * clamp(def.w / 50, 0.6, 1.3), def.h * 0.12);
+    return { x, y: rest + sink, lean, sink };
+  }
+  seatDecor(d) {
+    const s = this.seatOf(d.type, d.x);
+    d.y = s.y;
+    d.lean = s.lean;
+    return d;
+  }
+  // Where a decoration put down at x actually goes (see footingSpot).
+  placeSpot(type, x, y) {
+    const fx = this.footingSpot(type, x);
+    return fx !== x && this.canPlace('decor', type, fx, y).ok ? fx : x;
+  }
+  // Somewhere near x where a decoration's footprint is fairly level (not
+  // half up a rock face or straddling a ledge), so it can settle in properly.
+  // Stays put on reasonable ground; otherwise shuffles along a little.
+  footingSpot(type, x) {
+    const def = DECOR[type];
+    if (def.place === 'top') return x;
+    const t = this.terrain;
+    const half = def.w * 0.42;
+    const wet = (xx) => t.waterAt(xx, t.surfaceY(xx) - 2);
+    const wet0 = wet(x);
+    const rough = (xx) => {
+      // how far the ground strays from a straight line under it, and how steep that line is
+      const a = t.surfaceY(xx - half);
+      const b = t.surfaceY(xx + half);
+      let worst = 0;
+      for (let i = 1; i < 8; i++) {
+        const f = i / 8;
+        worst = Math.max(worst, Math.abs(t.surfaceY(xx - half + 2 * half * f) - (a + (b - a) * f)));
+      }
+      return worst + Math.max(0, Math.abs(b - a) / (2 * half) - 0.45) * def.w * 0.5;
+    };
+    let best = x;
+    let bs = rough(x);
+    if (bs < Math.max(4, def.h * 0.08)) return x;
+    for (let k = 1; k <= 14; k++) {
+      for (const sgn of [-1, 1]) {
+        const xx = x + sgn * k * 4;
+        if (xx - def.w / 2 < 4 || xx + def.w / 2 > W - 4 || wet(xx) !== wet0) continue;
+        const s = rough(xx) + k * 0.5;
+        if (s < bs) {
+          bs = s;
+          best = xx;
+        }
+      }
+    }
+    return best;
   }
   removeDecor(d) {
     d.removed = true;
@@ -833,7 +932,7 @@ export class World {
     for (const d of this.decor) {
       if (!d.def.shelter) continue;
       d.residents.length = 0;
-      d.wet = t.waterAt(d.x, d.y - 4);
+      d.wet = d.underwater(t);
     }
     for (const c of this.creatures) {
       if (c.dead) continue;
@@ -1679,6 +1778,7 @@ export class World {
   placeDecor(type, x, y) {
     const v = this.canPlace('decor', type, x, y);
     if (!v.ok) return v;
+    x = this.placeSpot(type, x, y);
     const d = this.addDecor(type, x, DECOR[type].place === 'top' ? 0 : null);
     if (!d) return { ok: false, msg: 'The tank is crowded with decorations! Bertie the builder can make it bigger (the Market).' };
     this.addNovelty(x, this.terrain.surfaceY(x) - 10, 1);
@@ -1712,7 +1812,7 @@ export class World {
       this.sculpted = true;
       this.noteChange(x, mode === 'dig' ? y : Math.min(y, t.surfaceY(x)), r, mode === 'dig' ? 'dig' : 'fill');
       // keep decor sitting on the ground
-      for (const d of this.decor) if (d.def.place !== 'top') d.y = t.surfaceY(d.x);
+      for (const d of this.decor) if (d.def.place !== 'top') this.seatDecor(d);
       for (const p of this.plants) {
         const sy = t.surfaceY(p.x);
         if (p.def.place === 'ground' || p.def.place === 'shore' || p.def.place === 'underwater' || p.def.place === 'surface') {
@@ -1880,6 +1980,7 @@ export class World {
       this.computeRegions();
     }
     if (t.waterVersion !== this.waterMapVer && this.time - this.waterMapT > 1.5) this.buildWaterMap();
+    this.clearance.update(t, this.time);
 
     // spatial hashes
     this.hashC.clear();
@@ -2401,6 +2502,10 @@ export class World {
       this.addCreature(c);
     }
     this.computeRegions();
+    // decorations settle into the ground, and everyone in the water gets all
+    // of themselves into it (an older tank may have left a tail in the bank)
+    for (const d of this.decor) if (d.def.place !== 'top') this.seatDecor(d);
+    for (const c of this.creatures) if (c.mode === 'swim' && !c.hidden) c.settleInWater(this);
   }
 }
 

@@ -25,10 +25,11 @@ export class Herald {
   }
 
   // How long to leave between notices (real seconds), given how many game
-  // days old the farm is: roomy at first, then a steady, gentle rhythm.
+  // days old the farm is: roomy at first, then a steady, gentle rhythm of
+  // no more than one a minute (however busy the tank gets).
   gap(farmDays) {
     const calm = Math.max(0, Math.min(1, 1 - farmDays / 2.5));
-    return 50 + 60 * calm;
+    return 60 + 50 * calm;
   }
 
   // Something else just took the stage (a letter from Busytown): the next

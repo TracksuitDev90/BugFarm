@@ -296,7 +296,8 @@ def('forage', {
       if (c.arrived) {
         d.phase = 'eat';
         d.t = 0;
-        if (c.mode !== 'climb') c.halt();
+        // (a swimmer keeps its mouth to the food as it sinks or drifts)
+        if (c.mode !== 'climb' && c.mode !== 'swim') c.halt();
         if (d.tgt.kind === 'food') {
           const f = d.tgt.food;
           c.facing = f.x >= c.x ? 1 : -1;
@@ -367,7 +368,7 @@ def('snack', {
     const f = d.f;
     if (!f || f.gone || f.amount <= 0.001) return false;
     if (!c.arrived) return c.brain.t < 15 && !(c.blocked && c.mode !== 'swim' && c.mode !== 'fly');
-    if (c.mode !== 'climb') c.halt();
+    if (c.mode !== 'climb' && c.mode !== 'swim') c.halt();
     c.pose = 'eat';
     d.t = (d.t || 0) + dt;
     if (d.t > 0.6) {

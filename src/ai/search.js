@@ -517,16 +517,20 @@ export function swimSpot(c, w, range) {
     }
   }
   // mostly short trips, sometimes a long cruise right across the water;
-  // picked from wherever there really is water, whatever shape it's in
+  // picked from wherever there really is water, whatever shape it's in (a
+  // cruise keeps off the very bottom: that's for nibbling and rummaging)
   const reach = chance(0.22) ? range * rrange(1.6, 3) : range * rrange(0.3, 1);
-  const pt = waterSpot(c, w, body, favDepth(c) + gauss() * 0.3, reach);
+  const pt = waterSpot(c, w, body, clamp(favDepth(c) + gauss() * 0.3, 0.04, 0.8), reach);
   if (pt) return { kind: 'point', x: pt[0], y: pt[1] };
   const p = w.randomWaterPoint(c.x, range, false);
   return p ? { kind: 'point', x: p[0], y: p[1] } : null;
 }
 
 // A spot in this body of water at about this depth (0 top .. 1 bottom),
-// preferably within reach of here.
+// preferably within reach of here, not hard against a bank, and somewhere
+// nobody else is already (so the fish spread out through the water rather
+// than all bunching up in the same few places).
+const isSwimmer = (o) => o.mode === 'swim' && !o.dead && !o.hidden;
 export function waterSpot(c, w, body, depth, reach) {
   const m = w.waterMap;
   if (!m || body < 0 || !m.spots[body] || !m.spots[body].length) return null;
@@ -536,7 +540,9 @@ export function waterSpot(c, w, body, depth, reach) {
   for (let i = 0; i < 12; i++) {
     const k = list[(Math.random() * list.length) | 0];
     const x = (k % GW) * CELL + CELL / 2;
-    const s = -Math.abs(m.dep[k] - depth) * 2.5 - Math.max(0, Math.abs(x - c.x) - reach) / 60 + Math.random() * 0.4;
+    const y = ((k / GW) | 0) * CELL + CELL / 2;
+    let s = -Math.abs(m.dep[k] - depth) * 2.5 - Math.max(0, Math.abs(x - c.x) - reach) / 60 - Math.max(0, 20 - w.clearance.at(x, y)) / 14 + Math.random() * 0.4;
+    if (s > bs) s -= w.hashC.query(x, y, 50, isSwimmer).filter((o) => o !== c).length * 0.5;
     if (s > bs) {
       bs = s;
       best = k;
@@ -612,7 +618,7 @@ export function lampSpot(c, w) {
     for (let i = 0; i < 6; i++) {
       const x = lamp.x + rrange(-40, 40);
       const top = t.waterSurfY(x);
-      if (t.waterAt(x, top + 6) && t.surfaceY(x) - top > 30) return { kind: 'point', x, y: top + 4, float: true };
+      if (t.waterAt(x, top + 6) && t.surfaceY(x) - top > 30) return { kind: 'point', x, y: top + 6, float: true };
     }
   }
   return null;

@@ -37,6 +37,11 @@ export class Decor {
   at(p) {
     return [this.x + p[0] * (this.flip ? -1 : 1), this.y + p[1]];
   }
+  // Is it standing in the pond? (Judged just above the ground at its middle:
+  // its base is sunk a little way into the gravel.)
+  underwater(t) {
+    return t.waterAt(this.x, Math.min(this.y, t.surfaceY(this.x)) - 4);
+  }
   // Is a point inside this shelter?
   covers(x, y) {
     const d = this.def;

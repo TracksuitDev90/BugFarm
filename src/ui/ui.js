@@ -2476,7 +2476,7 @@ export class UI {
       );
       b.append(el('p', { style: 'font-size:14px;opacity:.8' }, 'Your tank saves itself on this device automatically. Export a file to keep a backup or move your tank to another device.'));
       b.append(el('h4', {}, 'About'));
-      b.append(el('p', { style: 'font-size:14px;opacity:.85' }, 'Bug Farm — a little living terrarium. Every critter and plant is drawn by code in a picture-book style, so the whole game is tiny and works offline. Fonts: Patrick Hand & Chewy (open font licences).'));
+      b.append(el('p', { style: 'font-size:14px;opacity:.85' }, 'Critter Farm — a little living terrarium. Every critter and plant is drawn by code in a picture-book style, so the whole game is tiny and works offline. Fonts: Patrick Hand & Chewy (open font licences).'));
     });
   }
 
@@ -2542,7 +2542,7 @@ export class UI {
     this.openModal('Welcome!', (b, head) => {
       head.querySelector('.card-close').remove();
       this.modalLocked = true;
-      b.append(el('div', { class: 'welcome-logo' }, 'BUG FARM'));
+      b.append(el('div', { class: 'welcome-logo' }, 'CRITTER FARM'));
       b.append(el('p', {}, 'A tank of cute critters living their busy little lives — ants digging tunnels, tadpoles turning into frogs, fireflies blinking in the dark.'));
       b.append(el('p', {}, 'Each corner of your farm starts with two kinds of critter. Keep them comfy and fed, and the desert, pond and jungle grow: new critters, snacks and plants unlock as you go. The weather changes too, so keep an eye on your clipboard!'));
       b.append(el('p', {}, 'Every critter has a job. The honey, silk, seeds, compost and water lilies they make are wanted in Busytown, and the townsfolk pay in coins. Make friends with them and spend your coins at the Busytown Market.'));

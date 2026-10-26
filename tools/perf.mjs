@@ -42,7 +42,7 @@ const measure = async (label, setup) => {
           if (now - t0 < 4000) requestAnimationFrame(f);
           else {
             times.sort((a, b) => a - b);
-            const g = window.bugfarm.game;
+            const g = window.critterfarm.game;
             resolve({ fps: times.length / 4, p95: times[Math.floor(times.length * 0.95)], work: g.avgFrame, sim: g.simMs, q: g.renderer.qualityName, n: g.world.creatures.length });
           }
         };
@@ -53,25 +53,25 @@ const measure = async (label, setup) => {
 };
 console.log(`CPU throttle ${rate}x, 390x844 @3x`);
 await measure('portrait default, 1x', () => {
-  const { game, ui } = window.bugfarm;
+  const { game, ui } = window.critterfarm;
   ui.setSpeed(1);
   game.cam.reset();
 });
 await measure('zoomed into ant nest, 1x', () => {
-  const { game } = window.bugfarm;
+  const { game } = window.critterfarm;
   game.cam.zoom = 3;
   game.cam.x = 240;
   game.cam.y = 560;
   game.cam.clampAll();
 });
 await measure('whole tank, 1x', () => {
-  const { game } = window.bugfarm;
+  const { game } = window.critterfarm;
   game.cam.zoom = game.cam.fitAll;
   game.cam.clampAll();
 });
-await measure('whole tank, 8x', () => window.bugfarm.ui.setSpeed(8));
+await measure('whole tank, 8x', () => window.critterfarm.ui.setSpeed(8));
 await measure('busy tank (+80 critters), 3x', () => {
-  const { game, ui } = window.bugfarm;
+  const { game, ui } = window.critterfarm;
   ui.setSpeed(3);
   const w = game.world;
   for (let i = 0; i < 20; i++) w.adopt('ant', 200, 400);

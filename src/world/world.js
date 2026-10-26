@@ -205,7 +205,7 @@ export class World {
     this.addFood(farm ? 'lettuce' : 'apple', X(1330), t.surfaceY(X(1330)), { state: 'rest' });
     this.addFood('seedmix', X(250), t.surfaceY(X(250)), { state: 'rest' });
     this.addFood('flakes', X(800), t.waterLevel + 1, { state: 'float', inWater: true });
-    this.addLog(farm ? 'Welcome to your Bug Farm! Each corner has its first two kinds of critter. Check the clipboard to see what they need.' : 'Welcome to your Bug Farm! Everyone has just moved in.', 'star');
+    this.addLog(farm ? 'Welcome to your Critter Farm! Each corner has its first two kinds of critter. Check the clipboard to see what they need.' : 'Welcome to your Critter Farm! Everyone has just moved in.', 'star');
     // a welcome gift from the town, to spend at the Market
     this.coins = 20;
     this.addLog('Mayor Mossbottom sent 20 Busytown coins to welcome the farm to town.', 'coin');

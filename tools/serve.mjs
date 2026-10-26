@@ -16,4 +16,4 @@ http
       res.end(data);
     });
   })
-  .listen(port, () => console.log(`Bug Farm running at http://localhost:${port}/  (serving ${base})`));
+  .listen(port, () => console.log(`Critter Farm running at http://localhost:${port}/  (serving ${base})`));

@@ -26,7 +26,7 @@ export const DECOR = {
   lampPost: { name: 'Lamp post', place: 'ground', w: 16, h: 72, light: true, job: 'Glows at night. Moths can\'t resist circling it.' },
   bench: { name: 'Park bench', place: 'ground', w: 42, h: 22, job: 'A good sit-down: critters who nap beside it wake up extra rested.' },
   fence: { name: 'Picket fence', place: 'ground', w: 60, h: 22, job: 'Crickets and grasshoppers sing from it, so the night chorus carries further and everyone sleeps sounder.' },
-  sign: { name: 'Bug Farm sign', place: 'ground', w: 50, h: 42, job: 'Tells passers-by about your farm, so letters from Busytown come a little more often.' },
+  sign: { name: 'Critter Farm sign', place: 'ground', w: 50, h: 42, job: 'Tells passers-by about your farm, so letters from Busytown come a little more often.' },
   mailbox: { name: 'Mailbox', place: 'ground', w: 18, h: 36, job: 'Somewhere for letters to wait: one more letter at a time, and its flag goes up when post comes.' },
   windmill: { name: 'Windmill', place: 'ground', w: 44, h: 76, animated: true, job: 'Catches the breeze and pumps a trickle of water, keeping its corner of the tank a little damper.' },
   bananaCar: { name: 'Banana car', place: 'ground', w: 60, h: 28, job: 'Smells so sweet that fruit flies buzz round it instead of your snacks: easy pickings for frogs and dragonflies.' },

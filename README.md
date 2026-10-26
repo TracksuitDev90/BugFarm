@@ -1,4 +1,4 @@
-# Bug Farm
+# Critter Farm
 
 A cosy picture-book terrarium. One big glass tank with a sandy desert, a pond
 and a grassy jungle, full of small critters going about their lives. Every
@@ -16,7 +16,7 @@ rearrange their world, and run gentle experiments to see what happens.
 
 ![The whole tank: an ant colony tunnelling through the desert sand, a turtle on the basking rocks, goldfish in the pond beside its heater and filter, and a misty rainforest jungle hung with all sorts of vines, with dome heat lamps and misters on the lid and thermometers on the glass](docs/tank.jpg)
 
-<img src="docs/phone.jpg" width="260" align="right" alt="Bug Farm on a phone: a bumblebee's card in the jungle, saying its job is honey maker and that it has made a jar of honey so far">
+<img src="docs/phone.jpg" width="260" align="right" alt="Critter Farm on a phone: a bumblebee's card in the jungle, saying its job is honey maker and that it has made a jar of honey so far">
 
 - **Runs in any modern browser** on phones, tablets and desktops. Nothing to
   install. It can also be added to the home screen and played offline.
@@ -566,7 +566,8 @@ src/
 - **Saving.** The save is compact JSON (about 50 KB, with run-length-encoded
   terrain, plus goods, the basket and Busytown's orders) in `localStorage`,
   with a backup copy, and the tank's size alongside it. Settings can export
-  and import saves as files.
+  and import saves as files. (A tank saved back when the farm was called Bug
+  Farm is found under its old name and moves across the next time it saves.)
 
 ### Adding things
 

@@ -57,7 +57,7 @@ const steps = {
     await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 60 * 6; i++) w.step(1 / 30);
       w.env.time = Math.floor(w.env.time / 720) * 720 + 720 * (22.5 / 24);
@@ -74,7 +74,7 @@ const steps = {
     await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 120; i++) w.step(1 / 30);
       game.cam.zoom = game.cam.fitHeight * 2.4;
@@ -89,7 +89,7 @@ const steps = {
     await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 720 * 2; i++) w.step(1 / 30);
       game.cam.reset();
@@ -103,7 +103,7 @@ const steps = {
     await pg.click('#toolbar button[aria-label="Critters"]');
     await pg.waitForTimeout(300);
     await pg.evaluate(() => {
-      const { game, ui } = window.bugfarm;
+      const { game, ui } = window.critterfarm;
       ui.select(game.world.creatures.find((k) => k.sp === 'turtle'));
     });
     await pg.waitForTimeout(800);
@@ -113,7 +113,7 @@ const steps = {
     await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 200; i++) w.step(1 / 30);
       game.cam.zoom = game.cam.fitHeight * 3.2;
@@ -128,7 +128,7 @@ const steps = {
     await pg.click('text=Sandbox: full tank');
     await pg.waitForTimeout(500);
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 720 * 1.15; i++) w.step(1 / 30);
       w.env.time = Math.floor(w.env.time / 720) * 720 + 720 * (13 / 24);
@@ -145,7 +145,7 @@ const steps = {
     await pg.waitForTimeout(800);
     // fly to the jungle and tap a critter via the page API
     await pg.evaluate(() => {
-      const { game, ui } = window.bugfarm;
+      const { game, ui } = window.critterfarm;
       const c = game.world.creatures.find((k) => k.sp === 'snail') || game.world.creatures[0];
       game.cam.zoom = 2.2;
       game.cam.x = c.x;
@@ -167,7 +167,7 @@ const steps = {
       await pg.waitForTimeout(400);
     }
     await pg.evaluate(() => {
-      const { game, journal, ui } = window.bugfarm;
+      const { game, journal, ui } = window.critterfarm;
       const w = game.world;
       const ord = journal.orders;
       for (let i = 0; i < 30 * 60; i++) w.step(1 / 30);
@@ -208,7 +208,7 @@ const steps = {
     }
     const look = async (name, ids, zoom, secs = 25) => {
       await pg.evaluate(([ids, zoom, secs]) => {
-        const { game, journal, ui } = window.bugfarm;
+        const { game, journal, ui } = window.critterfarm;
         const w = game.world;
         w.visitors.length = 0;
         const vs = [];
@@ -231,20 +231,20 @@ const steps = {
       await shot(name);
     };
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       for (let i = 0; i < 30 * 200; i++) w.step(1 / 30);
     });
     for (const id of ['robin', 'hedgehog', 'kingfisher', 'vole', 'tortoise', 'crab', 'mole']) await look('visit-' + id, [id], 3.2);
     // an idea, and saying yes
     await pg.evaluate(() => {
-      const { game, journal } = window.bugfarm;
+      const { game, journal } = window.critterfarm;
       const w = game.world;
       w.visitors.length = 0;
       const v = journal.visitors.arrive('mole');
       v.stay = 9999;
-      window.bugfarm.ui.post.q.length = 0;
-      window.bugfarm.ui.post.next();
+      window.critterfarm.ui.post.q.length = 0;
+      window.critterfarm.ui.post.next();
       // (a visitor makes their offer a couple of minutes after coming in)
       journal.visitors.letterT = -1e9;
       for (let i = 0; i < 30 * 130; i++) {
@@ -262,10 +262,10 @@ const steps = {
     await pg.waitForTimeout(2500);
     await shot('visit-yes');
     await pg.evaluate(() => {
-      const { journal } = window.bugfarm;
+      const { journal } = window.critterfarm;
       const vs = journal.visitors;
       vs.leaveNote('hedgehog', vs.giftFor('hedgehog'));
-      window.bugfarm.ui.openJournal('visitors');
+      window.critterfarm.ui.openJournal('visitors');
     });
     await pg.waitForTimeout(800);
     await shot('visit-book');
@@ -280,7 +280,7 @@ const steps = {
       await pg.waitForTimeout(400);
     }
     await pg.evaluate(() => {
-      const { game, ui } = window.bugfarm;
+      const { game, ui } = window.critterfarm;
       const w = game.world;
       const c = w.creatures.find((k) => k.sp === 'snail' && k.isAdult) || w.creatures.find((k) => k.sp === 'beetle');
       game.cam.zoom = game.cam.fitHeight * 2.4;
@@ -301,7 +301,7 @@ const steps = {
     await shot('dress-3');
     // a parade: a few critters in their best
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       const w = game.world;
       const hats = ['toque', 'party', 'tophat', 'mortar', 'mailcap', 'nurse', 'flowercrown', 'straw', 'bucket', 'hardhat', 'propeller', 'kerchief', 'feather', 'pearls'];
       let i = 0;
@@ -318,14 +318,14 @@ const steps = {
     await pg.waitForTimeout(1500);
     await shot('dress-jungle');
     await pg.evaluate(() => {
-      const { game } = window.bugfarm;
+      const { game } = window.critterfarm;
       game.cam.x = 820;
       game.cam.y = game.world.terrain.waterLevel + 120;
       game.cam.clampAll();
     });
     await pg.waitForTimeout(1200);
     await shot('dress-pond');
-    await pg.evaluate(() => window.bugfarm.ui.openMarket());
+    await pg.evaluate(() => window.critterfarm.ui.openMarket());
     await pg.waitForTimeout(800);
     await shot('market');
   },
